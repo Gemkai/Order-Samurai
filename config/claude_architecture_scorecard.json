@@ -1,0 +1,209 @@
+{
+  "version": 1,
+  "name": "Claude Runtime Architecture Scorecard",
+  "status": "runtime-verified-verifiers-pending",
+  "purpose": "Weighted architecture scoring contract for the audited Claude runtime control plane under C:\\Users\\jemak\\.claude.",
+  "target": {
+    "runtimeRoot": "C:\\Users\\jemak\\.claude",
+    "sourceReport": "reports/2026-04-12-claude-architecture-hardening-report.md",
+    "surfaceScope": "live-runtime-control-plane"
+  },
+  "scoring": {
+    "targetScore": 100,
+    "mergeFloor": 85,
+    "releaseFloor": 95,
+    "enforcementMode": "advisory-until-claude-verifiers-exist"
+  },
+  "categories": [
+    {
+      "id": "path_authority",
+      "label": "Path Authority",
+      "weight": 10,
+      "target": 10,
+      "description": "All live runtime paths must resolve through Claude's canonical path layer with no hardcoded sibling-runtime or machine-local literals.",
+      "requiredPackArtifacts": [
+        "config/claude_anti_drift_policy.json"
+      ],
+      "requiredRuntimeArtifacts": [
+        "scripts/runtime_paths.py"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_claude_path_authority.py"
+      ]
+    },
+    {
+      "id": "generated_runtime_truth",
+      "label": "Generated Runtime Truth",
+      "weight": 15,
+      "target": 15,
+      "description": "Live settings, MCP config, and runtime inventory must be generated from canonical registries rather than maintained by hand.",
+      "requiredPackArtifacts": [
+        "config/claude_anti_drift_policy.json"
+      ],
+      "requiredRuntimeArtifacts": [
+        "scripts/sync_settings_config.py",
+        "scripts/sync_mcp_config.py",
+        "scripts/sync_runtime_inventory.py",
+        "data/runtime_inventory.json",
+        "data/runtime_summary.md"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_claude_generated_truth.py"
+      ]
+    },
+    {
+      "id": "hook_control_plane",
+      "label": "Hook Control Plane",
+      "weight": 12,
+      "target": 12,
+      "description": "Claude's live hook surface must remain registry-backed, dispatcher-driven, and portable across host environments.",
+      "requiredPackArtifacts": [
+        "config/claude_anti_drift_policy.json",
+        "config/claude_promotion_policy.json"
+      ],
+      "requiredRuntimeArtifacts": [
+        "scripts/hook_registry.py",
+        "scripts/hook_dispatch.py",
+        "scripts/runtime_entrypoints.py",
+        "settings.json"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_claude_hook_contract.py"
+      ]
+    },
+    {
+      "id": "mcp_launcher_governance",
+      "label": "MCP Launcher Governance",
+      "weight": 12,
+      "target": 12,
+      "description": "All launcher-capable MCP servers must route through the local launcher and optional capabilities must declare activation conditions.",
+      "requiredPackArtifacts": [
+        "config/claude_anti_drift_policy.json",
+        "config/claude_anti_sprawl_policy.json"
+      ],
+      "requiredRuntimeArtifacts": [
+        "scripts/mcp_server_registry.py",
+        "scripts/launch_mcp_server.py",
+        "mcp.json"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_claude_mcp_contract.py"
+      ]
+    },
+    {
+      "id": "runtime_portability",
+      "label": "Runtime Portability",
+      "weight": 12,
+      "target": 12,
+      "description": "The runtime summary must prove zero pinned Claude-home commands, zero bash-only live hooks, and zero direct launcher bypass.",
+      "requiredPackArtifacts": [
+        "config/claude_anti_drift_policy.json"
+      ],
+      "requiredRuntimeArtifacts": [
+        "data/runtime_summary.md"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_claude_runtime_portability.py"
+      ]
+    },
+    {
+      "id": "runtime_coupling_boundaries",
+      "label": "Runtime Coupling Boundaries",
+      "weight": 10,
+      "target": 10,
+      "description": "Live Claude runtime code must not depend on Antigravity-owned paths or historical archive surfaces except through explicit legacy bridges.",
+      "requiredPackArtifacts": [
+        "config/claude_anti_drift_policy.json",
+        "config/claude_root_hygiene_policy.json"
+      ],
+      "requiredRuntimeArtifacts": [
+        "scripts/verify_claude_home.py",
+        "skills/ship/SKILL.md"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_claude_runtime_coupling.py"
+      ]
+    },
+    {
+      "id": "doctor_truthfulness",
+      "label": "Doctor Truthfulness",
+      "weight": 10,
+      "target": 10,
+      "description": "Doctor output must reflect effective runtime state, not misleading raw counts or permanently ambiguous optional capability warnings.",
+      "requiredPackArtifacts": [
+        "config/claude_anti_drift_policy.json"
+      ],
+      "requiredRuntimeArtifacts": [
+        "scripts/doctor.py",
+        "execution/doctor.py",
+        "llm/gateway.py"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_claude_doctor_truthfulness.py"
+      ]
+    },
+    {
+      "id": "documentation_parity",
+      "label": "Documentation Parity",
+      "weight": 7,
+      "target": 7,
+      "description": "Claude runtime contracts and human-readable docs must evolve together in the same architectural batch.",
+      "requiredPackArtifacts": [
+        "config/claude_anti_drift_policy.json",
+        "config/claude_architecture_scorecard.json",
+        "backlog/claude_verifier_backlog.md",
+        "reports/2026-04-12-claude-architecture-hardening-report.md"
+      ],
+      "requiredRuntimeArtifacts": [
+        "CLAUDE.md",
+        "AGENTS.md",
+        "commands/doctor.md",
+        "directives/mcp-server-inventory.md"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_claude_doc_parity.py"
+      ]
+    },
+    {
+      "id": "lifecycle_governance",
+      "label": "Lifecycle Governance",
+      "weight": 7,
+      "target": 7,
+      "description": "Promotion, compatibility shims, and retirement of Claude runtime assets must follow an explicit policy gate.",
+      "requiredPackArtifacts": [
+        "config/claude_promotion_policy.json"
+      ],
+      "requiredRuntimeArtifacts": [
+        "scripts/verify_claude_home.py",
+        "execution/doctor.py"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_claude_promotion_policy.py"
+      ]
+    },
+    {
+      "id": "anti_sprawl",
+      "label": "Anti-Sprawl Governance",
+      "weight": 5,
+      "target": 5,
+      "description": "Claude's root surfaces must be classified so live runtime, source, state, archive, and dependency planes do not blur together again.",
+      "requiredPackArtifacts": [
+        "config/claude_anti_sprawl_policy.json",
+        "config/claude_root_hygiene_policy.json",
+        "config/claude_surface_matrix.json"
+      ],
+      "requiredRuntimeArtifacts": [
+        "data/runtime_summary.md"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_claude_surface_governance.py",
+        "execution/verify_claude_root_hygiene.py"
+      ]
+    }
+  ],
+  "reporting": {
+    "emitJsonTo": "artifacts/claude_architecture_score.json",
+    "emitMarkdownTo": "artifacts/claude_architecture_score.md",
+    "trendWindowDays": 30
+  }
+}

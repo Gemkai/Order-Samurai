@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "name": "Claude Runtime Anti-Sprawl Policy",
+  "targetRuntimeRoot": "C:\\Users\\jemak\\.claude",
+  "scope": "All Claude-home surfaces that affect live runtime behavior, discoverability, lifecycle boundaries, or operator understanding.",
+  "surfaceRoles": [
+    "runtime",
+    "registry",
+    "generator",
+    "generated_truth",
+    "operator",
+    "state",
+    "support",
+    "dependency",
+    "compatibility",
+    "source",
+    "archive"
+  ],
+  "rules": [
+    {
+      "id": "every-major-surface-must-be-classified",
+      "severity": "critical",
+      "statement": "No major Claude surface may exist without an explicit role, owner, and discoverability decision.",
+      "expectedPackArtifacts": [
+        "config/claude_surface_matrix.json"
+      ],
+      "verifier": "execution/verify_claude_surface_governance.py"
+    },
+    {
+      "id": "every-root-entry-must-be-classified",
+      "severity": "high",
+      "statement": "All Claude-home top-level directories and files must be classified as runtime, source, generated truth, state, support, dependency, compatibility, or archive.",
+      "expectedPackArtifacts": [
+        "config/claude_root_hygiene_policy.json"
+      ],
+      "verifier": "execution/verify_claude_root_hygiene.py"
+    },
+    {
+      "id": "generated-truth-answers-runtime-existence",
+      "severity": "critical",
+      "statement": "Runtime existence questions must be answered by generated artifacts rather than handwritten docs or memory.",
+      "expectedRuntimeArtifacts": [
+        "scripts/sync_settings_config.py",
+        "scripts/sync_mcp_config.py",
+        "scripts/sync_runtime_inventory.py",
+        "data/runtime_inventory.json",
+        "data/runtime_summary.md"
+      ],
+      "expectedPackArtifacts": [
+        "config/claude_anti_drift_policy.json"
+      ],
+      "verifier": "execution/verify_claude_generated_truth.py"
+    },
+    {
+      "id": "live-runtime-must-not-depend-on-external-or-historical-surfaces",
+      "severity": "critical",
+      "statement": "Live Claude runtime code must not depend on Antigravity-owned paths, backups, or file-history roots except through explicit bridge policy.",
+      "expectedPackArtifacts": [
+        "config/claude_root_hygiene_policy.json",
+        "config/claude_anti_drift_policy.json"
+      ],
+      "verifier": "execution/verify_claude_runtime_coupling.py"
+    },
+    {
+      "id": "compatibility-shims-must-be-explicit-and-narrow",
+      "severity": "medium",
+      "statement": "Compatibility surfaces may exist, but they must point to a canonical owner rather than competing with it.",
+      "expectedRuntimeArtifacts": [
+        "execution/doctor.py",
+        "scripts/doctor.py"
+      ],
+      "expectedPackArtifacts": [
+        "config/claude_surface_matrix.json"
+      ],
+      "verifier": "execution/verify_claude_surface_governance.py"
+    },
+    {
+      "id": "optional-capabilities-must-declare-activation",
+      "severity": "high",
+      "statement": "Optional MCP or hook capabilities must declare activation conditions instead of remaining enabled-but-broken.",
+      "expectedRuntimeArtifacts": [
+        "scripts/mcp_server_registry.py",
+        "mcp.json"
+      ],
+      "expectedPackArtifacts": [
+        "config/claude_promotion_policy.json"
+      ],
+      "verifier": "execution/verify_claude_mcp_contract.py"
+    },
+    {
+      "id": "source-and-cold-storage-are-not-live-runtime",
+      "severity": "high",
+      "statement": "Cold-storage and source surfaces may support the runtime, but they must not silently become the live runtime plane without passing promotion policy.",
+      "expectedRuntimeArtifacts": [
+        "skill-source",
+        "subagent-source",
+        "skills",
+        "subagents"
+      ],
+      "expectedPackArtifacts": [
+        "config/claude_promotion_policy.json",
+        "config/claude_surface_matrix.json"
+      ],
+      "verifier": "execution/verify_claude_promotion_policy.py"
+    }
+  ],
+  "warningModel": {
+    "warnOn": [
+      "unclassified Claude-home root entries",
+      "undocumented major surfaces",
+      "optional capability surfaces without activation metadata"
+    ],
+    "failOn": [
+      "live runtime depends on Antigravity-owned paths",
+      "generated truth surfaces are replaced by handwritten truth",
+      "compatibility shim becomes a competing canonical surface",
+      "archive or historical surfaces leak into live runtime"
+    ]
+  }
+}

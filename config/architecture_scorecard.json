@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "name": "Order Samurai Architecture Scorecard",
+  "status": "bootstrap",
+  "purpose": "Weighted architecture scoring contract for anti-drift, anti-sprawl, and Bushido-aligned repository governance.",
+  "scoring": {
+    "targetScore": 100,
+    "mergeFloor": 70,
+    "releaseFloor": 85,
+    "enforcementMode": "advisory-until-verifiers-exist"
+  },
+  "categories": [
+    {
+      "id": "path_authority",
+      "label": "Path Authority",
+      "weight": 15,
+      "target": 15,
+      "description": "All live runtime paths must resolve from one canonical path layer with no hardcoded machine-local literals.",
+      "requiredArtifacts": [
+        "execution/runtime_paths.py",
+        "config/anti_drift_policy.json"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_path_authority.py"
+      ]
+    },
+    {
+      "id": "runtime_coherence",
+      "label": "Runtime Coherence",
+      "weight": 15,
+      "target": 15,
+      "description": "The live execution plane must remain internally coherent and machine-verifiable through a single doctor flow.",
+      "requiredArtifacts": [
+        "execution/doctor.py",
+        "config/anti_drift_policy.json"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_runtime_contract.py"
+      ]
+    },
+    {
+      "id": "truth_separation",
+      "label": "Truth Separation",
+      "weight": 15,
+      "target": 15,
+      "description": "Generated artifacts answer existence questions; hand-maintained artifacts answer policy or intent questions.",
+      "requiredArtifacts": [
+        "config/anti_drift_policy.json",
+        "config/anti_sprawl_policy.json"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_generated_truth.py",
+        "execution/verify_registry_truth.py"
+      ]
+    },
+    {
+      "id": "surface_governance",
+      "label": "Surface Governance",
+      "weight": 15,
+      "target": 15,
+      "description": "Every major surface must have one clear role, one owner, and one discoverability contract.",
+      "requiredArtifacts": [
+        "config/anti_sprawl_policy.json"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_surface_governance.py"
+      ]
+    },
+    {
+      "id": "root_hygiene",
+      "label": "Root Hygiene",
+      "weight": 15,
+      "target": 15,
+      "description": "Top-level repo entries must be classified, and new clutter must be surfaced immediately.",
+      "requiredArtifacts": [
+        "config/anti_sprawl_policy.json"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_root_hygiene.py"
+      ]
+    },
+    {
+      "id": "archive_isolation",
+      "label": "Archive Isolation",
+      "weight": 15,
+      "target": 15,
+      "description": "Live runtime code must not depend on archive, scratch, playground, or other exploratory surfaces.",
+      "requiredArtifacts": [
+        "config/anti_sprawl_policy.json",
+        "config/promotion_policy.json"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_archive_boundaries.py"
+      ]
+    },
+    {
+      "id": "lifecycle_governance",
+      "label": "Lifecycle Governance",
+      "weight": 5,
+      "target": 5,
+      "description": "Promotion, deprecation, and retirement of runtime assets must follow explicit policy gates.",
+      "requiredArtifacts": [
+        "config/promotion_policy.json"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_promotion_policy.py"
+      ]
+    },
+    {
+      "id": "documentation_parity",
+      "label": "Documentation Parity",
+      "weight": 5,
+      "target": 5,
+      "description": "Runtime contracts and human-readable architecture documents must evolve in the same change.",
+      "requiredArtifacts": [
+        "PROJECT.md",
+        "RONIN_SPEC.md",
+        "reports/2026-04-12-antigravity-anti-drift-anti-sprawl-report.md"
+      ],
+      "requiredVerifiers": [
+        "execution/verify_doc_parity.py"
+      ]
+    }
+  ],
+  "reporting": {
+    "emitJsonTo": "artifacts/architecture_score.json",
+    "emitMarkdownTo": "artifacts/architecture_score.md",
+    "trendWindowDays": 30
+  }
+}

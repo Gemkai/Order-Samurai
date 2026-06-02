@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "name": "Order Samurai Root Hygiene Policy",
+  "directories": {
+    "live": [
+      "execution"
+    ],
+    "support": [
+      "backlog",
+      "config",
+      "Research",
+      "reports",
+      "tests"
+    ],
+    "state": [
+      ".tmp",
+      "artifacts"
+    ],
+    "archive": [
+      "archive",
+      "playground",
+      "scratch"
+    ],
+    "dependency": [
+      "node_modules"
+    ]
+  },
+  "files": {
+    "metadata": [
+      "PROJECT.md",
+      "RONIN_SPEC.md"
+    ],
+    "support": [
+      "research_insights.md"
+    ]
+  },
+  "requiredDirectories": [
+    "backlog",
+    "config",
+    "execution",
+    "reports",
+    "tests"
+  ],
+  "requiredFiles": [
+    "PROJECT.md",
+    "RONIN_SPEC.md"
+  ],
+  "boundaryRules": [
+    {
+      "name": "archive-isolation",
+      "scanPaths": [
+        "execution"
+      ],
+      "forbiddenRoots": [
+        "archive",
+        "playground",
+        "scratch"
+      ],
+      "description": "Live runtime code must not depend on archive or exploratory roots."
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+# Project memory — self-versioned (has its own .git) + bundles node_modules
+.mex/
+
+# Caches / scratch
+.ruff_cache/
+.tmp/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/

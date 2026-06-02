@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "name": "Order Samurai Promotion Policy",
+  "goal": "Prevent exploratory code, undocumented utilities, or unowned assets from entering the live runtime plane.",
+  "lifecycleStates": [
+    "scratch",
+    "candidate",
+    "runtime",
+    "deprecated",
+    "archive"
+  ],
+  "promotionChecklist": [
+    {
+      "id": "explicit-purpose",
+      "required": true,
+      "statement": "The asset has one clear purpose and a named owner."
+    },
+    {
+      "id": "canonical-pathing",
+      "required": true,
+      "statement": "All repo-local paths resolve through the canonical path authority."
+    },
+    {
+      "id": "input-output-contract",
+      "required": true,
+      "statement": "Inputs, outputs, side effects, and failure modes are documented."
+    },
+    {
+      "id": "tests-or-smoke-check",
+      "required": true,
+      "statement": "The asset has targeted tests or a deterministic smoke check."
+    },
+    {
+      "id": "doctor-and-verifier-coverage",
+      "required": true,
+      "statement": "The asset is visible to the appropriate verifier and doctor flow."
+    },
+    {
+      "id": "doc-parity",
+      "required": true,
+      "statement": "Human-readable architecture docs are updated with the runtime change."
+    },
+    {
+      "id": "archive-boundary-clean",
+      "required": true,
+      "statement": "The asset does not depend on archive, scratch, or exploratory surfaces."
+    }
+  ],
+  "blockers": [
+    "hardcoded machine-local paths",
+    "hidden dependency on scratch or archive surfaces",
+    "missing owner",
+    "missing verification evidence",
+    "missing documentation parity"
+  ],
+  "retirementPolicy": {
+    "requirements": [
+      "mark deprecated state explicitly",
+      "remove live references before archival move",
+      "retain historical material only behind archive boundaries"
+    ]
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "name": "Claude Runtime Anti-Drift Policy",
+  "targetRuntimeRoot": "C:\\Users\\jemak\\.claude",
+  "scope": "All live Claude runtime, verification, generated-truth, and operator-facing control-plane surfaces under the Claude home.",
+  "principles": [
+    "Executable contracts are stronger than prose-only guidance.",
+    "Generated truth is authoritative for runtime existence questions.",
+    "One canonical path layer must anchor all Claude-home path construction.",
+    "Operator diagnostics must report effective runtime state, not misleading raw counts.",
+    "Cross-runtime references are architectural failures unless explicitly allowlisted as legacy bridges."
+  ],
+  "rules": [
+    {
+      "id": "single-path-authority",
+      "severity": "critical",
+      "statement": "No live Claude runtime module may hardcode Claude-home or sibling-runtime absolute paths outside the canonical path authority.",
+      "expectedRuntimeArtifacts": [
+        "scripts/runtime_paths.py"
+      ],
+      "expectedPackArtifacts": [
+        "config/claude_anti_drift_policy.json"
+      ],
+      "verifier": "execution/verify_claude_path_authority.py"
+    },
+    {
+      "id": "generated-settings-from-hook-registry",
+      "severity": "critical",
+      "statement": "settings.json must be rendered from the canonical hook registry rather than edited as handwritten runtime truth.",
+      "expectedRuntimeArtifacts": [
+        "scripts/hook_registry.py",
+        "scripts/sync_settings_config.py",
+        "settings.json"
+      ],
+      "expectedPackArtifacts": [
+        "config/claude_promotion_policy.json"
+      ],
+      "verifier": "execution/verify_claude_hook_contract.py"
+    },
+    {
+      "id": "generated-mcp-from-launcher-registry",
+      "severity": "critical",
+      "statement": "mcp.json must be rendered from the canonical launcher-backed MCP registry and optional capabilities must declare activation env.",
+      "expectedRuntimeArtifacts": [
+        "scripts/mcp_server_registry.py",
+        "scripts/sync_mcp_config.py",
+        "mcp.json"
+      ],
+      "expectedPackArtifacts": [
+        "config/claude_anti_sprawl_policy.json"
+      ],
+      "verifier": "execution/verify_claude_mcp_contract.py"
+    },
+    {
+      "id": "generated-runtime-inventory",
+      "severity": "high",
+      "statement": "Runtime inventory and summary artifacts must be generated and kept fresh after any live runtime change.",
+      "expectedRuntimeArtifacts": [
+        "scripts/sync_runtime_inventory.py",
+        "data/runtime_inventory.json",
+        "data/runtime_summary.md"
+      ],
+      "expectedPackArtifacts": [
+        "config/claude_architecture_scorecard.json"
+      ],
+      "verifier": "execution/verify_claude_generated_truth.py"
+    },
+    {
+      "id": "doctor-is-the-canonical-operator-entrypoint",
+      "severity": "high",
+      "statement": "Repository health must aggregate through scripts/doctor.py, with any legacy execution entrypoint kept as an explicit compatibility shim only.",
+      "expectedRuntimeArtifacts": [
+        "scripts/doctor.py",
+        "execution/doctor.py"
+      ],
+      "expectedPackArtifacts": [
+        "config/claude_anti_drift_policy.json"
+      ],
+      "verifier": "execution/verify_claude_runtime_contract.py"
+    },
+    {
+      "id": "runtime-coupling-boundary",
+      "severity": "critical",
+      "statement": "Live Claude runtime files must not reference Antigravity-owned paths or historical archive roots except through declared bridge surfaces.",
+      "expectedRuntimeArtifacts": [
+        "scripts/verify_claude_home.py"
+      ],
+      "expectedPackArtifacts": [
+        "config/claude_root_hygiene_policy.json"
+      ],
+      "verifier": "execution/verify_claude_runtime_coupling.py"
+    },
+    {
+      "id": "doctor-must-report-effective-state",
+      "severity": "high",
+      "statement": "Doctor must summarize effective gateway and MCP activation state rather than warning forever on capabilities that policy already disables.",
+      "expectedRuntimeArtifacts": [
+        "scripts/doctor.py",
+        "llm/gateway.py",
+        "scripts/mcp_server_registry.py"
+      ],
+      "expectedPackArtifacts": [
+        "config/claude_architecture_scorecard.json"
+      ],
+      "verifier": "execution/verify_claude_doctor_truthfulness.py"
+    },
+    {
+      "id": "verification-before-claim",
+      "severity": "critical",
+      "statement": "No Claude architecture score claim may be accepted until targeted tests, generated-truth checks, invariants, and doctor have passed.",
+      "expectedRuntimeArtifacts": [
+        "tests",
+        "scripts/verify_claude_home.py",
+        "scripts/doctor.py"
+      ],
+      "expectedPackArtifacts": [
+        "backlog/claude_verifier_backlog.md",
+        "reports/2026-04-12-claude-architecture-hardening-report.md"
+      ],
+      "verifier": "execution/score_claude_architecture.py"
+    }
+  ],
+  "mergeGates": [
+    "path authority passes",
+    "generated settings and mcp config are fresh",
+    "runtime coupling scan passes",
+    "doctor truthfulness passes"
+  ],
+  "releaseGates": [
+    "doctor passes with zero blocking failures",
+    "verify_claude_home passes",
+    "runtime inventory is fresh",
+    "architecture score meets release floor"
+  ]
+}
