@@ -18,7 +18,7 @@ Two metric classes per pillar:
 
 ---
 
-## ✅ CURRENT LIVE REGISTRY (synced 2026-06-02) — 43 metrics, 0 SIMULATED
+## ✅ CURRENT LIVE REGISTRY (synced 2026-06-02) — 46 metrics, 0 SIMULATED
 
 Source of truth = `agentica_core/aggregate.py` (REGISTRY + scouts/insights injection). This doc tracks it;
 the **design catalog below is the roadmap** (untapped candidate rows + `+FIELD`/`+SCOUT` items not yet wired).
@@ -26,13 +26,15 @@ Tier: **AUTO** = verifier/log-derived · **DERIVED** = computed from canonical t
 
 **🏹 Bow (15)** — Activity: Error_Rate, Latency_P50, Latency_P95, Throughput, Tool_Calls, Tool_Diversity, Session_Count, Avg_Session_Turns, MCP_Smoke_Fails · Autonomic: Processes_Reaped, Config_Drift_Rate, Agent_Process_Count, Mechanism_Orphans · Governance: Governance_Pass_Rate, Verifier_Failures
 
-**⚔️ Sword (10)** — Vulnerability: Open_CVEs · Code Security: Boundary_Violations, Secrets_Detected, Gate_Fires, Secret_Scrubs · Governance: Rule_Violations · Audit Trail: Canary_Failures · Posture: Security_Scorecard · Supply Chain: Skill_Safety_Findings, Deprecated_Deps
+**⚔️ Sword (12)** — Vulnerability: Open_CVEs · Code Security: Boundary_Violations, Secrets_Detected, Gate_Fires, Secret_Scrubs · Governance: Rule_Violations · Audit Trail: Canary_Failures, Gate_Canary_Fault · Reliability: Loop_Breaker_Fires · Posture: Security_Scorecard · Supply Chain: Skill_Safety_Findings, Deprecated_Deps
 
-**🖌️ Brush (10)** — Token Efficiency: Total_Cost, Token_Spend, Cost_Per_Task, Token_Execution_Density, Model_Tier_Mix · Code Health: Revision_Ratio, Hardcoded_Path_Incidents, Root_Hygiene_Issues · Orchestration: Subagent_Spawns · Architecture: Architecture_Scorecard_Grade
+**🖌️ Brush (11)** — Token Efficiency: Total_Cost, Token_Spend, Cost_Per_Task, Token_Execution_Density, Model_Tier_Mix, Local_Routing_Share · Code Health: Revision_Ratio, Hardcoded_Path_Incidents, Root_Hygiene_Issues · Orchestration: Subagent_Spawns · Architecture: Architecture_Scorecard_Grade
 
 **🎭 Arts (8)** — Output Quality: Slop_Density · Interaction: Frustration_Signals, Rework_Loops · Process: Simplify_Runs · Docs: Doc_Parity_Issues · Craft: Skills_Optimized, Skill_Promotions, Skill_Conflicts
 
-**Live sources:** verify_path_authority/root_hygiene/archive_boundaries/runtime_contract + verify_secrets + scouts.security_signals reading `~/.claude/data` (`principle_violations`, `security_gate_log`, `dependency_audit`, `security_scorecard`, `skill_safety_scan`, `skill_*_log`, `skill_conflicts`, `secret_scrubber`, `mcp_smoke_test`, `canary_status`, `mechanism_audit`, `doc_parity`, `mcp_reaper`) + canonical telemetry (transcript-derived) + insights (scorecard grade, history snapshots).
+> **Wired, populating:** `Simplify_Age` (Arts/Process) — emitter now harvests slash-command skills (`<command-name>` parse), so it flips from SIMULATED to live DERIVED on the first `/simplify` record. `Local_Routing_Share` (Brush) is live from `model_tier==LOCAL`.
+
+**Live sources:** verify_path_authority/root_hygiene/archive_boundaries/runtime_contract + verify_secrets + scouts.security_signals reading `~/.claude/data` (`principle_violations`, `security_gate_log`, `dependency_audit`, `security_scorecard`, `skill_safety_scan`, `skill_*_log`, `skill_conflicts`, `secret_scrubber`, `mcp_smoke_test`, `canary_status`, `security_gate_canary`, `loop_breaker_state`, `mechanism_audit`, `doc_parity`, `mcp_reaper`) + canonical telemetry (transcript-derived; incl. `model_tier`→Local_Routing_Share) + insights (scorecard grade, history snapshots).
 
 **Untapped roadmap rows** (real-source-pending or need emitter fields): Guardrail Blocks · Permission Denials · MCP Attack Surface (`mcp_security_audit` absent) · Nudge Conversion · Eureka Quality (pipeline broken) · Review Findings · all `+FIELD` agent-op metrics (orchestrator/chain_depth/knowledge_refs/mcp_or_cli/phase — need emitter to populate).
 
@@ -65,7 +67,7 @@ Tier: **AUTO** = verifier/log-derived · **DERIVED** = computed from canonical t
 ### Failure & Mechanism Health (cluster D)
 | Metric | Measures | Source | Status |
 |--------|----------|--------|--------|
-| Loop-Breaker Fires | times the 3×-same-error breaker tripped | autonomic events (loop_breaker) | +STREAM |
+| Loop-Breaker Fires | times the 3×-same-error breaker tripped | `loop_breaker_state.json` emissions | LIVE (Sword) |
 | Self-Correction Rate | errors fixed autonomously vs escalated to human | telemetry.status + events | +FIELD/+STREAM |
 | Mechanism Liveness | registered mechanisms that ran AND had output consumed (3-step Mechanism Rule) | mechanism audit | +STREAM |
 | Stale Scheduled Tasks | never_run / failed / stale (automation_scout taxonomy) | scheduled-task scout | +SCOUT |

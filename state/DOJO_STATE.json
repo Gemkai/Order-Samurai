@@ -1,0 +1,125 @@
+{
+  "run_id": "SEED",
+  "note": "Driver overwrites run_id/started_at/cycle/deadline at launch.",
+  "cycle": 0,
+  "pillars": {
+    "bow": {
+      "name": "Bow - Operational Status",
+      "ronin_mode": "ronin",
+      "charter_path": "state/charters/bow.md",
+      "live_baseline": 15,
+      "live_current": null,
+      "last_commit": null
+    },
+    "sword": {
+      "name": "Sword - Security Integrity",
+      "ronin_mode": "ronin",
+      "charter_path": "state/charters/sword.md",
+      "live_baseline": 12,
+      "live_current": null,
+      "last_commit": null
+    },
+    "brush": {
+      "name": "Brush - Architecture & Tokens",
+      "ronin_mode": "ronin",
+      "charter_path": "state/charters/brush.md",
+      "live_baseline": 11,
+      "live_current": null,
+      "last_commit": null
+    },
+    "arts": {
+      "name": "Arts - Cultural Arts",
+      "ronin_mode": "ronin",
+      "charter_path": "state/charters/arts.md",
+      "live_baseline": 8,
+      "live_current": null,
+      "last_commit": null
+    }
+  },
+  "backlog": [
+    {
+      "id": "BOW-001",
+      "pillar": "bow",
+      "kind": "stream",
+      "title": "Build autonomic_events.jsonl emitter (unlocks Config Drift, MTTH, Zombie/Daemon, Hook Failure)",
+      "value": 9,
+      "effort": 4,
+      "status": "todo"
+    },
+    {
+      "id": "BOW-002",
+      "pillar": "bow",
+      "kind": "field",
+      "title": "Add per-tool ok:bool to tool_latencies -> Tool Failure Rate LIVE",
+      "value": 7,
+      "effort": 2,
+      "status": "todo"
+    },
+    {
+      "id": "SWORD-001",
+      "pillar": "sword",
+      "kind": "stream",
+      "title": "Route guardrails.py + secret_scrubber_realtime.py into autonomic_events -> Guardrail Blocks + Secret Scrubs LIVE",
+      "value": 9,
+      "effort": 3,
+      "status": "todo"
+    },
+    {
+      "id": "SWORD-002",
+      "pillar": "sword",
+      "kind": "scout",
+      "title": "Scout score_security.py + security_gate_canary.py -> Security Score + Canary Health LIVE",
+      "value": 7,
+      "effort": 2,
+      "status": "todo"
+    },
+    {
+      "id": "BRUSH-001",
+      "pillar": "brush",
+      "kind": "field",
+      "title": "Extend telemetry.py with mcp_or_cli -> MCP-vs-CLI Ratio LIVE (MCP ~35x tokens)",
+      "value": 10,
+      "effort": 3,
+      "status": "todo"
+    },
+    {
+      "id": "BRUSH-002",
+      "pillar": "brush",
+      "kind": "field",
+      "title": "Add subagent_spawns + parent_task -> Subagent Cost Multiplier LIVE (7-10x)",
+      "value": 9,
+      "effort": 3,
+      "status": "todo"
+    },
+    {
+      "id": "BRUSH-003",
+      "pillar": "brush",
+      "kind": "field",
+      "title": "Add model + skill_tier -> Model Selection Adherence Opus<20% + Skill Selection Efficiency LIVE",
+      "value": 8,
+      "effort": 3,
+      "status": "todo"
+    },
+    {
+      "id": "ARTS-001",
+      "pillar": "arts",
+      "kind": "scout",
+      "title": "Doc/runtime diff scout -> Documentation Parity Latency LIVE",
+      "value": 8,
+      "effort": 3,
+      "status": "todo"
+    },
+    {
+      "id": "ARTS-002",
+      "pillar": "arts",
+      "kind": "skill",
+      "title": "Anti-Slop heuristic skill local-model pass -> Vibe Alignment LIVE",
+      "value": 7,
+      "effort": 3,
+      "status": "todo"
+    }
+  ],
+  "budget": {
+    "max_cycles": 60
+  }
+}

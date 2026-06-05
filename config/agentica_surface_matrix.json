@@ -2,7 +2,7 @@
   "version": 1,
   "name": "Agentica OS Surface Matrix",
   "targetRoot": "C:\\Users\\jemak\\Desktop\\Agentica OS",
-  "description": "Declares the four Agentica OS layers as governance surfaces so Order Samurai can observe and enforce against Execution, Knowledge, Data, and Governance — not just the .claude runtime.",
+  "description": "Declares the four Agentica OS layers as governance surfaces so Order Samurai can observe and enforce against Execution, Knowledge, Data, and Governance, not just a single runtime.",
   "surfaceRoles": [
     "knowledge_source",
     "execution_view",
@@ -37,18 +37,19 @@
       "path": "Governance/Order Samurai",
       "role": "governance_control",
       "owner": "Governance layer",
-      "discoverabilityContract": "control plane (junction to live repo)",
+      "discoverabilityContract": "control plane",
       "notes": "The enforcement engine. Config changes require the human-gated amendment path; agents may propose but not self-apply."
     }
   ],
   "boundaryInvariants": [
     "Knowledge holds what is true; Data holds what happened; Governance holds what is allowed; Execution does the work.",
-    "A log/receipt/metric in Knowledge is misfiled (-> Data).",
+    "A log/receipt/metric in Knowledge is misfiled and belongs in Data.",
     "A policy change under Governance/Order Samurai/config without human approval is a constitutional violation.",
     "Execution must not write into Knowledge except via an explicit distillation step."
   ],
   "knownGaps": [
-    "No token/cost metric emitted into Data/metrics — needed for the token-optimization goal.",
-    "Sword dependency-audit verifier is declared but not yet executable (secret-scan via verify_secrets.py is live)."
+    "Token/cost telemetry is live, but budget enforcement remains future work.",
+    "Sword secret scanning and security signals are live; dependency findings still need remediation.",
+    "Codex has first-pass governance checks; deeper Codex hook/sandbox invariants should be added once formalized."
   ]
 }

@@ -13,8 +13,15 @@
       "tests"
     ],
     "state": [
+      ".claude",
+      ".mex",
+      ".pytest_cache",
+      ".ruff_cache",
       ".tmp",
       "artifacts"
+    ],
+    "metadata": [
+      ".git"
     ],
     "archive": [
       "archive",
@@ -27,6 +34,8 @@
   },
   "files": {
     "metadata": [
+      ".gitignore",
+      "CLAUDE.md",
       "PROJECT.md",
       "RONIN_SPEC.md"
     ],
