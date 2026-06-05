@@ -3,10 +3,12 @@
   "name": "Order Samurai Root Hygiene Policy",
   "directories": {
     "live": [
-      "execution"
+      "execution",
+      "agentica_core"
     ],
     "support": [
       "backlog",
+      "bin",
       "config",
       "Research",
       "reports",
@@ -18,7 +20,8 @@
       ".pytest_cache",
       ".ruff_cache",
       ".tmp",
-      "artifacts"
+      "artifacts",
+      "state"
     ],
     "metadata": [
       ".git"

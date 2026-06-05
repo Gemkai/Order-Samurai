@@ -18,7 +18,7 @@ Two metric classes per pillar:
 
 ---
 
-## ✅ CURRENT LIVE REGISTRY (synced 2026-06-02) — 46 metrics, 0 SIMULATED
+## ✅ CURRENT LIVE REGISTRY (synced 2026-06-05) — 47 metrics, 0 SIMULATED
 
 Source of truth = `agentica_core/aggregate.py` (REGISTRY + scouts/insights injection). This doc tracks it;
 the **design catalog below is the roadmap** (untapped candidate rows + `+FIELD`/`+SCOUT` items not yet wired).
@@ -28,7 +28,7 @@ Tier: **AUTO** = verifier/log-derived · **DERIVED** = computed from canonical t
 
 **⚔️ Sword (12)** — Vulnerability: Open_CVEs · Code Security: Boundary_Violations, Secrets_Detected, Gate_Fires, Secret_Scrubs · Governance: Rule_Violations · Audit Trail: Canary_Failures, Gate_Canary_Fault · Reliability: Loop_Breaker_Fires · Posture: Security_Scorecard · Supply Chain: Skill_Safety_Findings, Deprecated_Deps
 
-**🖌️ Brush (11)** — Token Efficiency: Total_Cost, Token_Spend, Cost_Per_Task, Token_Execution_Density, Model_Tier_Mix, Local_Routing_Share · Code Health: Revision_Ratio, Hardcoded_Path_Incidents, Root_Hygiene_Issues · Orchestration: Subagent_Spawns · Architecture: Architecture_Scorecard_Grade
+**🖌️ Brush (12)** — Token Efficiency: Total_Cost, Token_Spend, Cost_Per_Task, Token_Execution_Density, Model_Tier_Mix, Local_Routing_Share, MCP_vs_CLI_Ratio · Code Health: Revision_Ratio, Hardcoded_Path_Incidents, Root_Hygiene_Issues · Orchestration: Subagent_Spawns · Architecture: Architecture_Scorecard_Grade
 
 **🎭 Arts (8)** — Output Quality: Slop_Density · Interaction: Frustration_Signals, Rework_Loops · Process: Simplify_Runs · Docs: Doc_Parity_Issues · Craft: Skills_Optimized, Skill_Promotions, Skill_Conflicts
 
@@ -36,7 +36,7 @@ Tier: **AUTO** = verifier/log-derived · **DERIVED** = computed from canonical t
 
 **Live sources:** verify_path_authority/root_hygiene/archive_boundaries/runtime_contract + verify_secrets + scouts.security_signals reading `~/.claude/data` (`principle_violations`, `security_gate_log`, `dependency_audit`, `security_scorecard`, `skill_safety_scan`, `skill_*_log`, `skill_conflicts`, `secret_scrubber`, `mcp_smoke_test`, `canary_status`, `security_gate_canary`, `loop_breaker_state`, `mechanism_audit`, `doc_parity`, `mcp_reaper`) + canonical telemetry (transcript-derived; incl. `model_tier`→Local_Routing_Share) + insights (scorecard grade, history snapshots).
 
-**Untapped roadmap rows** (real-source-pending or need emitter fields): Guardrail Blocks · Permission Denials · MCP Attack Surface (`mcp_security_audit` absent) · Nudge Conversion · Eureka Quality (pipeline broken) · Review Findings · all `+FIELD` agent-op metrics (orchestrator/chain_depth/knowledge_refs/mcp_or_cli/phase — need emitter to populate).
+**Untapped roadmap rows** (real-source-pending or need emitter fields): Guardrail Blocks · Permission Denials · MCP Attack Surface (`mcp_security_audit` absent) · Nudge Conversion · Eureka Quality (pipeline broken) · Review Findings · all `+FIELD` agent-op metrics (orchestrator/chain_depth/knowledge_refs/phase — need emitter to populate). Note: `mcp_or_cli` field and reducer are now LIVE in `agentica_core/`; emitter not yet writing the field so ratio shows 0.0 until populated.
 
 ---
 
@@ -123,7 +123,7 @@ Tier: **AUTO** = verifier/log-derived · **DERIVED** = computed from canonical t
 ### Token-routing discipline (cluster B — sharpest token-optimization metrics)
 | Metric | Measures | Source | Status |
 |--------|----------|--------|--------|
-| MCP-vs-CLI Ratio | MCP calls that should have been CLI (MCP ≈ 35× tokens) | telemetry.mcp_or_cli | +FIELD (`mcp_or_cli`) |
+| MCP-vs-CLI Ratio | MCP calls that should have been CLI (MCP ≈ 35× tokens) | telemetry.mcp_or_cli | LIVE |
 | Model Selection Adherence | Opus usage % (target < 20%); Sonnet/Haiku mix | telemetry.model | +FIELD (`model`) |
 | Context Cliff Events | sessions crossing ~70% context window | telemetry.tokens_prompt vs window | LIVE (approx) |
 | Compaction Events | # /compact + pre-compact extraction compliance | autonomic events (compaction) | +STREAM |

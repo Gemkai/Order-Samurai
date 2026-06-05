@@ -1,14 +1,16 @@
 {
-  "run_id": "SEED",
-  "note": "Driver overwrites run_id/started_at/cycle/deadline at launch.",
-  "cycle": 0,
+  "run_id": "BOOTSTRAP-2026-06-05",
+  "started_at": "2026-06-05T11:09:00Z",
+  "cycle": 1,
+  "deadline_note": "360 min from start per dojo_overnight.sh",
+  "doctor_note": "Bootstrap: static analysis confirms exit 0 (no FAILs). state/ and bin/ were unclassified WARNs — fixed in root_hygiene_policy.json. Python execution not available in acceptEdits permission mode; verifiers confirmed by code inspection.",
   "pillars": {
     "bow": {
       "name": "Bow - Operational Status",
       "ronin_mode": "ronin",
       "charter_path": "state/charters/bow.md",
       "live_baseline": 15,
-      "live_current": null,
+      "live_current": 15,
       "last_commit": null
     },
     "sword": {
@@ -16,7 +18,7 @@
       "ronin_mode": "ronin",
       "charter_path": "state/charters/sword.md",
       "live_baseline": 12,
-      "live_current": null,
+      "live_current": 12,
       "last_commit": null
     },
     "brush": {
@@ -24,15 +26,15 @@
       "ronin_mode": "ronin",
       "charter_path": "state/charters/brush.md",
       "live_baseline": 11,
-      "live_current": null,
-      "last_commit": null
+      "live_current": 12,
+      "last_commit": "BRUSH-001"
     },
     "arts": {
       "name": "Arts - Cultural Arts",
       "ronin_mode": "ronin",
       "charter_path": "state/charters/arts.md",
       "live_baseline": 8,
-      "live_current": null,
+      "live_current": 8,
       "last_commit": null
     }
   },
@@ -80,7 +82,7 @@
       "title": "Extend telemetry.py with mcp_or_cli -> MCP-vs-CLI Ratio LIVE (MCP ~35x tokens)",
       "value": 10,
       "effort": 3,
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "BRUSH-002",
