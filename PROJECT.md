@@ -61,6 +61,8 @@
 - `execution/verify_path_authority.py`: Verifier for hardcoded repo-local or machine-local path drift in the live execution surface.
 - `execution/verify_runtime_contract.py`: Verifier for required runtime artifacts, canonical path containment, and doctor-entrypoint coherence.
 - `execution/doctor.py`: Operator entrypoint for path authority, runtime contract, root hygiene, and archive-boundary enforcement.
+- `agentica_core/telemetry.py`: Canonical telemetry record schema — defines all optional fields that emitters populate and aggregators consume. Never invents values; absent fields stay None.
+- `agentica_core/aggregate.py`: Metric aggregator — REGISTRY of live reducers (one per LIVE metric), `compute_metric` public API, and `load_telemetry_records` loader. The single source of truth for what is actually measurable now.
 - `backlog/verifier_backlog.md`: Ordered implementation plan for turning these policies into real verifiers.
 - `backlog/claude_verifier_backlog.md`: Ordered implementation plan for making the Claude enforcement pack executable from Order Samurai.
 
@@ -74,4 +76,4 @@
 
 ---
 
-### Last Updated: 2026-04-12
+### Last Updated: 2026-06-06
