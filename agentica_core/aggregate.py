@@ -240,8 +240,8 @@ def _security_score(records: list[dict], repo_root: Path) -> float:  # noqa: ARG
         return 0.0
     try:
         d = json.loads(scorecard.read_text(encoding="utf-8", errors="ignore"))
-        return float(d["platforms"]["claude"]["total"])
-    except (KeyError, ValueError):
+        return float(d["platforms"]["claude"]["total"] or 0.0)
+    except (KeyError, ValueError, TypeError):
         return 0.0
 
 
@@ -285,8 +285,8 @@ def _secret_scrub_count(records: list[dict], repo_root: Path) -> int:  # noqa: A
         try:
             obj = json.loads(line)
             if isinstance(obj, dict):
-                total += int(obj.get("findings_count", 0))
-        except (json.JSONDecodeError, ValueError):
+                total += int(obj.get("findings_count") or 0)
+        except (json.JSONDecodeError, ValueError, TypeError):
             continue
     return total
 
@@ -506,7 +506,17 @@ def compute_metric(
             "live": False,
             "error": f"metric '{name}' not found in REGISTRY",
         }
-    value = entry["reducer"](records, repo_root)
+    try:
+        value = entry["reducer"](records, repo_root)
+    except Exception as exc:
+        return {
+            "metric": name,
+            "value": None,
+            "source": entry["source"],
+            "tier": entry["tier"],
+            "live": False,
+            "error": str(exc),
+        }
     return {
         "metric": name,
         "value": value,
