@@ -172,7 +172,6 @@ def _doc_parity_latency_days(records: list[dict], repo_root: Path) -> float:  # 
     significantly since the charters were last updated. Returns 0.0 when all docs
     are at least as fresh as the newest source change.
     """
-    import os
     source_dirs = ["execution", "scouts", "bin", "agentica_core"]
     source_exts = {".py", ".sh", ".ts", ".js"}
     charter_dir = repo_root / "state" / "charters"
@@ -524,3 +523,20 @@ def compute_metric(
         "tier": entry["tier"],
         "live": True,
     }
+
+
+def main() -> int:
+    records = load_telemetry_records(_REPO_ROOT)
+    errors = []
+    for entry in REGISTRY:
+        result = compute_metric(entry["metric"], records, _REPO_ROOT)
+        if not result.get("live"):
+            errors.append(result)
+            print(f"[FAIL] {entry['metric']}: {result.get('error', 'unknown')}")
+        else:
+            print(f"[OK] {entry['metric']}: {result['value']}")
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
