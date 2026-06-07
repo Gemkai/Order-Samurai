@@ -1,32 +1,12 @@
 {
-  "generated_at": "2026-06-07T13:05:33.663100+00:00",
+  "generated_at": "2026-06-07T15:18:44.703393+00:00",
   "note": "Run bin/ronin propose to push approved:true items to DOJO_STATE.json",
   "items": [
-    {
-      "id": "AUTO-001",
-      "pillar": "bow",
-      "kind": "stream",
-      "title": "Config Drift Rate",
-      "value": 1,
-      "effort": 2,
-      "status": "proposed",
-      "approved": false
-    },
     {
       "id": "AUTO-002",
       "pillar": "brush",
       "kind": "field",
       "title": "Cost per Outcome",
-      "value": 1,
-      "effort": 2,
-      "status": "proposed",
-      "approved": false
-    },
-    {
-      "id": "AUTO-003",
-      "pillar": "bow",
-      "kind": "scout",
-      "title": "Loop-Breaker Fires",
       "value": 1,
       "effort": 2,
       "status": "proposed",
@@ -48,6 +28,86 @@
       "kind": "stream",
       "title": "Self-Correction Rate",
       "value": 1,
+      "effort": 2,
+      "status": "proposed",
+      "approved": false
+    },
+    {
+      "id": "AUTO-008",
+      "pillar": "brush",
+      "kind": "scout",
+      "title": "Architecture Scorecard Grade",
+      "value": 0,
+      "effort": 2,
+      "status": "proposed",
+      "approved": false
+    },
+    {
+      "id": "AUTO-009",
+      "pillar": "brush",
+      "kind": "field",
+      "title": "Cache Hit Rate",
+      "value": 0,
+      "effort": 2,
+      "status": "proposed",
+      "approved": false
+    },
+    {
+      "id": "AUTO-010",
+      "pillar": "brush",
+      "kind": "stream",
+      "title": "Compaction Events",
+      "value": 0,
+      "effort": 2,
+      "status": "proposed",
+      "approved": false
+    },
+    {
+      "id": "AUTO-011",
+      "pillar": "brush",
+      "kind": "scout",
+      "title": "Context Cliff Events",
+      "value": 0,
+      "effort": 2,
+      "status": "proposed",
+      "approved": false
+    },
+    {
+      "id": "AUTO-012",
+      "pillar": "bow",
+      "kind": "stream",
+      "title": "Daemon Restart Count",
+      "value": 0,
+      "effort": 2,
+      "status": "proposed",
+      "approved": false
+    },
+    {
+      "id": "AUTO-013",
+      "pillar": "sword",
+      "kind": "field",
+      "title": "Dangerous Tool Invocations",
+      "value": 0,
+      "effort": 2,
+      "status": "proposed",
+      "approved": false
+    },
+    {
+      "id": "AUTO-014",
+      "pillar": "brush",
+      "kind": "scout",
+      "title": "Dead-Rule Detection",
+      "value": 0,
+      "effort": 2,
+      "status": "proposed",
+      "approved": false
+    },
+    {
+      "id": "AUTO-015",
+      "pillar": "brush",
+      "kind": "stream",
+      "title": "Handoff Integrity",
+      "value": 0,
       "effort": 2,
       "status": "proposed",
       "approved": false

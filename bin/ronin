@@ -248,15 +248,18 @@ if not approved:
     print("ronin: No approved items to promote.")
     sys.exit(0)
 
+# Capture IDs before mutating items
+promoted_ids = {i["id"] for i in approved}
+
 # Merge into backlog (drop 'approved' flag — it's a proposal-only field)
 for item in approved:
     item.pop("approved", None)
-    item["status"] = item.get("status", "todo")
+    item["status"] = "todo"
 
 state.setdefault("backlog", []).extend(approved)
 
-# Remove promoted items from proposed
-proposed["items"] = [i for i in proposed.get("items", []) if not i.get("approved")]
+# Remove promoted items from proposed by ID (not by approved flag — it was already popped)
+proposed["items"] = [i for i in proposed.get("items", []) if i.get("id") not in promoted_ids]
 
 with open("$STATE_FILE", "w") as f:
     json.dump(state, f, indent=2)

@@ -1,9 +1,9 @@
 {
   "run_id": "BOOTSTRAP-2026-06-05",
   "started_at": "2026-06-05T11:09:00Z",
-  "cycle": 1,
+  "cycle": 12,
   "deadline_note": "360 min from start per dojo_overnight.sh",
-  "doctor_note": "Bootstrap: static analysis confirms exit 0 (no FAILs). state/ and bin/ were unclassified WARNs â€” fixed in root_hygiene_policy.json. Python execution not available in acceptEdits permission mode; verifiers confirmed by code inspection.",
+  "doctor_note": "Bootstrap: static analysis confirms exit 0 (no FAILs). state/ and bin/ were unclassified WARNs \u00e2\u20ac\u201d fixed in root_hygiene_policy.json. Python execution not available in acceptEdits permission mode; verifiers confirmed by code inspection.",
   "pillars": {
     "bow": {
       "name": "Bow - Operational Status",
@@ -133,6 +133,42 @@
       "status": "done",
       "completed_at": "2026-06-07",
       "note": "vibe_alignment_scout.py (gemma-4-e4b local pass); Vibe_Alignment metric in aggregate.py; current score: 92"
+    },
+    {
+      "id": "AUTO-001",
+      "pillar": "bow",
+      "kind": "stream",
+      "title": "Config Drift Rate",
+      "value": 1,
+      "effort": 2,
+      "status": "todo"
+    },
+    {
+      "id": "AUTO-003",
+      "pillar": "bow",
+      "kind": "scout",
+      "title": "Loop-Breaker Fires",
+      "value": 1,
+      "effort": 2,
+      "status": "todo"
+    },
+    {
+      "id": "AUTO-006",
+      "pillar": "arts",
+      "kind": "skill",
+      "title": "Vibe Alignment (Anti-Slop) Score",
+      "value": 1,
+      "effort": 2,
+      "status": "todo"
+    },
+    {
+      "id": "AUTO-007",
+      "pillar": "sword",
+      "kind": "scout",
+      "title": "Vulnerability Window (Patch Latency)",
+      "value": 1,
+      "effort": 2,
+      "status": "todo"
     }
   ],
   "budget": {
