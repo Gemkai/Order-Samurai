@@ -9,7 +9,7 @@
 ### 1. The All-Seeing Eye (Namespace Capture)
 
 - Captures context across all open IDE windows and terminal sessions
-- Synchronizes with the JARVIS Intelligence Dashboard for real-time telemetry
+- Synchronizes with the Order Samurai Dashboard for real-time telemetry
 
 ### 2. The Bushido Engine (Decision Logic)
 

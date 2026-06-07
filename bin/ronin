@@ -26,6 +26,10 @@ LOG_FILE="$ARTIFACTS_DIR/ronin_logs.md"
 _err()  { echo "ronin: ERROR: $*" >&2; exit 1; }
 _info() { echo "ronin: $*"; }
 
+_python() {
+  if command -v python3 >/dev/null 2>&1; then python3 "$@"; else python "$@"; fi
+}
+
 _pid_running() {
   local pid="${1:-}"
   [[ -z "$pid" ]] && return 1
@@ -34,30 +38,29 @@ _pid_running() {
 
 _read_pid() {
   [[ -f "$PID_FILE" ]] || { echo ""; return; }
-  local pid
-  pid="$(cat "$PID_FILE" 2>/dev/null || echo "")"
-  echo "$pid"
+  cat "$PID_FILE" 2>/dev/null || echo ""
 }
 
-_require_jq() {
-  command -v jq >/dev/null 2>&1 || _err "jq is required but not found in PATH"
-}
-
-_require_python() {
-  command -v python >/dev/null 2>&1 \
-    || command -v python3 >/dev/null 2>&1 \
-    || _err "python/python3 is required but not found in PATH"
-}
-
-_python() {
-  if command -v python3 >/dev/null 2>&1; then python3 "$@"; else python "$@"; fi
+_json_get() {
+  # Usage: _json_get <file> <key> [default]
+  local file="$1" key="$2" default="${3:-n/a}"
+  _python -c "
+import json, sys
+try:
+    d = json.load(open('$file'))
+    v = d.get('$key')
+    print(v if v is not None else '$default')
+except Exception:
+    print('$default')
+" 2>/dev/null || echo "$default"
 }
 
 # ---------------------------------------------------------------------------
 # arm
 # ---------------------------------------------------------------------------
 cmd_arm() {
-  _require_jq
+  command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1 \
+    || _err "python/python3 not found in PATH"
 
   # 1. Check clean git tree
   if git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1; then
@@ -88,24 +91,35 @@ cmd_arm() {
     return 0
   fi
 
-  # 4. Require daemon script
+  # 4. Check LM Studio reachability (warn, don't block)
+  if command -v curl >/dev/null 2>&1; then
+    if ! curl -sf --max-time 3 http://localhost:1234/v1/models >/dev/null 2>&1; then
+      echo "ronin: WARNING: LM Studio not reachable at http://localhost:1234 — local routing will fall back to Claude (higher cost)."
+    else
+      _info "LM Studio reachable — local routing active."
+    fi
+  fi
+
+  # 5. Require daemon script
   [[ -f "$DAEMON_SCRIPT" ]] || _err "Daemon script not found: $DAEMON_SCRIPT"
   [[ -x "$DAEMON_SCRIPT" ]] || chmod +x "$DAEMON_SCRIPT"
 
-  # 5. Launch with nohup, redirect output to log
-  mkdir -p "$ARTIFACTS_DIR"
+  # 6. Launch with nohup, redirect output to log
+  mkdir -p "$ARTIFACTS_DIR" "$STATE_DIR"
   local nohup_log="$ARTIFACTS_DIR/ronin_daemon_nohup.log"
-  nohup "$DAEMON_SCRIPT" >> "$nohup_log" 2>&1 &
+  nohup bash "$DAEMON_SCRIPT" >> "$nohup_log" 2>&1 &
   local new_pid=$!
 
-  # 6. Save PID
-  mkdir -p "$STATE_DIR"
+  # 7. Save PID
   echo "$new_pid" > "$PID_FILE"
 
-  _info "Daemon started (PID $new_pid)."
+  local daily_limit
+  daily_limit="$(_json_get "$LEDGER_FILE" daily_limit_usd "5.00")"
+
+  _info "Daemon armed (PID $new_pid)."
+  _info "Daily budget: \$${daily_limit}"
   _info "Log: $nohup_log"
-  _info "PID file: $PID_FILE"
-  _info "Status: ARMED"
+  _info "Disarm: bash bin/ronin disarm"
 }
 
 # ---------------------------------------------------------------------------
@@ -126,7 +140,6 @@ cmd_disarm() {
     _info "No running daemon found (PID file: ${pid:-none})."
   fi
 
-  # 3. Print final log path
   _info "Final log: $LOG_FILE"
 }
 
@@ -134,8 +147,6 @@ cmd_disarm() {
 # status
 # ---------------------------------------------------------------------------
 cmd_status() {
-  _require_jq
-
   echo "=== Ronin Status ==="
 
   # Running / stopped
@@ -156,21 +167,27 @@ cmd_status() {
 
   # Daily spend from budget_ledger.json
   if [[ -f "$LEDGER_FILE" ]]; then
-    local spent date daily_limit
-    spent="$(jq -r '.spent_usd // "n/a"' "$LEDGER_FILE")"
-    date="$(jq -r '.date // "n/a"' "$LEDGER_FILE")"
-    daily_limit="$(jq -r '.daily_limit_usd // "n/a"' "$LEDGER_FILE")"
-    cycles_today="$(jq -r '.cycles_today // "n/a"' "$LEDGER_FILE")"
-    echo "Spend   : \$${spent} / \$${daily_limit} (date: ${date})"
-    echo "Cycles  : ${cycles_today} today"
+    _python - <<PYEOF
+import json
+try:
+    d = json.load(open("$LEDGER_FILE"))
+    spent       = d.get("spent_usd", 0)
+    limit       = d.get("daily_limit_usd", 5.0)
+    date        = d.get("date", "n/a")
+    cycles      = d.get("cycles", d.get("cycles_today", 0))
+    print(f"Spend   : \${spent:.2f} / \${limit:.2f} (date: {date})")
+    print(f"Cycles  : {cycles} today")
+except Exception as e:
+    print(f"Spend   : (parse error: {e})")
+PYEOF
   else
     echo "Spend   : budget_ledger.json not found"
   fi
 
-  # Cycle count from DOJO_STATE.json
+  # Lifetime cycle from DOJO_STATE.json
   if [[ -f "$STATE_FILE" ]]; then
     local cycle
-    cycle="$(jq -r '.cycle // "n/a"' "$STATE_FILE")"
+    cycle="$(_json_get "$STATE_FILE" cycle "n/a")"
     echo "Cycle   : ${cycle} (lifetime)"
   fi
 
@@ -185,11 +202,16 @@ cmd_status() {
 
   # Proposed backlog count
   if [[ -f "$PROPOSED_FILE" ]]; then
-    local proposed_count
-    proposed_count="$(jq '.items | length' "$PROPOSED_FILE" 2>/dev/null || echo "0")"
-    local approved_count
-    approved_count="$(jq '[.items[] | select(.approved == true)] | length' "$PROPOSED_FILE" 2>/dev/null || echo "0")"
-    echo "Proposed: ${proposed_count} items (${approved_count} approved)"
+    _python - <<PYEOF
+import json
+try:
+    d = json.load(open("$PROPOSED_FILE"))
+    items    = d.get("items", [])
+    approved = [i for i in items if i.get("approved") is True]
+    print(f"Proposed: {len(items)} items ({len(approved)} approved)")
+except Exception:
+    print("Proposed: (parse error)")
+PYEOF
   else
     echo "Proposed: PROPOSED_BACKLOG.json not found"
   fi
@@ -199,47 +221,52 @@ cmd_status() {
 # propose
 # ---------------------------------------------------------------------------
 cmd_propose() {
-  _require_python
   [[ -f "$PROPOSED_FILE" ]] || _err "PROPOSED_BACKLOG.json not found: $PROPOSED_FILE"
   _python -m json.tool "$PROPOSED_FILE"
+  echo ""
+  echo "To approve an item: edit $PROPOSED_FILE and set \"approved\": true"
+  echo "Then run: bash bin/ronin promote"
 }
 
 # ---------------------------------------------------------------------------
 # promote
 # ---------------------------------------------------------------------------
 cmd_promote() {
-  _require_jq
-  _require_python
-
   [[ -f "$PROPOSED_FILE" ]] || _err "PROPOSED_BACKLOG.json not found: $PROPOSED_FILE"
   [[ -f "$STATE_FILE" ]]    || _err "DOJO_STATE.json not found: $STATE_FILE"
 
-  # Read approved items
-  local approved_json
-  approved_json="$(jq '[.items[] | select(.approved == true)]' "$PROPOSED_FILE")"
-  local count
-  count="$(echo "$approved_json" | jq 'length')"
+  _python - <<PYEOF
+import json, sys
 
-  if [[ "$count" -eq 0 ]]; then
-    _info "No approved items to promote."
-    return 0
-  fi
+with open("$PROPOSED_FILE") as f:
+    proposed = json.load(f)
+with open("$STATE_FILE") as f:
+    state = json.load(f)
 
-  # Strip the approved/proposed-only fields before merging into backlog (keep id, pillar, kind, title, value, effort, status etc.)
-  # We keep all fields — the backlog array in DOJO_STATE.json carries the same schema.
+approved = [i for i in proposed.get("items", []) if i.get("approved") is True]
+if not approved:
+    print("ronin: No approved items to promote.")
+    sys.exit(0)
 
-  # 1. Append approved items to DOJO_STATE.json backlog array
-  local updated_state
-  updated_state="$(jq --argjson new_items "$approved_json" \
-    '.backlog = ((.backlog // []) + $new_items)' "$STATE_FILE")"
-  echo "$updated_state" > "$STATE_FILE"
+# Merge into backlog (drop 'approved' flag — it's a proposal-only field)
+for item in approved:
+    item.pop("approved", None)
+    item["status"] = item.get("status", "todo")
 
-  # 2. Remove promoted items from PROPOSED_BACKLOG.json (keep items where approved != true)
-  local updated_proposed
-  updated_proposed="$(jq '.items = [.items[] | select(.approved != true)]' "$PROPOSED_FILE")"
-  echo "$updated_proposed" > "$PROPOSED_FILE"
+state.setdefault("backlog", []).extend(approved)
 
-  _info "Promoted $count item(s) to DOJO_STATE.json backlog."
+# Remove promoted items from proposed
+proposed["items"] = [i for i in proposed.get("items", []) if not i.get("approved")]
+
+with open("$STATE_FILE", "w") as f:
+    json.dump(state, f, indent=2)
+with open("$PROPOSED_FILE", "w") as f:
+    json.dump(proposed, f, indent=2)
+
+print(f"ronin: Promoted {len(approved)} item(s) to DOJO_STATE.json backlog.")
+for item in approved:
+    print(f"  + [{item.get('pillar','?')}] {item.get('id','?')}: {item.get('title','?')}")
+PYEOF
 }
 
 # ---------------------------------------------------------------------------
@@ -247,14 +274,14 @@ cmd_promote() {
 # ---------------------------------------------------------------------------
 usage() {
   cat <<'EOF'
-Usage: ronin <command>
+Usage: bash bin/ronin <command>
 
 Commands:
-  arm       Check clean tree, remove DOJO_STOP, start ronin-daemon.sh in background
-  disarm    Create DOJO_STOP, SIGTERM daemon, print final log path
-  status    Show running/stopped, daily spend, cycle count, last log line, proposed count
+  arm       Remove DOJO_STOP, start ronin-daemon.sh in background
+  disarm    Create DOJO_STOP, SIGTERM daemon
+  status    Show running/stopped, daily spend, cycle count, last log line
   propose   Pretty-print state/PROPOSED_BACKLOG.json
-  promote   Move approved==true items from PROPOSED_BACKLOG.json into DOJO_STATE.json backlog
+  promote   Move approved==true items from PROPOSED_BACKLOG into DOJO_STATE backlog
 EOF
 }
 
