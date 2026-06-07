@@ -37,3 +37,4 @@ After completing any task: update `.mex/ROUTER.md` project state and any `.mex/`
 ## Navigation
 At the start of every session, read `.mex/ROUTER.md` before doing anything else.
 For full project context, patterns, and task guidance — everything is there.
+`docs/solutions/` — documented solutions to past problems (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.
