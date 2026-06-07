@@ -145,6 +145,29 @@ def _load_autonomic_events(repo_root: Path) -> list[dict]:
     return events
 
 
+def _tool_failure_rate(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
+    """Fraction of tool invocations that returned ok=False across all sessions.
+
+    Only counts records that carry the tool_latencies field. Returns 0.0 when
+    no records have latency data — no data yet, not a fake zero.
+    """
+    total = 0
+    failed = 0
+    for r in records:
+        latencies = r.get("tool_latencies")
+        if not isinstance(latencies, list):
+            continue
+        for entry in latencies:
+            if not isinstance(entry, dict):
+                continue
+            total += 1
+            if not entry.get("ok", True):
+                failed += 1
+    if total == 0:
+        return 0.0
+    return failed / total
+
+
 def _security_score(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
     """Claude platform security score (0-100) from ~/.claude/data/security_scorecard.json.
 
@@ -290,6 +313,17 @@ REGISTRY: list[dict[str, Any]] = [
         "source": "verifier.path_authority",
         "reducer": _count_hardcoded_path_fails,
         "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Bow — Tool_Failure_Rate  (BOW-002 — NEW)
+    # Fraction of tool calls with ok=False; 0.0 until tool_latencies emitted.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "bow",
+        "metric": "Tool_Failure_Rate",
+        "source": "telemetry.tool_latencies",
+        "reducer": _tool_failure_rate,
+        "tier": "DERIVED",
     },
     # ------------------------------------------------------------------
     # Sword — Security_Score  (SWORD-002 — NEW)

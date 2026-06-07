@@ -55,7 +55,9 @@
       "title": "Add per-tool ok:bool to tool_latencies -> Tool Failure Rate LIVE",
       "value": 7,
       "effort": 2,
-      "status": "todo"
+      "status": "done",
+      "completed_at": "2026-06-07",
+      "note": "Tool_Failure_Rate reducer + tool_latencies field in telemetry.py"
     },
     {
       "id": "SWORD-001",

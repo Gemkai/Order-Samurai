@@ -23,6 +23,8 @@ class TelemetryRecord:
     # Tool call counts
     tool_calls: Optional[int] = None
     tool_calls_list: Optional[List[str]] = field(default=None)
+    # Per-tool latency + success records: [{tool: str, ms: int, ok: bool}, ...]
+    tool_latencies: Optional[List[dict]] = field(default=None)
     # Session identity
     session_id: Optional[str] = None
     task_name: Optional[str] = None
