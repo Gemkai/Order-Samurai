@@ -145,6 +145,68 @@ def _load_autonomic_events(repo_root: Path) -> list[dict]:
     return events
 
 
+def _security_score(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
+    """Claude platform security score (0-100) from ~/.claude/data/security_scorecard.json.
+
+    Returns 0.0 when the scorecard is absent or unreadable — no fake value.
+    Reads the pre-computed cache instead of invoking score_security.py at runtime.
+    """
+    scorecard = Path.home() / ".claude" / "data" / "security_scorecard.json"
+    if not scorecard.exists():
+        return 0.0
+    try:
+        d = json.loads(scorecard.read_text(encoding="utf-8", errors="ignore"))
+        return float(d["platforms"]["claude"]["total"])
+    except (KeyError, ValueError):
+        return 0.0
+
+
+def _canary_health(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
+    """1.0 if security gate canary is working and fresh; 0.0 on fault or staleness.
+
+    Reads ~/.claude/data/security_gate_canary.json.
+    Stale = last_run > max_age_days; gate_working=False = fault.
+    """
+    canary_path = Path.home() / ".claude" / "data" / "security_gate_canary.json"
+    if not canary_path.exists():
+        return 0.0
+    try:
+        from datetime import datetime, timezone
+        d = json.loads(canary_path.read_text(encoding="utf-8", errors="ignore"))
+        if not d.get("gate_working", False):
+            return 0.0
+        last_run_str = d.get("last_run", "")
+        if not last_run_str:
+            return 0.0
+        last_run = datetime.fromisoformat(last_run_str.replace("Z", "+00:00"))
+        if last_run.tzinfo is None:
+            last_run = last_run.replace(tzinfo=timezone.utc)
+        age_days = (datetime.now(timezone.utc) - last_run).days
+        max_age = d.get("max_age_days", 7)
+        return 0.0 if age_days > max_age else 1.0
+    except Exception:
+        return 0.0
+
+
+def _secret_scrub_count(records: list[dict], repo_root: Path) -> int:  # noqa: ARG001
+    """Total secrets auto-redacted across all scrubber runs from secret_scrubber.jsonl."""
+    log = Path.home() / ".claude" / "data" / "secret_scrubber.jsonl"
+    if not log.exists():
+        return 0
+    total = 0
+    for line in log.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            if isinstance(obj, dict):
+                total += int(obj.get("findings_count", 0))
+        except (json.JSONDecodeError, ValueError):
+            continue
+    return total
+
+
 def _opus_share(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
     """Fraction of cloud model calls that used Opus (goal: < 0.20 per CLAUDE.md).
 
@@ -227,6 +289,39 @@ REGISTRY: list[dict[str, Any]] = [
         "metric": "Hardcoded_Path_Incidents",
         "source": "verifier.path_authority",
         "reducer": _count_hardcoded_path_fails,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Sword — Security_Score  (SWORD-002 — NEW)
+    # Live Claude platform security score from the pre-computed scorecard.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "sword",
+        "metric": "Security_Score",
+        "source": "~/.claude/data/security_scorecard.json",
+        "reducer": _security_score,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Sword — Canary_Health  (SWORD-002 — NEW)
+    # 1.0 = gate working + fresh; 0.0 = fault or stale (> max_age_days).
+    # ------------------------------------------------------------------
+    {
+        "pillar": "sword",
+        "metric": "Canary_Health",
+        "source": "~/.claude/data/security_gate_canary.json",
+        "reducer": _canary_health,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Sword — Secret_Scrub_Count  (SWORD-001 — NEW)
+    # Total secrets auto-redacted by secret_scrubber_realtime across all runs.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "sword",
+        "metric": "Secret_Scrub_Count",
+        "source": "~/.claude/data/secret_scrubber.jsonl",
+        "reducer": _secret_scrub_count,
         "tier": "AUTO",
     },
     # ------------------------------------------------------------------

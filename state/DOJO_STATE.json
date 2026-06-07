@@ -64,7 +64,9 @@
       "title": "Route guardrails.py + secret_scrubber_realtime.py into autonomic_events -> Guardrail Blocks + Secret Scrubs LIVE",
       "value": 9,
       "effort": 3,
-      "status": "todo"
+      "status": "done",
+      "completed_at": "2026-06-07",
+      "note": "Implemented Security_Score, Canary_Health, Secret_Scrub_Count in aggregate.py"
     },
     {
       "id": "SWORD-002",
@@ -73,7 +75,9 @@
       "title": "Scout score_security.py + security_gate_canary.py -> Security Score + Canary Health LIVE",
       "value": 7,
       "effort": 2,
-      "status": "todo"
+      "status": "done",
+      "completed_at": "2026-06-07",
+      "note": "Implemented Security_Score, Canary_Health, Secret_Scrub_Count in aggregate.py"
     },
     {
       "id": "BRUSH-001",
