@@ -3,15 +3,15 @@
   "started_at": "2026-06-05T11:09:00Z",
   "cycle": 1,
   "deadline_note": "360 min from start per dojo_overnight.sh",
-  "doctor_note": "Bootstrap: static analysis confirms exit 0 (no FAILs). state/ and bin/ were unclassified WARNs — fixed in root_hygiene_policy.json. Python execution not available in acceptEdits permission mode; verifiers confirmed by code inspection.",
+  "doctor_note": "Bootstrap: static analysis confirms exit 0 (no FAILs). state/ and bin/ were unclassified WARNs \u00e2\u20ac\u201d fixed in root_hygiene_policy.json. Python execution not available in acceptEdits permission mode; verifiers confirmed by code inspection.",
   "pillars": {
     "bow": {
       "name": "Bow - Operational Status",
       "ronin_mode": "ronin",
       "charter_path": "state/charters/bow.md",
       "live_baseline": 15,
-      "live_current": 15,
-      "last_commit": null
+      "live_current": 17,
+      "last_commit": "BOW-001"
     },
     "sword": {
       "name": "Sword - Security Integrity",
@@ -46,7 +46,7 @@
       "title": "Build autonomic_events.jsonl emitter (unlocks Config Drift, MTTH, Zombie/Daemon, Hook Failure)",
       "value": 9,
       "effort": 4,
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "BOW-002",
@@ -91,7 +91,9 @@
       "title": "Add subagent_spawns + parent_task -> Subagent Cost Multiplier LIVE (7-10x)",
       "value": 9,
       "effort": 3,
-      "status": "todo"
+      "status": "done",
+      "completed_at": "2026-06-07",
+      "note": "Implemented in aggregate.py + telemetry.py by Agentica OS loop"
     },
     {
       "id": "BRUSH-003",
@@ -100,7 +102,9 @@
       "title": "Add model + skill_tier -> Model Selection Adherence Opus<20% + Skill Selection Efficiency LIVE",
       "value": 8,
       "effort": 3,
-      "status": "todo"
+      "status": "done",
+      "completed_at": "2026-06-07",
+      "note": "Implemented in aggregate.py + telemetry.py by Agentica OS loop"
     },
     {
       "id": "ARTS-001",

@@ -16,6 +16,8 @@ class TelemetryRecord:
     mcp_or_cli: Optional[str] = None          # "mcp" or "cli" — which path was taken
     # Model tier
     model_tier: Optional[str] = None          # "LOCAL", "CLOUD", etc.
+    model: Optional[str] = None               # specific model ID, e.g. "claude-opus-4-8"
+    skill_tier: Optional[str] = None          # "S", "M", "L", "XL" from CLAUDE.md tier table
     # Edit type
     mod_type: Optional[str] = None            # "CLOBBER" or "SURGICAL"
     # Tool call counts

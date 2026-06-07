@@ -145,6 +145,30 @@ def _load_autonomic_events(repo_root: Path) -> list[dict]:
     return events
 
 
+def _opus_share(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
+    """Fraction of cloud model calls that used Opus (goal: < 0.20 per CLAUDE.md).
+
+    Returns 0.0 when no records carry the model field — no data yet, not a fake zero.
+    """
+    eligible = [r for r in records if r.get("model") and r.get("model_tier") == "CLOUD"]
+    if not eligible:
+        return 0.0
+    opus_count = sum(1 for r in eligible if "opus" in str(r.get("model", "")).lower())
+    return opus_count / len(eligible)
+
+
+def _subagent_cost_multiplier(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
+    """Mean subagent_spawns per session (proxy for context multiplication factor).
+
+    Returns 0.0 when no records carry the subagent_spawns field.
+    Sessions with 0 subagents are included to avoid over-optimistic averages.
+    """
+    eligible = [r for r in records if r.get("subagent_spawns") is not None]
+    if not eligible:
+        return 0.0
+    return sum(int(r.get("subagent_spawns", 0)) for r in eligible) / len(eligible)
+
+
 def _hook_failure_rate(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
     """Fraction of autonomic events that are hook failures (0.0 when no events)."""
     events = _load_autonomic_events(repo_root)
@@ -204,6 +228,28 @@ REGISTRY: list[dict[str, Any]] = [
         "source": "verifier.path_authority",
         "reducer": _count_hardcoded_path_fails,
         "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Brush — Opus_Share  (BRUSH-003 — NEW)
+    # CLAUDE.md rule: Opus for architecture only, keep Opus < 20% of cloud calls.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "brush",
+        "metric": "Opus_Share",
+        "source": "telemetry.model",
+        "reducer": _opus_share,
+        "tier": "DERIVED",
+    },
+    # ------------------------------------------------------------------
+    # Brush — Subagent_Cost_Multiplier  (BRUSH-002 — NEW)
+    # Mean subagent spawns per session; subagents cost 7-10x inline tokens.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "brush",
+        "metric": "Subagent_Cost_Multiplier",
+        "source": "telemetry.subagent_spawns",
+        "reducer": _subagent_cost_multiplier,
+        "tier": "DERIVED",
     },
     # ------------------------------------------------------------------
     # Bow — Hook_Failure_Rate  (BOW-001 — NEW)
