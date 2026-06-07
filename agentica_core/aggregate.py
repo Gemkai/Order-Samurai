@@ -127,9 +127,13 @@ def _local_routing_share(records: list[dict], repo_root: Path) -> float:  # noqa
     return local_count / len(eligible)
 
 
-@functools.lru_cache(maxsize=None)
 def _load_autonomic_events(repo_root: Path) -> list[dict]:
-    """Read state/autonomic_events.jsonl and return event dicts."""
+    """Read state/autonomic_events.jsonl and return event dicts.
+
+    Not cached: the file is written by scouts mid-run, so a cached result from
+    the start of the process would produce stale Hook_Failure_Rate / Zombie_Process_Count
+    metrics on every subsequent aggregate() call within the same process.
+    """
     events_path = repo_root / "state" / "autonomic_events.jsonl"
     if not events_path.exists():
         return []
