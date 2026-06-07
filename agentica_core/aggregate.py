@@ -333,6 +333,119 @@ def _zombie_process_count(records: list[dict], repo_root: Path) -> int:  # noqa:
     return sum(1 for e in _load_autonomic_events(repo_root) if e.get("event") == "zombie_killed")
 
 
+def _daily_ronin_spend(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
+    """Dollars spent by the Ronin daemon today from state/budget_ledger.json.
+
+    Resets to 0.0 each calendar day. Returns 0.0 when the ledger is absent or
+    the date doesn't match today — no stale carry-over.
+    """
+    from datetime import date
+    ledger = repo_root / "state" / "budget_ledger.json"
+    if not ledger.exists():
+        return 0.0
+    try:
+        d = json.loads(ledger.read_text(encoding="utf-8", errors="ignore"))
+        if d.get("date") != str(date.today()):
+            return 0.0
+        return round(float(d.get("spent_usd", 0.0)), 4)
+    except Exception:
+        return 0.0
+
+
+def _backlog_velocity(records: list[dict], repo_root: Path) -> int:  # noqa: ARG001
+    """Backlog items completed in the last 7 days (system self-improvement cadence).
+
+    Reads DOJO_STATE.json backlog; counts items with status==done AND
+    completed_at within the last 7 days. Returns 0 for items without
+    completed_at (old items completed before timestamp tracking was added).
+    """
+    from datetime import date, timedelta
+    state_file = repo_root / "state" / "DOJO_STATE.json"
+    if not state_file.exists():
+        return 0
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8", errors="ignore"))
+        cutoff = str(date.today() - timedelta(days=7))
+        count = 0
+        for item in state.get("backlog", []):
+            if item.get("status") != "done":
+                continue
+            completed = item.get("completed_at", "")
+            if completed and completed >= cutoff:
+                count += 1
+        return count
+    except Exception:
+        return 0
+
+
+def _ronin_cycle_success_rate(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
+    """Fraction of completed Ronin daemon cycles that succeeded (rc=0).
+
+    Reads state/logs/cycle_*.json files. Each file is the raw claude --print
+    stream; success = last JSON line has no error field and result is non-empty.
+    Returns 0.0 when no cycle logs exist yet.
+    """
+    logs_dir = repo_root / "state" / "logs"
+    if not logs_dir.exists():
+        return 0.0
+    cycle_files = sorted(logs_dir.glob("cycle_*.json"))
+    if not cycle_files:
+        return 0.0
+    total = 0
+    successes = 0
+    for log_path in cycle_files:
+        try:
+            text = log_path.read_text(encoding="utf-8", errors="ignore").strip()
+            if not text:
+                continue
+            last_line = text.splitlines()[-1]
+            obj = json.loads(last_line)
+            total += 1
+            # Success: has a result field and no top-level error
+            if obj.get("result") and not obj.get("error"):
+                successes += 1
+        except Exception:
+            total += 1  # count unreadable logs as failures
+    if total == 0:
+        return 0.0
+    return successes / total
+
+
+def _metric_live_fraction(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
+    """Fraction of the planned metric catalog that is wired and LIVE.
+
+    TOTAL_PLANNED is the count of distinct metrics in METRICS.md (47 as of
+    2026-06-07). Each time a new reducer lands in REGISTRY, this fraction rises.
+    This is the primary system self-improvement signal — it answers:
+    'How complete is Order Samurai's own observability?'
+    """
+    TOTAL_PLANNED = 47  # from METRICS.md header — update when catalog grows
+    live_count = len(REGISTRY)  # evaluated lazily; at call time REGISTRY is fully built
+    return round(live_count / TOTAL_PLANNED, 3)
+
+
+def _skill_promotions(records: list[dict], repo_root: Path) -> int:  # noqa: ARG001
+    """Count of skill promotions logged to ~/.claude/data/skill_promotion_log.jsonl.
+
+    A promotion = a skill moved to a higher priority tier in the skills matrix.
+    Returns 0 when the log is absent (no promotions yet).
+    """
+    log = Path.home() / ".claude" / "data" / "skill_promotion_log.jsonl"
+    if not log.exists():
+        return 0
+    count = 0
+    for line in log.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            if json.loads(line):
+                count += 1
+        except json.JSONDecodeError:
+            continue
+    return count
+
+
 # ---------------------------------------------------------------------------
 # REGISTRY
 # ---------------------------------------------------------------------------
@@ -486,6 +599,65 @@ REGISTRY: list[dict[str, Any]] = [
         "metric": "Zombie_Process_Count",
         "source": "state/autonomic_events.jsonl",
         "reducer": _zombie_process_count,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Bow — Ronin_Cycle_Success_Rate
+    # Fraction of daemon cycles that completed with rc=0.
+    # Returns 0.0 until state/logs/cycle_*.json files exist.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "bow",
+        "metric": "Ronin_Cycle_Success_Rate",
+        "source": "state/logs/cycle_*.json",
+        "reducer": _ronin_cycle_success_rate,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Bow — Backlog_Velocity
+    # Backlog items completed in the last 7 days — system self-improvement cadence.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "bow",
+        "metric": "Backlog_Velocity",
+        "source": "state/DOJO_STATE.json",
+        "reducer": _backlog_velocity,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Brush — Daily_Ronin_Spend
+    # Dollars spent by the daemon today. Resets at midnight. Budget gate fires at $5.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "brush",
+        "metric": "Daily_Ronin_Spend",
+        "source": "state/budget_ledger.json",
+        "reducer": _daily_ronin_spend,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Arts — Metric_Live_Fraction  (System Improver)
+    # Fraction of the planned 47-metric catalog wired with real reducers.
+    # Rises every time Ronin promotes a metric from SIMULATED to LIVE.
+    # This is the primary signal that Order Samurai is improving itself.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "arts",
+        "metric": "Metric_Live_Fraction",
+        "source": "len(REGISTRY)/TOTAL_PLANNED",
+        "reducer": _metric_live_fraction,
+        "tier": "DERIVED",
+    },
+    # ------------------------------------------------------------------
+    # Arts — Skill_Promotions  (Skill Optimizer signal)
+    # Count of skills promoted to a higher priority tier in the skills matrix.
+    # Returns 0 when ~/.claude/data/skill_promotion_log.jsonl is absent.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "arts",
+        "metric": "Skill_Promotions",
+        "source": "~/.claude/data/skill_promotion_log.jsonl",
+        "reducer": _skill_promotions,
         "tier": "AUTO",
     },
 ]

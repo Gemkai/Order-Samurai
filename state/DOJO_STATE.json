@@ -9,8 +9,8 @@
       "name": "Bow - Operational Status",
       "ronin_mode": "ronin",
       "charter_path": "state/charters/bow.md",
-      "live_baseline": 15,
-      "live_current": 17,
+      "live_baseline": 17,
+      "live_current": 19,
       "last_commit": "BOW-001"
     },
     "sword": {
@@ -25,16 +25,16 @@
       "name": "Brush - Architecture & Tokens",
       "ronin_mode": "ronin",
       "charter_path": "state/charters/brush.md",
-      "live_baseline": 11,
-      "live_current": 12,
+      "live_baseline": 12,
+      "live_current": 13,
       "last_commit": "BRUSH-001"
     },
     "arts": {
       "name": "Arts - Cultural Arts",
       "ronin_mode": "ronin",
       "charter_path": "state/charters/arts.md",
-      "live_baseline": 8,
-      "live_current": 8,
+      "live_baseline": 10,
+      "live_current": 10,
       "last_commit": null
     }
   },
