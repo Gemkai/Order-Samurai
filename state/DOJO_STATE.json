@@ -3,7 +3,7 @@
   "started_at": "2026-06-05T11:09:00Z",
   "cycle": 1,
   "deadline_note": "360 min from start per dojo_overnight.sh",
-  "doctor_note": "Bootstrap: static analysis confirms exit 0 (no FAILs). state/ and bin/ were unclassified WARNs \u00e2\u20ac\u201d fixed in root_hygiene_policy.json. Python execution not available in acceptEdits permission mode; verifiers confirmed by code inspection.",
+  "doctor_note": "Bootstrap: static analysis confirms exit 0 (no FAILs). state/ and bin/ were unclassified WARNs â€” fixed in root_hygiene_policy.json. Python execution not available in acceptEdits permission mode; verifiers confirmed by code inspection.",
   "pillars": {
     "bow": {
       "name": "Bow - Operational Status",

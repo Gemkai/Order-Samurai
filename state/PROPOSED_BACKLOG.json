@@ -1,0 +1,56 @@
+{
+  "generated_at": "2026-06-07T13:05:33.663100+00:00",
+  "note": "Run bin/ronin propose to push approved:true items to DOJO_STATE.json",
+  "items": [
+    {
+      "id": "AUTO-001",
+      "pillar": "bow",
+      "kind": "stream",
+      "title": "Config Drift Rate",
+      "value": 1,
+      "effort": 2,
+      "status": "proposed",
+      "approved": false
+    },
+    {
+      "id": "AUTO-002",
+      "pillar": "brush",
+      "kind": "field",
+      "title": "Cost per Outcome",
+      "value": 1,
+      "effort": 2,
+      "status": "proposed",
+      "approved": false
+    },
+    {
+      "id": "AUTO-003",
+      "pillar": "bow",
+      "kind": "scout",
+      "title": "Loop-Breaker Fires",
+      "value": 1,
+      "effort": 2,
+      "status": "proposed",
+      "approved": false
+    },
+    {
+      "id": "AUTO-004",
+      "pillar": "brush",
+      "kind": "stream",
+      "title": "Scope-Drift Incidents",
+      "value": 1,
+      "effort": 2,
+      "status": "proposed",
+      "approved": false
+    },
+    {
+      "id": "AUTO-005",
+      "pillar": "bow",
+      "kind": "stream",
+      "title": "Self-Correction Rate",
+      "value": 1,
+      "effort": 2,
+      "status": "proposed",
+      "approved": false
+    }
+  ]
+}
