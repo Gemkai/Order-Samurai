@@ -119,7 +119,9 @@
       "title": "Doc/runtime diff scout -> Documentation Parity Latency LIVE",
       "value": 8,
       "effort": 3,
-      "status": "todo"
+      "status": "done",
+      "completed_at": "2026-06-07",
+      "note": "Documentation_Parity_Latency metric implemented via file mtime comparison"
     },
     {
       "id": "ARTS-002",

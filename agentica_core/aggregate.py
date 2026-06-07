@@ -145,6 +145,48 @@ def _load_autonomic_events(repo_root: Path) -> list[dict]:
     return events
 
 
+def _doc_parity_latency_days(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
+    """Days between the most recently modified source file and the oldest charter doc.
+
+    Compares the newest .py/.sh/.ts file mtime in execution/, scouts/, bin/, agentica_core/
+    against the oldest .md mtime in state/charters/. A large gap means code changed
+    significantly since the charters were last updated. Returns 0.0 when all docs
+    are at least as fresh as the newest source change.
+    """
+    import os
+    source_dirs = ["execution", "scouts", "bin", "agentica_core"]
+    source_exts = {".py", ".sh", ".ts", ".js"}
+    charter_dir = repo_root / "state" / "charters"
+
+    # Newest source file mtime
+    newest_src_mt: float = 0.0
+    for sdir in source_dirs:
+        d = repo_root / sdir
+        if not d.exists():
+            continue
+        for p in d.rglob("*"):
+            if p.suffix in source_exts and p.is_file():
+                try:
+                    newest_src_mt = max(newest_src_mt, p.stat().st_mtime)
+                except OSError:
+                    pass
+
+    # Oldest charter doc mtime
+    oldest_doc_mt: float = float("inf")
+    if charter_dir.exists():
+        for p in charter_dir.glob("*.md"):
+            try:
+                oldest_doc_mt = min(oldest_doc_mt, p.stat().st_mtime)
+            except OSError:
+                pass
+
+    if newest_src_mt == 0.0 or oldest_doc_mt == float("inf"):
+        return 0.0
+
+    gap_seconds = max(0.0, newest_src_mt - oldest_doc_mt)
+    return round(gap_seconds / 86400, 1)  # days
+
+
 def _tool_failure_rate(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
     """Fraction of tool invocations that returned ok=False across all sessions.
 
@@ -312,6 +354,17 @@ REGISTRY: list[dict[str, Any]] = [
         "metric": "Hardcoded_Path_Incidents",
         "source": "verifier.path_authority",
         "reducer": _count_hardcoded_path_fails,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Arts — Documentation_Parity_Latency  (ARTS-001 — NEW)
+    # Days between newest source change and oldest charter update. 0 = in sync.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "arts",
+        "metric": "Documentation_Parity_Latency",
+        "source": "file.mtime(state/charters/*.md, execution/**/*.py)",
+        "reducer": _doc_parity_latency_days,
         "tier": "AUTO",
     },
     # ------------------------------------------------------------------
