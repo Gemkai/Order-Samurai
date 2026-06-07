@@ -10,6 +10,7 @@ Build order (METRICS.md):
 """
 from __future__ import annotations
 
+import functools
 import json
 import sys
 from pathlib import Path
@@ -126,6 +127,7 @@ def _local_routing_share(records: list[dict], repo_root: Path) -> float:  # noqa
     return local_count / len(eligible)
 
 
+@functools.lru_cache(maxsize=None)
 def _load_autonomic_events(repo_root: Path) -> list[dict]:
     """Read state/autonomic_events.jsonl and return event dicts."""
     events_path = repo_root / "state" / "autonomic_events.jsonl"
