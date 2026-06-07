@@ -53,26 +53,55 @@ def _load_existing_keys(path: Path) -> set[str]:
     return keys
 
 
+_TS_RE = __import__("re").compile(r"^\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\]\s+\[([^\]]+)\]\s+(.*)")
+
+# Hook names that represent actual Claude Code hook failures (inflates Hook_Failure_Rate).
+# Other bracketed names (LLM-ROUTER, VALIDATOR, etc.) are pipeline errors, not hook failures.
+_HOOK_NAMES = {
+    "CLAUDEMD-IMPROVE", "MEX-INIT", "LOOP-BREAKER", "GUARDRAILS",
+    "MECHANISM-AUDIT", "SECURITY-GATE", "PHASE-WORKFLOW", "LESSON-REVIEW",
+    "SESSION-OPERATOR", "PREFETCH", "SKILL-SECURITY",
+}
+
+
 def _read_hook_failures() -> list[dict]:
-    """Extract hook_failure events from pipeline_errors.log."""
+    """Extract hook_failure and pipeline_error events from pipeline_errors.log.
+
+    Only processes timestamped summary lines — skips traceback continuations.
+    Parses the actual event timestamp rather than using now() so events are
+    temporally meaningful in autonomic_events.jsonl.
+    """
     if not _PIPELINE_ERRORS_LOG.exists():
         return []
-    events = []
     try:
         lines = _PIPELINE_ERRORS_LOG.read_text(encoding="utf-8", errors="ignore").splitlines()
     except OSError:
         return []
+
+    events = []
     for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            continue
-        events.append({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "event": "hook_failure",
+        m = _TS_RE.match(line.strip())
+        if not m:
+            continue  # skip traceback continuation lines
+        raw_ts, hook_name, detail = m.group(1), m.group(2), m.group(3)
+        try:
+            ts = datetime.fromisoformat(raw_ts).replace(tzinfo=timezone.utc).isoformat()
+        except ValueError:
+            ts = None
+
+        event_type = "hook_failure" if hook_name in _HOOK_NAMES else "pipeline_error"
+        entry: dict = {
+            "event": event_type,
             "pillar": "bow",
-            "detail": stripped[:300],
+            "detail": f"[{hook_name}] {detail}"[:300],
             "duration_ms": 0,
-        })
+        }
+        if ts:
+            entry["timestamp"] = ts
+        else:
+            entry["timestamp"] = datetime.now(timezone.utc).isoformat()
+            entry["inferred_at"] = entry["timestamp"]
+        events.append(entry)
     return events
 
 
