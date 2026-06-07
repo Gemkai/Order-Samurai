@@ -126,6 +126,38 @@ def _local_routing_share(records: list[dict], repo_root: Path) -> float:  # noqa
     return local_count / len(eligible)
 
 
+def _load_autonomic_events(repo_root: Path) -> list[dict]:
+    """Read state/autonomic_events.jsonl and return event dicts."""
+    events_path = repo_root / "state" / "autonomic_events.jsonl"
+    if not events_path.exists():
+        return []
+    events: list[dict] = []
+    for line in events_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            if isinstance(obj, dict):
+                events.append(obj)
+        except json.JSONDecodeError:
+            continue
+    return events
+
+
+def _hook_failure_rate(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
+    """Fraction of autonomic events that are hook failures (0.0 when no events)."""
+    events = _load_autonomic_events(repo_root)
+    if not events:
+        return 0.0
+    return sum(1 for e in events if e.get("event") == "hook_failure") / len(events)
+
+
+def _zombie_process_count(records: list[dict], repo_root: Path) -> int:  # noqa: ARG001
+    """Count of zombie_killed events in autonomic stream (0 = no zombies detected)."""
+    return sum(1 for e in _load_autonomic_events(repo_root) if e.get("event") == "zombie_killed")
+
+
 # ---------------------------------------------------------------------------
 # REGISTRY
 # ---------------------------------------------------------------------------
@@ -171,6 +203,26 @@ REGISTRY: list[dict[str, Any]] = [
         "metric": "Hardcoded_Path_Incidents",
         "source": "verifier.path_authority",
         "reducer": _count_hardcoded_path_fails,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Bow — Hook_Failure_Rate  (BOW-001 — NEW)
+    # ------------------------------------------------------------------
+    {
+        "pillar": "bow",
+        "metric": "Hook_Failure_Rate",
+        "source": "state/autonomic_events.jsonl",
+        "reducer": _hook_failure_rate,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Bow — Zombie_Process_Count  (BOW-001 — NEW)
+    # ------------------------------------------------------------------
+    {
+        "pillar": "bow",
+        "metric": "Zombie_Process_Count",
+        "source": "state/autonomic_events.jsonl",
+        "reducer": _zombie_process_count,
         "tier": "AUTO",
     },
 ]

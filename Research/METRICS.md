@@ -24,7 +24,7 @@ Source of truth = `agentica_core/aggregate.py` (REGISTRY + scouts/insights injec
 the **design catalog below is the roadmap** (untapped candidate rows + `+FIELD`/`+SCOUT` items not yet wired).
 Tier: **AUTO** = verifier/log-derived · **DERIVED** = computed from canonical telemetry. All real.
 
-**🏹 Bow (15)** — Activity: Error_Rate, Latency_P50, Latency_P95, Throughput, Tool_Calls, Tool_Diversity, Session_Count, Avg_Session_Turns, MCP_Smoke_Fails · Autonomic: Processes_Reaped, Config_Drift_Rate, Agent_Process_Count, Mechanism_Orphans · Governance: Governance_Pass_Rate, Verifier_Failures
+**🏹 Bow (17)** — Activity: Error_Rate, Latency_P50, Latency_P95, Throughput, Tool_Calls, Tool_Diversity, Session_Count, Avg_Session_Turns, MCP_Smoke_Fails · Autonomic: Processes_Reaped, Config_Drift_Rate, Agent_Process_Count, Mechanism_Orphans · Governance: Governance_Pass_Rate, Verifier_Failures · Failure: Hook_Failure_Rate, Zombie_Process_Count
 
 **⚔️ Sword (12)** — Vulnerability: Open_CVEs · Code Security: Boundary_Violations, Secrets_Detected, Gate_Fires, Secret_Scrubs · Governance: Rule_Violations · Audit Trail: Canary_Failures, Gate_Canary_Fault · Reliability: Loop_Breaker_Fires · Posture: Security_Scorecard · Supply Chain: Skill_Safety_Findings, Deprecated_Deps
 
@@ -47,7 +47,7 @@ Tier: **AUTO** = verifier/log-derived · **DERIVED** = computed from canonical t
 |--------|----------|--------|--------|
 | Config Drift Rate | divergences/day from `anti_drift_policy.json` | verifier results logged over time | +STREAM |
 | Mean Time to Heal (MTTH) | seconds to auto-resolve a degradation | autonomic events | +STREAM |
-| Zombie Process Count | orphaned/hung background processes (→ 0) | system scout | +SCOUT |
+| Zombie Process Count | orphaned/hung background processes (→ 0) | state/autonomic_events.jsonl | LIVE |
 | Daemon Restart Count | autonomic daemons killed/restarted | autonomic events | +STREAM |
 | Telemetry Ping Success Rate | % health checks returning OK unaided | doctor runs over time | LIVE |
 
@@ -71,7 +71,7 @@ Tier: **AUTO** = verifier/log-derived · **DERIVED** = computed from canonical t
 | Self-Correction Rate | errors fixed autonomously vs escalated to human | telemetry.status + events | +FIELD/+STREAM |
 | Mechanism Liveness | registered mechanisms that ran AND had output consumed (3-step Mechanism Rule) | mechanism audit | +STREAM |
 | Stale Scheduled Tasks | never_run / failed / stale (automation_scout taxonomy) | scheduled-task scout | +SCOUT |
-| Hook Failure Rate | hooks that errored | autonomic events (hook_failure) | +STREAM |
+| Hook Failure Rate | hooks that errored | state/autonomic_events.jsonl | LIVE |
 
 ## ⚔️ Sword — Security Integrity
 

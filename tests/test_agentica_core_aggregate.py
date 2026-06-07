@@ -273,5 +273,102 @@ class RegistryStructureTests(unittest.TestCase):
                 self.assertIn(entry["pillar"], valid)
 
 
+# ---------------------------------------------------------------------------
+# compute_metric — Hook_Failure_Rate
+# ---------------------------------------------------------------------------
+
+class HookFailureRateTests(unittest.TestCase):
+
+    def test_returns_zero_when_no_events_file(self) -> None:
+        sandbox = _sandbox(self._testMethodName)
+
+        result = compute_metric("Hook_Failure_Rate", [], sandbox)
+
+        self.assertTrue(result["live"])
+        self.assertEqual(result["value"], 0.0)
+
+    def test_returns_zero_when_events_file_is_empty(self) -> None:
+        sandbox = _sandbox(self._testMethodName)
+        events_path = sandbox / "state" / "autonomic_events.jsonl"
+        events_path.parent.mkdir(parents=True, exist_ok=True)
+        events_path.write_text("", encoding="utf-8")
+
+        result = compute_metric("Hook_Failure_Rate", [], sandbox)
+
+        self.assertEqual(result["value"], 0.0)
+
+    def test_returns_one_when_all_events_are_hook_failures(self) -> None:
+        sandbox = _sandbox(self._testMethodName)
+        events_path = sandbox / "state" / "autonomic_events.jsonl"
+        events_path.parent.mkdir(parents=True, exist_ok=True)
+        events_path.write_text(
+            json.dumps({"event": "hook_failure", "detail": "err1"}) + "\n"
+            + json.dumps({"event": "hook_failure", "detail": "err2"}) + "\n",
+            encoding="utf-8",
+        )
+
+        result = compute_metric("Hook_Failure_Rate", [], sandbox)
+
+        self.assertEqual(result["value"], 1.0)
+
+    def test_returns_correct_fraction_for_mixed_events(self) -> None:
+        sandbox = _sandbox(self._testMethodName)
+        events_path = sandbox / "state" / "autonomic_events.jsonl"
+        events_path.parent.mkdir(parents=True, exist_ok=True)
+        events_path.write_text(
+            json.dumps({"event": "hook_failure", "detail": "f1"}) + "\n"
+            + json.dumps({"event": "hook_failure", "detail": "f2"}) + "\n"
+            + json.dumps({"event": "zombie_killed", "detail": "z1"}) + "\n",
+            encoding="utf-8",
+        )
+
+        result = compute_metric("Hook_Failure_Rate", [], sandbox)
+
+        self.assertAlmostEqual(result["value"], 2 / 3)
+
+
+# ---------------------------------------------------------------------------
+# compute_metric — Zombie_Process_Count
+# ---------------------------------------------------------------------------
+
+class ZombieProcessCountTests(unittest.TestCase):
+
+    def test_returns_zero_when_no_events_file(self) -> None:
+        sandbox = _sandbox(self._testMethodName)
+
+        result = compute_metric("Zombie_Process_Count", [], sandbox)
+
+        self.assertTrue(result["live"])
+        self.assertEqual(result["value"], 0)
+
+    def test_returns_zero_when_no_zombie_events(self) -> None:
+        sandbox = _sandbox(self._testMethodName)
+        events_path = sandbox / "state" / "autonomic_events.jsonl"
+        events_path.parent.mkdir(parents=True, exist_ok=True)
+        events_path.write_text(
+            json.dumps({"event": "hook_failure", "detail": "f1"}) + "\n",
+            encoding="utf-8",
+        )
+
+        result = compute_metric("Zombie_Process_Count", [], sandbox)
+
+        self.assertEqual(result["value"], 0)
+
+    def test_counts_zombie_killed_events(self) -> None:
+        sandbox = _sandbox(self._testMethodName)
+        events_path = sandbox / "state" / "autonomic_events.jsonl"
+        events_path.parent.mkdir(parents=True, exist_ok=True)
+        events_path.write_text(
+            json.dumps({"event": "zombie_killed", "detail": "p1"}) + "\n"
+            + json.dumps({"event": "zombie_killed", "detail": "p2"}) + "\n"
+            + json.dumps({"event": "hook_failure", "detail": "f1"}) + "\n",
+            encoding="utf-8",
+        )
+
+        result = compute_metric("Zombie_Process_Count", [], sandbox)
+
+        self.assertEqual(result["value"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()
