@@ -145,6 +145,25 @@ def _load_autonomic_events(repo_root: Path) -> list[dict]:
     return events
 
 
+def _vibe_alignment_score(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
+    """Anti-slop vibe alignment score (0-100) from state/vibe_alignment.json.
+
+    Written by scouts/vibe_alignment_scout.py (local gemma-4-e4b pass).
+    Returns 0.0 when the file is absent or the last run failed (score=null).
+    """
+    vibe_path = repo_root / "state" / "vibe_alignment.json"
+    if not vibe_path.exists():
+        return 0.0
+    try:
+        d = json.loads(vibe_path.read_text(encoding="utf-8", errors="ignore"))
+        score = d.get("score")
+        if score is None or not isinstance(score, (int, float)):
+            return 0.0
+        return float(score)
+    except Exception:
+        return 0.0
+
+
 def _doc_parity_latency_days(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
     """Days between the most recently modified source file and the oldest charter doc.
 
@@ -354,6 +373,17 @@ REGISTRY: list[dict[str, Any]] = [
         "metric": "Hardcoded_Path_Incidents",
         "source": "verifier.path_authority",
         "reducer": _count_hardcoded_path_fails,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Arts — Vibe_Alignment  (ARTS-002 — NEW)
+    # Anti-slop score from local gemma-4-e4b pass (scouts/vibe_alignment_scout.py).
+    # ------------------------------------------------------------------
+    {
+        "pillar": "arts",
+        "metric": "Vibe_Alignment",
+        "source": "state/vibe_alignment.json",
+        "reducer": _vibe_alignment_score,
         "tier": "AUTO",
     },
     # ------------------------------------------------------------------

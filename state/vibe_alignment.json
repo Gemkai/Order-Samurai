@@ -1,0 +1,11 @@
+{
+  "score": 92,
+  "top_issue": "The docstrings are excessively verbose and read more like external API specifications or user manuals rather than concise internal code documentation.",
+  "files_scored": 3,
+  "files": [
+    "scouts\\vibe_alignment_scout.py",
+    "agentica_core\\aggregate.py",
+    "agentica_core\\telemetry.py"
+  ],
+  "generated_at": "2026-06-07T06:20:57.830297+00:00"
+}

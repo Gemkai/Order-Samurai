@@ -130,7 +130,9 @@
       "title": "Anti-Slop heuristic skill local-model pass -> Vibe Alignment LIVE",
       "value": 7,
       "effort": 3,
-      "status": "todo"
+      "status": "done",
+      "completed_at": "2026-06-07",
+      "note": "vibe_alignment_scout.py (gemma-4-e4b local pass); Vibe_Alignment metric in aggregate.py; current score: 92"
     }
   ],
   "budget": {
