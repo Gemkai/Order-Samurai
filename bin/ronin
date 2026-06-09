@@ -134,8 +134,11 @@ cmd_disarm() {
   local pid
   pid="$(_read_pid)"
   if [[ -n "$pid" ]] && _pid_running "$pid"; then
-    kill -TERM "$pid" 2>/dev/null && _info "Sent SIGTERM to PID $pid." \
-      || _info "SIGTERM failed for PID $pid (may have already exited)."
+    if kill -TERM "$pid" 2>/dev/null; then
+      _info "Sent SIGTERM to PID $pid."
+    else
+      _info "SIGTERM failed for PID $pid (may have already exited)."
+    fi
   else
     _info "No running daemon found (PID file: ${pid:-none})."
   fi
@@ -236,11 +239,15 @@ cmd_promote() {
   [[ -f "$STATE_FILE" ]]    || _err "DOJO_STATE.json not found: $STATE_FILE"
 
   _python - <<PYEOF
-import json, sys
+import json, sys, pathlib
 
-with open("$PROPOSED_FILE") as f:
+_REPO = pathlib.Path("$REPO_DIR")
+proposed_path = _REPO / "state" / "PROPOSED_BACKLOG.json"
+state_path = _REPO / "state" / "DOJO_STATE.json"
+
+with open(proposed_path) as f:
     proposed = json.load(f)
-with open("$STATE_FILE") as f:
+with open(state_path) as f:
     state = json.load(f)
 
 approved = [i for i in proposed.get("items", []) if i.get("approved") is True]
@@ -261,9 +268,9 @@ state.setdefault("backlog", []).extend(approved)
 # Remove promoted items from proposed by ID (not by approved flag — it was already popped)
 proposed["items"] = [i for i in proposed.get("items", []) if i.get("id") not in promoted_ids]
 
-with open("$STATE_FILE", "w") as f:
+with open(state_path, "w") as f:
     json.dump(state, f, indent=2)
-with open("$PROPOSED_FILE", "w") as f:
+with open(proposed_path, "w") as f:
     json.dump(proposed, f, indent=2)
 
 print(f"ronin: Promoted {len(approved)} item(s) to DOJO_STATE.json backlog.")

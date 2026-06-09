@@ -10,7 +10,7 @@
       "ronin_mode": "ronin",
       "charter_path": "state/charters/bow.md",
       "live_baseline": 17,
-      "live_current": 19,
+      "live_current": 27,
       "last_commit": "BOW-001"
     },
     "sword": {
@@ -18,7 +18,7 @@
       "ronin_mode": "ronin",
       "charter_path": "state/charters/sword.md",
       "live_baseline": 12,
-      "live_current": 12,
+      "live_current": 15,
       "last_commit": null
     },
     "brush": {
@@ -26,7 +26,7 @@
       "ronin_mode": "ronin",
       "charter_path": "state/charters/brush.md",
       "live_baseline": 12,
-      "live_current": 13,
+      "live_current": 20,
       "last_commit": "BRUSH-001"
     },
     "arts": {
@@ -34,7 +34,7 @@
       "ronin_mode": "ronin",
       "charter_path": "state/charters/arts.md",
       "live_baseline": 10,
-      "live_current": 10,
+      "live_current": 14,
       "last_commit": null
     }
   },
@@ -159,7 +159,7 @@
       "title": "Vibe Alignment (Anti-Slop) Score",
       "value": 1,
       "effort": 2,
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "AUTO-007",

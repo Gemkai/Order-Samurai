@@ -1,0 +1,31 @@
+{
+  "readonly": [
+    "canary-fault-diagnosis",
+    "cost-breakdown-audit",
+    "insights",
+    "investigate",
+    "policy-enforcement-audit",
+    "supply-chain-risk-auditor",
+    "tool-diversity-audit"
+  ],
+  "code_modifying": [
+    "audit-mechanisms",
+    "codebase-cleanup-deps-audit",
+    "context-optimization",
+    "governance-review",
+    "guard",
+    "humanizer",
+    "master-backend",
+    "mcp-setup",
+    "model-selector",
+    "security-audit",
+    "self-heal",
+    "simplify",
+    "skill-consolidator",
+    "skill-creator",
+    "skill-optimizer",
+    "subagent-audit",
+    "verifier-repair",
+    "wiki"
+  ]
+}

@@ -18,19 +18,22 @@ Two metric classes per pillar:
 
 ---
 
-## ✅ CURRENT LIVE REGISTRY (synced 2026-06-05) — 47 metrics, 0 SIMULATED
+## ✅ CURRENT LIVE REGISTRY (synced 2026-06-07) — 47 metrics, 0 SIMULATED
 
 Source of truth = `agentica_core/aggregate.py` (REGISTRY + scouts/insights injection). This doc tracks it;
 the **design catalog below is the roadmap** (untapped candidate rows + `+FIELD`/`+SCOUT` items not yet wired).
 Tier: **AUTO** = verifier/log-derived · **DERIVED** = computed from canonical telemetry. All real.
+Wired reducers in `aggregate.py`: **22** (was 19; +3 added 2026-06-07: Governance_Pass_Rate, Principle_Violations, Loop_Breaker_Fires).
 
-**🏹 Bow (17)** — Activity: Error_Rate, Latency_P50, Latency_P95, Throughput, Tool_Calls, Tool_Diversity, Session_Count, Avg_Session_Turns, MCP_Smoke_Fails · Autonomic: Processes_Reaped, Config_Drift_Rate, Agent_Process_Count, Mechanism_Orphans · Governance: Governance_Pass_Rate, Verifier_Failures · Failure: Hook_Failure_Rate, Zombie_Process_Count
+**🏹 Bow (20)** — Activity: Error_Rate, Latency_P50, Latency_P95, Throughput, Tool_Calls, Tool_Diversity, Session_Count, Avg_Session_Turns, MCP_Smoke_Fails · Autonomic: Processes_Reaped, Config_Drift_Rate, Agent_Process_Count, Mechanism_Orphans · Governance: Governance_Pass_Rate, Verifier_Failures, Principle_Violations · Failure: Hook_Failure_Rate, Zombie_Process_Count, Loop_Breaker_Fires
 
-**⚔️ Sword (12)** — Vulnerability: Open_CVEs · Code Security: Boundary_Violations, Secrets_Detected, Gate_Fires, Secret_Scrubs · Governance: Rule_Violations · Audit Trail: Canary_Failures, Gate_Canary_Fault · Reliability: Loop_Breaker_Fires · Posture: Security_Scorecard · Supply Chain: Skill_Safety_Findings, Deprecated_Deps
+**⚔️ Sword (11)** — Vulnerability: Open_CVEs · Code Security: Boundary_Violations, Secrets_Detected, Gate_Fires, Secret_Scrubs · Governance: Rule_Violations · Audit Trail: Canary_Failures, Gate_Canary_Fault · Posture: Security_Scorecard · Supply Chain: Skill_Safety_Findings, Deprecated_Deps
 
 **🖌️ Brush (12)** — Token Efficiency: Total_Cost, Token_Spend, Cost_Per_Task, Token_Execution_Density, Model_Tier_Mix, Local_Routing_Share, MCP_vs_CLI_Ratio · Code Health: Revision_Ratio, Hardcoded_Path_Incidents, Root_Hygiene_Issues · Orchestration: Subagent_Spawns · Architecture: Architecture_Scorecard_Grade
 
 **🎭 Arts (8)** — Output Quality: Slop_Density · Interaction: Frustration_Signals, Rework_Loops · Process: Simplify_Runs · Docs: Doc_Parity_Issues · Craft: Skills_Optimized, Skill_Promotions, Skill_Conflicts
+
+**Metric_Live_Fraction: 22/47 = 47%** (wired reducers ÷ full catalog)
 
 > **Wired, populating:** `Simplify_Age` (Arts/Process) — emitter now harvests slash-command skills (`<command-name>` parse), so it flips from SIMULATED to live DERIVED on the first `/simplify` record. `Local_Routing_Share` (Brush) is live from `model_tier==LOCAL`.
 
@@ -67,7 +70,7 @@ Tier: **AUTO** = verifier/log-derived · **DERIVED** = computed from canonical t
 ### Failure & Mechanism Health (cluster D)
 | Metric | Measures | Source | Status |
 |--------|----------|--------|--------|
-| Loop-Breaker Fires | times the 3×-same-error breaker tripped | `loop_breaker_state.json` emissions | LIVE (Sword) |
+| Loop-Breaker Fires | times the 3×-same-error breaker tripped | `loop_breaker_state.json` emissions | **LIVE** |
 | Self-Correction Rate | errors fixed autonomously vs escalated to human | telemetry.status + events | +FIELD/+STREAM |
 | Mechanism Liveness | registered mechanisms that ran AND had output consumed (3-step Mechanism Rule) | mechanism audit | +STREAM |
 | Stale Scheduled Tasks | never_run / failed / stale (automation_scout taxonomy) | scheduled-task scout | +SCOUT |
@@ -136,7 +139,7 @@ Tier: **AUTO** = verifier/log-derived · **DERIVED** = computed from canonical t
 | Plan-First Adherence | % 3+ step tasks with a plan artifact before code | telemetry.phase | +FIELD |
 | Scope-Drift Incidents | scope changed mid-phase without re-approval | autonomic events (scope_change) | +STREAM |
 | Rule Firing Rate | which CLAUDE.md rules fire (and how often) | rule telemetry | +STREAM |
-| Rule Violation Rate | principle violations | `principle_violations.jsonl` | +STREAM |
+| Rule Violation Rate / Principle_Violations | principle violations | `principle_violations.jsonl` | **LIVE** |
 | Dead-Rule Detection | rules untriggered in 90 days (retirement candidates) | derived from rule firing | DERIVED |
 
 ## 🎭 Arts — Cultural Arts (UX, Docs, Vibe)
@@ -198,7 +201,7 @@ quality skills. These flesh out the thin Sword/Arts pillars. Source scripts are 
 | Unaudited Skills (supply chain) | `skill_install_gate.py` / `skill_security_audit.py` / skill-install-reconcile | +SCOUT |
 | MCP Attack Surface | `mcp_security_audit.py` (enabled + broad-scope count) | +SCOUT |
 | Security Score | `score_security.py` | +SCOUT (read existing output) |
-| Principle Violations | `principle_audit.py` → `principle_violations.jsonl` | +STREAM |
+| Principle Violations | `principle_audit.py` → `principle_violations.jsonl` | **LIVE** |
 | Canary Health | `security_gate_canary.py` / `behavioral_canary.py` alive? | +SCOUT |
 
 ### 🎭 Arts — mine the conversation + quality skills

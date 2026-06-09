@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,7 +54,7 @@ def _load_existing_keys(path: Path) -> set[str]:
     return keys
 
 
-_TS_RE = __import__("re").compile(r"^\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\]\s+\[([^\]]+)\]\s+(.*)")
+_TS_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\]\s+\[([^\]]+)\]\s+(.*)")
 
 # Hook names that represent actual Claude Code hook failures (inflates Hook_Failure_Rate).
 # Other bracketed names (LLM-ROUTER, VALIDATOR, etc.) are pipeline errors, not hook failures.
@@ -83,24 +84,23 @@ def _read_hook_failures() -> list[dict]:
         m = _TS_RE.match(line.strip())
         if not m:
             continue  # skip traceback continuation lines
-        raw_ts, hook_name, detail = m.group(1), m.group(2), m.group(3)
+        raw_ts, hook_name, detail = m.groups()
         try:
             ts = datetime.fromisoformat(raw_ts).replace(tzinfo=timezone.utc).isoformat()
         except ValueError:
             ts = None
 
         event_type = "hook_failure" if hook_name in _HOOK_NAMES else "pipeline_error"
-        entry: dict = {
+        ts_final = ts or datetime.now(timezone.utc).isoformat()
+        entry = {
             "event": event_type,
             "pillar": "bow",
             "detail": f"[{hook_name}] {detail}"[:300],
             "duration_ms": 0,
+            "timestamp": ts_final,
         }
-        if ts:
-            entry["timestamp"] = ts
-        else:
-            entry["timestamp"] = datetime.now(timezone.utc).isoformat()
-            entry["inferred_at"] = entry["timestamp"]
+        if not ts:
+            entry["inferred_at"] = ts_final
         events.append(entry)
     return events
 

@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "timestamp": "2026-06-08T19:12:04.170Z",
+  "cooldowns": {
+    "metric:sword:Deprecated_Deps::/codebase-cleanup-deps-audit": {
+      "firedAt": 1780883938042
+    },
+    "metric:arts:Doc_Parity_Issues::/wiki": {
+      "firedAt": 1780883962090
+    },
+    "metric:arts:Rework_Loops::/simplify": {
+      "firedAt": 1780884073785
+    },
+    "metric:bow:Mechanism_Orphans::/audit-mechanisms": {
+      "firedAt": 1780884136185
+    },
+    "metric:arts:Slop_Density::/humanizer": {
+      "firedAt": 1780894572559
+    },
+    "trajectory:arts:Slop_Density::/humanizer": {
+      "firedAt": 1780894581123
+    },
+    "metric:arts:Simplify_Age::/simplify": {
+      "firedAt": 1780928570434
+    },
+    "metric:arts:Skill_Conflicts::/skill-consolidator": {
+      "firedAt": 1780920969838
+    },
+    "metric:arts:Frustration_Signals::/insights": {
+      "firedAt": 1780925963578
+    },
+    "metric:brush:Chain_Depth_Avg::/subagent-audit": {
+      "firedAt": 1780925466451
+    },
+    "metric:brush:Local_Routing_Share::/model-selector": {
+      "firedAt": 1780928416300
+    },
+    "metric:brush:Token_Execution_Density::/context-optimization": {
+      "firedAt": 1780945921496
+    }
+  },
+  "noImprovement": {
+    "metric:sword:Deprecated_Deps::/codebase-cleanup-deps-audit": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "metric:arts:Doc_Parity_Issues::/wiki": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "metric:arts:Rework_Loops::/simplify": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "metric:bow:Mechanism_Orphans::/audit-mechanisms": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "metric:arts:Slop_Density::/humanizer": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "trajectory:arts:Slop_Density::/humanizer": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "metric:arts:Simplify_Age::/simplify": {
+      "consecutive": 0,
+      "stuck": false
+    },
+    "metric:arts:Skill_Conflicts::/skill-consolidator": {
+      "consecutive": 1,
+      "stuck": false
+    },
+    "metric:arts:Frustration_Signals::/insights": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "metric:brush:Chain_Depth_Avg::/subagent-audit": {
+      "consecutive": 1,
+      "stuck": false
+    },
+    "metric:brush:Local_Routing_Share::/model-selector": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "metric:brush:Token_Execution_Density::/context-optimization": {
+      "consecutive": 2,
+      "stuck": true
+    }
+  }
+}

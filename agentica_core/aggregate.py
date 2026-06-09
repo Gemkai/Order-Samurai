@@ -10,11 +10,11 @@ Build order (METRICS.md):
 """
 from __future__ import annotations
 
-import functools
 import json
 import sys
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Path bootstrap — agentica_core may be imported stand-alone or from the repo
@@ -61,9 +61,7 @@ def load_telemetry_records(repo_root: Path) -> list[dict]:
             try:
                 parsed = json.loads(stripped)
                 if isinstance(parsed, list):
-                    for item in parsed:
-                        if isinstance(item, dict):
-                            records.append(item)
+                    records.extend(item for item in parsed if isinstance(item, dict))
                     continue
             except json.JSONDecodeError:
                 pass
@@ -105,26 +103,42 @@ def _count_hardcoded_path_fails(records: list[dict], repo_root: Path) -> int:  #
 # Telemetry-backed reducers
 # ---------------------------------------------------------------------------
 
+def _ratio_by_field(records: list[dict], field: str, value: str) -> float:
+    """Fraction of records where `field == value`, among those that have the field set."""
+    eligible = [r for r in records if r.get(field) is not None]
+    if not eligible:
+        return 0.0
+    return sum(1 for r in eligible if r.get(field) == value) / len(eligible)
+
+
 def _mcp_vs_cli_ratio(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
     """Fraction of tool-routed records that went via MCP (not CLI).
 
-    Returns 0.0 when no records carry the mcp_or_cli field (no data yet, not
-    a fake zero — the metric is live but shows 0.0 until the emitter populates
-    the field).
+    Returns 0.0 when no records carry the mcp_or_cli field (no data yet).
     """
-    eligible = [r for r in records if r.get("mcp_or_cli") is not None]
-    if not eligible:
-        return 0.0
-    mcp_count = sum(1 for r in eligible if r.get("mcp_or_cli") == "mcp")
-    return mcp_count / len(eligible)
+    return _ratio_by_field(records, "mcp_or_cli", "mcp")
 
 
 def _local_routing_share(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
-    eligible = [r for r in records if r.get("model_tier") is not None]
-    if not eligible:
-        return 0.0
-    local_count = sum(1 for r in eligible if r.get("model_tier") == "LOCAL")
-    return local_count / len(eligible)
+    return _ratio_by_field(records, "model_tier", "LOCAL")
+
+
+def _read_jsonl(path: Path) -> list[dict]:
+    """Read a JSONL file and return valid dict records. Returns [] if absent."""
+    if not path.exists():
+        return []
+    records = []
+    for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+            if isinstance(obj, dict):
+                records.append(obj)
+        except json.JSONDecodeError:
+            continue
+    return records
 
 
 def _load_autonomic_events(repo_root: Path) -> list[dict]:
@@ -134,21 +148,7 @@ def _load_autonomic_events(repo_root: Path) -> list[dict]:
     the start of the process would produce stale Hook_Failure_Rate / Zombie_Process_Count
     metrics on every subsequent aggregate() call within the same process.
     """
-    events_path = repo_root / "state" / "autonomic_events.jsonl"
-    if not events_path.exists():
-        return []
-    events: list[dict] = []
-    for line in events_path.read_text(encoding="utf-8", errors="ignore").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            obj = json.loads(line)
-            if isinstance(obj, dict):
-                events.append(obj)
-        except json.JSONDecodeError:
-            continue
-    return events
+    return _read_jsonl(repo_root / "state" / "autonomic_events.jsonl")
 
 
 def _vibe_alignment_score(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
@@ -163,7 +163,7 @@ def _vibe_alignment_score(records: list[dict], repo_root: Path) -> float:  # noq
     try:
         d = json.loads(vibe_path.read_text(encoding="utf-8", errors="ignore"))
         score = d.get("score")
-        if score is None or not isinstance(score, (int, float)):
+        if not isinstance(score, (int, float)):
             return 0.0
         return float(score)
     except Exception:
@@ -217,21 +217,16 @@ def _tool_failure_rate(records: list[dict], repo_root: Path) -> float:  # noqa: 
     Only counts records that carry the tool_latencies field. Returns 0.0 when
     no records have latency data — no data yet, not a fake zero.
     """
-    total = 0
-    failed = 0
-    for r in records:
-        latencies = r.get("tool_latencies")
-        if not isinstance(latencies, list):
-            continue
-        for entry in latencies:
-            if not isinstance(entry, dict):
-                continue
-            total += 1
-            if not entry.get("ok", True):
-                failed += 1
-    if total == 0:
+    all_entries = [
+        e
+        for r in records
+        if isinstance(r.get("tool_latencies"), list)
+        for e in r["tool_latencies"]
+        if isinstance(e, dict)
+    ]
+    if not all_entries:
         return 0.0
-    return failed / total
+    return sum(1 for e in all_entries if not e.get("ok", True)) / len(all_entries)
 
 
 def _security_score(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
@@ -251,47 +246,48 @@ def _security_score(records: list[dict], repo_root: Path) -> float:  # noqa: ARG
 
 
 def _canary_health(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
-    """1.0 if security gate canary is working and fresh; 0.0 on fault or staleness.
+    """Fault indicator for the security gate canary: 1.0 = faulted, 0.0 = healthy.
 
     Reads ~/.claude/data/security_gate_canary.json.
-    Stale = last_run > max_age_days; gate_working=False = fault.
+    Returns 1.0 (fault) when:
+      - canary file is missing (gate has never run)
+      - gate_working is False
+      - last_run timestamp is missing or older than max_age_days (default 7)
+    Returns 0.0 (no fault) when the gate ran recently and reported working.
     """
     canary_path = Path.home() / ".claude" / "data" / "security_gate_canary.json"
     if not canary_path.exists():
-        return 0.0
+        return 1.0  # never run → fault
     try:
-        from datetime import datetime, timezone
         d = json.loads(canary_path.read_text(encoding="utf-8", errors="ignore"))
         if not d.get("gate_working", False):
-            return 0.0
+            return 1.0  # gate explicitly not working → fault
         last_run_str = d.get("last_run", "")
         if not last_run_str:
-            return 0.0
+            return 1.0  # no timestamp → fault
         last_run = datetime.fromisoformat(last_run_str.replace("Z", "+00:00"))
         if last_run.tzinfo is None:
             last_run = last_run.replace(tzinfo=timezone.utc)
         age_days = (datetime.now(timezone.utc) - last_run).days
         max_age = d.get("max_age_days", 7)
-        return 0.0 if age_days > max_age else 1.0
+        return 1.0 if age_days > max_age else 0.0  # stale → fault; fresh → healthy
     except Exception:
-        return 0.0
+        return 1.0  # parse error → treat as fault
+
+
+def _count_jsonl_records(path: Path) -> int:
+    """Count valid non-empty JSON objects in a JSONL file. Returns 0 if absent."""
+    return sum(1 for r in _read_jsonl(path) if r)
 
 
 def _secret_scrub_count(records: list[dict], repo_root: Path) -> int:  # noqa: ARG001
     """Total secrets auto-redacted across all scrubber runs from secret_scrubber.jsonl."""
     log = Path.home() / ".claude" / "data" / "secret_scrubber.jsonl"
-    if not log.exists():
-        return 0
     total = 0
-    for line in log.read_text(encoding="utf-8", errors="ignore").splitlines():
-        line = line.strip()
-        if not line:
-            continue
+    for obj in _read_jsonl(log):
         try:
-            obj = json.loads(line)
-            if isinstance(obj, dict):
-                total += int(obj.get("findings_count") or 0)
-        except (json.JSONDecodeError, ValueError, TypeError):
+            total += int(obj.get("findings_count") or 0)
+        except (ValueError, TypeError):
             continue
     return total
 
@@ -330,7 +326,8 @@ def _hook_failure_rate(records: list[dict], repo_root: Path) -> float:  # noqa: 
 
 def _zombie_process_count(records: list[dict], repo_root: Path) -> int:  # noqa: ARG001
     """Count of zombie_killed events in autonomic stream (0 = no zombies detected)."""
-    return sum(1 for e in _load_autonomic_events(repo_root) if e.get("event") == "zombie_killed")
+    events = _load_autonomic_events(repo_root)
+    return sum(1 for e in events if e.get("event") == "zombie_killed")
 
 
 def _daily_ronin_spend(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
@@ -339,7 +336,6 @@ def _daily_ronin_spend(records: list[dict], repo_root: Path) -> float:  # noqa: 
     Resets to 0.0 each calendar day. Returns 0.0 when the ledger is absent or
     the date doesn't match today — no stale carry-over.
     """
-    from datetime import date
     ledger = repo_root / "state" / "budget_ledger.json"
     if not ledger.exists():
         return 0.0
@@ -359,21 +355,16 @@ def _backlog_velocity(records: list[dict], repo_root: Path) -> int:  # noqa: ARG
     completed_at within the last 7 days. Returns 0 for items without
     completed_at (old items completed before timestamp tracking was added).
     """
-    from datetime import date, timedelta
     state_file = repo_root / "state" / "DOJO_STATE.json"
     if not state_file.exists():
         return 0
     try:
         state = json.loads(state_file.read_text(encoding="utf-8", errors="ignore"))
         cutoff = str(date.today() - timedelta(days=7))
-        count = 0
-        for item in state.get("backlog", []):
-            if item.get("status") != "done":
-                continue
-            completed = item.get("completed_at", "")
-            if completed and completed >= cutoff:
-                count += 1
-        return count
+        return sum(
+            1 for item in state.get("backlog", [])
+            if item.get("status") == "done" and item.get("completed_at", "") >= cutoff
+        )
     except Exception:
         return 0
 
@@ -411,39 +402,66 @@ def _ronin_cycle_success_rate(records: list[dict], repo_root: Path) -> float:  #
     return successes / total
 
 
+_TOTAL_PLANNED_METRICS = 47  # from METRICS.md header — update when catalog grows
+
+
 def _metric_live_fraction(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
     """Fraction of the planned metric catalog that is wired and LIVE.
 
-    TOTAL_PLANNED is the count of distinct metrics in METRICS.md (47 as of
-    2026-06-07). Each time a new reducer lands in REGISTRY, this fraction rises.
-    This is the primary system self-improvement signal — it answers:
+    Rises each time a new reducer lands in REGISTRY. Primary self-improvement signal:
     'How complete is Order Samurai's own observability?'
     """
-    TOTAL_PLANNED = 47  # from METRICS.md header — update when catalog grows
-    live_count = len(REGISTRY)  # evaluated lazily; at call time REGISTRY is fully built
-    return round(live_count / TOTAL_PLANNED, 3)
+    return round(len(REGISTRY) / _TOTAL_PLANNED_METRICS, 3)
 
 
 def _skill_promotions(records: list[dict], repo_root: Path) -> int:  # noqa: ARG001
-    """Count of skill promotions logged to ~/.claude/data/skill_promotion_log.jsonl.
+    """Count of skill promotions logged to ~/.claude/data/skill_promotion_log.jsonl."""
+    return _count_jsonl_records(Path.home() / ".claude" / "data" / "skill_promotion_log.jsonl")
 
-    A promotion = a skill moved to a higher priority tier in the skills matrix.
-    Returns 0 when the log is absent (no promotions yet).
+
+def _governance_pass_rate(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
+    """Fraction of verifier checks (root-hygiene + path-authority + runtime-contract) passing.
+
+    Aggregates all three governance verifiers into a single 0-1 pass rate.
+    Complements Root_Hygiene_Issues and Hardcoded_Path_Incidents which count failures;
+    this provides the overall health percentage.
     """
-    log = Path.home() / ".claude" / "data" / "skill_promotion_log.jsonl"
-    if not log.exists():
-        return 0
-    count = 0
-    for line in log.read_text(encoding="utf-8", errors="ignore").splitlines():
-        line = line.strip()
-        if not line:
-            continue
+    try:
+        from execution.verify_root_hygiene import run_checks as rh
+        from execution.verify_path_authority import run_checks as pa
+        from execution.verify_runtime_contract import run_checks as rc
+        all_results = rh(repo_root=repo_root) + pa(repo_root=repo_root) + rc(repo_root=repo_root)
+        if not all_results:
+            return 0.0
+        passes = sum(1 for r in all_results if r.get("status") in ("OK", "PASS"))
+        return round(passes / len(all_results), 3)
+    except Exception:
+        return 0.0
+
+
+def _principle_violations(records: list[dict], repo_root: Path) -> int:  # noqa: ARG001
+    """Count of recorded CLAUDE.md principle violations from principle_violations.jsonl."""
+    return _count_jsonl_records(Path.home() / ".claude" / "data" / "principle_violations.jsonl")
+
+
+def _loop_breaker_fires(records: list[dict], repo_root: Path) -> int:  # noqa: ARG001
+    """Count of loop-breaker events (agent stuck repeating same error 3x).
+
+    Checks ~/.claude/data/loop_breaker_state.json first (total_fires or fires field),
+    then falls back to ~/.claude/data/loop_breaker_log.jsonl (count entries).
+    Returns 0 when no data source exists.
+    """
+    state_file = Path.home() / ".claude" / "data" / "loop_breaker_state.json"
+    log_file = Path.home() / ".claude" / "data" / "loop_breaker_log.jsonl"
+    if state_file.exists():
         try:
-            if json.loads(line):
-                count += 1
-        except json.JSONDecodeError:
-            continue
-    return count
+            d = json.loads(state_file.read_text(encoding="utf-8", errors="ignore"))
+            for k in ("total_fires", "fires", "count"):
+                if k in d:
+                    return int(d[k])
+        except Exception:
+            pass
+    return _count_jsonl_records(log_file)
 
 
 # ---------------------------------------------------------------------------
@@ -539,7 +557,7 @@ REGISTRY: list[dict[str, Any]] = [
     },
     # ------------------------------------------------------------------
     # Sword — Canary_Health  (SWORD-002 — NEW)
-    # 1.0 = gate working + fresh; 0.0 = fault or stale (> max_age_days).
+    # 1.0 = faulted (gate missing, not working, or stale); 0.0 = healthy and fresh.
     # ------------------------------------------------------------------
     {
         "pillar": "sword",
@@ -658,6 +676,40 @@ REGISTRY: list[dict[str, Any]] = [
         "metric": "Skill_Promotions",
         "source": "~/.claude/data/skill_promotion_log.jsonl",
         "reducer": _skill_promotions,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Bow — Governance_Pass_Rate
+    # Combined pass rate across all three governance verifiers (0-1).
+    # Complements Root_Hygiene_Issues and Hardcoded_Path_Incidents.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "bow",
+        "metric": "Governance_Pass_Rate",
+        "source": "verifier.root_hygiene+path_authority+runtime_contract",
+        "reducer": _governance_pass_rate,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Bow — Principle_Violations
+    # Count of CLAUDE.md principle violations recorded in the violation log.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "bow",
+        "metric": "Principle_Violations",
+        "source": "~/.claude/data/principle_violations.jsonl",
+        "reducer": _principle_violations,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Bow — Loop_Breaker_Fires
+    # Count of loop-breaker events (agent stuck on same error 3x).
+    # ------------------------------------------------------------------
+    {
+        "pillar": "bow",
+        "metric": "Loop_Breaker_Fires",
+        "source": "~/.claude/data/loop_breaker_state.json|loop_breaker_log.jsonl",
+        "reducer": _loop_breaker_fires,
         "tier": "AUTO",
     },
 ]
