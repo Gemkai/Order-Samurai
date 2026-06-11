@@ -1,39 +1,45 @@
 {
-  "insights": {
-    "total_runs": 3,
-    "success_count": 1,
-    "success_rate": 0.333,
+  "simplify": {
+    "total_runs": 17,
+    "success_count": 15,
+    "success_rate": 0.882,
+    "cooldown_multiplier": 1
+  },
+  "codebase-cleanup-deps-audit": {
+    "total_runs": 15,
+    "success_count": 10,
+    "success_rate": 0.667,
     "cooldown_multiplier": 1
   },
   "context-optimization": {
+    "total_runs": 3,
+    "success_count": 0,
+    "success_rate": 0.0,
+    "cooldown_multiplier": 3
+  },
+  "insights": {
+    "total_runs": 5,
+    "success_count": 3,
+    "success_rate": 0.6,
+    "cooldown_multiplier": 1
+  },
+  "wiki": {
+    "total_runs": 13,
+    "success_count": 11,
+    "success_rate": 0.846,
+    "cooldown_multiplier": 1
+  },
+  "model-selector": {
+    "total_runs": 4,
+    "success_count": 2,
+    "success_rate": 0.5,
+    "cooldown_multiplier": 1
+  },
+  "policy-enforcement-audit": {
     "total_runs": 2,
     "success_count": 0,
     "success_rate": 0.0,
     "cooldown_multiplier": 0.25
-  },
-  "model-selector": {
-    "total_runs": 3,
-    "success_count": 1,
-    "success_rate": 0.333,
-    "cooldown_multiplier": 1
-  },
-  "codebase-cleanup-deps-audit": {
-    "total_runs": 11,
-    "success_count": 8,
-    "success_rate": 0.727,
-    "cooldown_multiplier": 1
-  },
-  "simplify": {
-    "total_runs": 10,
-    "success_count": 8,
-    "success_rate": 0.8,
-    "cooldown_multiplier": 1
-  },
-  "wiki": {
-    "total_runs": 11,
-    "success_count": 9,
-    "success_rate": 0.818,
-    "cooldown_multiplier": 1
   },
   "subagent-audit": {
     "total_runs": 1,

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "timestamp": "2026-06-08T19:12:04.170Z",
+  "timestamp": "2026-06-11T00:59:17.470Z",
   "cooldowns": {
     "metric:sword:Deprecated_Deps::/codebase-cleanup-deps-audit": {
       "firedAt": 1780883938042
@@ -21,7 +21,7 @@
       "firedAt": 1780894581123
     },
     "metric:arts:Simplify_Age::/simplify": {
-      "firedAt": 1780928570434
+      "firedAt": 1781139554097
     },
     "metric:arts:Skill_Conflicts::/skill-consolidator": {
       "firedAt": 1780920969838
@@ -37,6 +37,18 @@
     },
     "metric:brush:Token_Execution_Density::/context-optimization": {
       "firedAt": 1780945921496
+    },
+    "metric:sword:Rule_Violations::/policy-enforcement-audit": {
+      "firedAt": 1780982094561
+    },
+    "trajectory:brush:Token_Execution_Density::/context-optimization": {
+      "firedAt": 1781068479331
+    },
+    "metric:sword:Open_CVEs::/codebase-cleanup-deps-audit": {
+      "firedAt": 1781083954493
+    },
+    "trajectory:arts:Simplify_Age::/simplify": {
+      "firedAt": 1781086368503
     }
   },
   "noImprovement": {
@@ -87,6 +99,22 @@
     "metric:brush:Token_Execution_Density::/context-optimization": {
       "consecutive": 2,
       "stuck": true
+    },
+    "metric:sword:Rule_Violations::/policy-enforcement-audit": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "trajectory:brush:Token_Execution_Density::/context-optimization": {
+      "consecutive": 1,
+      "stuck": false
+    },
+    "metric:sword:Open_CVEs::/codebase-cleanup-deps-audit": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "trajectory:arts:Simplify_Age::/simplify": {
+      "consecutive": 0,
+      "stuck": false
     }
   }
 }
