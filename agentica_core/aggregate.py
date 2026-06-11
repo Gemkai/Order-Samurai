@@ -10,6 +10,7 @@ Build order (METRICS.md):
 """
 from __future__ import annotations
 
+from collections import defaultdict
 import json
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -67,8 +68,8 @@ def load_telemetry_records(repo_root: Path) -> list[dict]:
                 pass
 
         # JSON Lines
-        for line in text.splitlines():
-            line = line.strip()
+        for raw in text.splitlines():
+            line = raw.strip()
             if not line:
                 continue
             try:
@@ -105,10 +106,10 @@ def _count_hardcoded_path_fails(records: list[dict], repo_root: Path) -> int:  #
 
 def _ratio_by_field(records: list[dict], field: str, value: str) -> float:
     """Fraction of records where `field == value`, among those that have the field set."""
-    eligible = [r for r in records if r.get(field) is not None]
-    if not eligible:
+    values = [r.get(field) for r in records if r.get(field) is not None]
+    if not values:
         return 0.0
-    return sum(1 for r in eligible if r.get(field) == value) / len(eligible)
+    return sum(1 for v in values if v == value) / len(values)
 
 
 def _mcp_vs_cli_ratio(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
@@ -288,7 +289,7 @@ def _secret_scrub_count(records: list[dict], repo_root: Path) -> int:  # noqa: A
         try:
             total += int(obj.get("findings_count") or 0)
         except (ValueError, TypeError):
-            continue
+            pass
     return total
 
 
@@ -462,6 +463,352 @@ def _loop_breaker_fires(records: list[dict], repo_root: Path) -> int:  # noqa: A
         except Exception:
             pass
     return _count_jsonl_records(log_file)
+
+
+# ---------------------------------------------------------------------------
+# Helper functions for new reducers
+# ---------------------------------------------------------------------------
+
+def _parse_iso(val: Any) -> datetime | None:
+    if not val or not isinstance(val, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def _resolve_history_path(repo_root: Path) -> Path:
+    path = repo_root.parent / "Governance" / "Data" / "telemetry" / "metrics_history.jsonl"
+    if not path.exists():
+        path = Path(r"C:\Users\jemak\Desktop\Agentica OS\Data\telemetry\metrics_history.jsonl")
+    return path
+
+
+def _get_weekly_promotions_count(now: datetime) -> int:
+    log_path = Path.home() / ".claude" / "data" / "skill_promotion_log.jsonl"
+    this_week = now.strftime("%G-W%V")
+    count = 0
+    for obj in _read_jsonl(log_path):
+        ts_val = obj.get("timestamp") or obj.get("ts") or obj.get("created_at")
+        if ts_val:
+            try:
+                dt = datetime.fromisoformat(ts_val.replace("Z", "+00:00"))
+                if dt.strftime("%G-W%V") == this_week:
+                    count += 1
+            except Exception:
+                continue
+    return count
+
+
+def _get_weekly_arts_effort(backlog: list[dict], now: datetime) -> float:
+    this_week = now.strftime("%G-W%V")
+    total_effort = 0.0
+    for item in backlog:
+        if item.get("status") == "done" and item.get("pillar") == "arts":
+            comp_dt = _parse_iso(item.get("completed_at"))
+            if comp_dt and comp_dt.strftime("%G-W%V") == this_week:
+                try:
+                    total_effort += float(item.get("effort", 1))
+                except (ValueError, TypeError):
+                    total_effort += 1.0
+    return total_effort
+
+
+def _get_prior_week_val(history_path: Path, metric_key: str) -> float | None:
+    if not history_path.exists():
+        return None
+    try:
+        lines = history_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        for line in reversed(lines):
+            if not line.strip():
+                continue
+            obj = json.loads(line)
+            vals = obj.get("values", {})
+            val = vals.get(metric_key)
+            if val is not None:
+                try:
+                    if isinstance(val, str):
+                        cleaned = "".join(c for c in val if c.isdigit() or c == "." or c == "-")
+                        return float(cleaned)
+                    return float(val)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return None
+
+
+def _calibrate_coefficients(backlog: list[dict], coef_path: Path):
+    if not coef_path.exists():
+        return
+    try:
+        coef = json.loads(coef_path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    
+    samples_by_kind = defaultdict(list)
+    for item in backlog:
+        if item.get("status") == "done":
+            start = _parse_iso(item.get("started_at"))
+            comp = _parse_iso(item.get("completed_at"))
+            if start and comp:
+                duration = (comp - start).total_seconds() / 60
+                samples_by_kind[item.get("kind")].append(duration)
+
+    total_samples = sum(len(v) for v in samples_by_kind.values())
+    threshold = coef.get("calibration_threshold", {}).get("samples", 20)
+
+    if total_samples >= threshold:
+        for kind, values in samples_by_kind.items():
+            if kind in coef.get("operations", {}):
+                avg = sum(values) / len(values)
+                coef["operations"][kind]["benchmark_min"] = avg
+                coef["operations"][kind]["calibrated"] = True
+                coef["operations"][kind]["sample_count"] = len(values)
+        
+        # Save coefficients back to file atomically (temp + replace)
+        try:
+            temp_path = coef_path.with_suffix(".tmp")
+            temp_path.write_text(json.dumps(coef, indent=2), encoding="utf-8")
+            temp_path.replace(coef_path)
+        except Exception:
+            pass
+
+# ---------------------------------------------------------------------------
+# Reducer implementations
+# ---------------------------------------------------------------------------
+
+def _kill_chains_disrupted(records: list[dict], repo_root: Path) -> dict:  # noqa: ARG001
+    path = repo_root / "state" / "kill_chain_events.jsonl"
+    if not path.exists():
+        return {"val": 0, "week_delta": 0, "calibrated": True}
+    
+    try:
+        now = datetime.now(timezone.utc)
+        this_week = now.strftime("%G-W%V")
+        last_week = (now - timedelta(days=7)).strftime("%G-W%V")
+        
+        this_week_chains = set()
+        last_week_chains = set()
+
+        for obj in _read_jsonl(path):
+            ts = obj.get("ts")
+            chain_id = obj.get("chain_id")
+            if ts is None or chain_id is None:
+                continue
+            try:
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                wk = dt.strftime("%G-W%V")
+                if wk == this_week:
+                    this_week_chains.add(chain_id)
+                elif wk == last_week:
+                    last_week_chains.add(chain_id)
+            except Exception:
+                continue
+
+        val = len(this_week_chains)
+        week_delta = val - len(last_week_chains)
+        return {"val": val, "week_delta": week_delta, "calibrated": True}
+    except Exception as e:
+        return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
+
+
+def _estimated_agent_time_saved(records: list[dict], repo_root: Path) -> dict:  # noqa: ARG001
+    state_file = repo_root / "state" / "DOJO_STATE.json"
+    coef_path = repo_root / "state" / "calibration_coefficients.json"
+    
+    if not state_file.exists() or not coef_path.exists():
+        return {"val": 0.0, "week_delta": 0.0, "calibrated": False}
+        
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8", errors="ignore"))
+        backlog = state.get("backlog", [])
+        
+        _calibrate_coefficients(backlog, coef_path)
+
+        coef_data = json.loads(coef_path.read_text(encoding="utf-8", errors="ignore"))
+        ops_coef = coef_data.get("operations", {})
+        calibrated = all(v.get("calibrated", False) for v in ops_coef.values()) if ops_coef else False
+        
+        now = datetime.now(timezone.utc)
+        this_week = now.strftime("%G-W%V")
+        last_week = (now - timedelta(days=7)).strftime("%G-W%V")
+        
+        def calculate_week_hours(week_str: str) -> float:
+            total_min = 0.0
+            for item in backlog:
+                if item.get("status") == "done":
+                    comp_dt = _parse_iso(item.get("completed_at"))
+                    if comp_dt and comp_dt.strftime("%G-W%V") == week_str:
+                        kind = item.get("kind", "skill")
+                        benchmark_min = ops_coef.get(kind, {}).get("benchmark_min", 30.0)
+                        total_min += benchmark_min
+            return total_min / 60.0
+            
+        val = calculate_week_hours(this_week)
+        last_val = calculate_week_hours(last_week)
+        week_delta = val - last_val
+        return {"val": round(val, 1), "week_delta": round(week_delta, 1), "calibrated": calibrated}
+    except Exception as e:
+        return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
+
+
+def _estimated_cost_savings(records: list[dict], repo_root: Path) -> dict:  # noqa: ARG001
+    ledger_file = repo_root / "state" / "budget_ledger.json"
+    coef_path = repo_root / "state" / "calibration_coefficients.json"
+    events_file = repo_root / "state" / "autonomic_events.jsonl"
+    history_path = _resolve_history_path(repo_root)
+        
+    try:
+        now = datetime.now(timezone.utc)
+        this_week = now.strftime("%G-W%V")
+        last_week = (now - timedelta(days=7)).strftime("%G-W%V")
+        
+        # Component 1: spent_usd delta
+        this_week_spend = 0.0
+        if ledger_file.exists():
+            ledger = json.loads(ledger_file.read_text(encoding="utf-8", errors="ignore"))
+            this_week_spend = float(ledger.get("spent_usd", 0.0))
+            
+        prior_week_spend = _get_prior_week_val(history_path, "brush/Token Efficiency/Total_Cost")
+        
+        comp1_savings = 0.0
+        comp1_calibrated = False
+        if prior_week_spend is not None:
+            comp1_calibrated = True
+            if this_week_spend < prior_week_spend:
+                comp1_savings = prior_week_spend - this_week_spend
+        
+        # Component 2: routing efficiency
+        coef_data = {}
+        if coef_path.exists():
+            coef_data = json.loads(coef_path.read_text(encoding="utf-8", errors="ignore"))
+        arch_coef = coef_data.get("architecture", {}).get("routing_efficiency_usd_per_event", {})
+        coef_val = arch_coef.get("benchmark", 0.05)
+        comp2_calibrated = arch_coef.get("calibrated", False)
+        
+        this_week_efficient_runs = 0
+        last_week_efficient_runs = 0
+        this_week_all_runs = 0
+        last_week_all_runs = 0
+        
+        for obj in _read_jsonl(events_file):
+            if obj.get("event") == "mechanism_run":
+                ts = obj.get("timestamp")
+                if ts:
+                    try:
+                        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        wk = dt.strftime("%G-W%V")
+                        if wk == this_week:
+                            this_week_all_runs += 1
+                            if obj.get("routing_efficient") is True:
+                                this_week_efficient_runs += 1
+                        elif wk == last_week:
+                            last_week_all_runs += 1
+                            if obj.get("routing_efficient") is True:
+                                last_week_efficient_runs += 1
+                    except Exception:
+                        continue
+                    
+        comp2_savings = this_week_efficient_runs * coef_val
+        last_week_comp2_savings = last_week_efficient_runs * coef_val
+        
+        val = comp1_savings + comp2_savings
+        week_delta = val - last_week_comp2_savings
+        
+        # Stale-data guard
+        data_gap = False
+        if this_week_all_runs == 0 and last_week_all_runs > 0:
+            data_gap = True
+            
+        calibrated = comp1_calibrated and comp2_calibrated
+        return {
+            "val": round(val, 2),
+            "week_delta": round(week_delta, 2),
+            "calibrated": calibrated,
+            "data_gap": data_gap
+        }
+    except Exception as e:
+        return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
+
+
+def _estimated_human_time_saved(records: list[dict], repo_root: Path) -> dict:  # noqa: ARG001
+    state_file = repo_root / "state" / "DOJO_STATE.json"
+    coef_path = repo_root / "state" / "calibration_coefficients.json"
+    
+    history_path = _resolve_history_path(repo_root)
+
+    try:
+        now = datetime.now(timezone.utc)
+        this_week = now.strftime("%G-W%V")
+        last_week = (now - timedelta(days=7)).strftime("%G-W%V")
+
+        coef_data = {}
+        if coef_path.exists():
+            coef_data = json.loads(coef_path.read_text(encoding="utf-8", errors="ignore"))
+        craft_coef = coef_data.get("craft", {})
+        calibrated = all(v.get("calibrated", False) for v in craft_coef.values()) if craft_coef else False
+
+        backlog = []
+        if state_file.exists():
+            backlog = json.loads(state_file.read_text(encoding="utf-8", errors="ignore")).get("backlog", [])
+            
+        def calculate_week_saved(week_str: str, check_time: datetime) -> float:
+            if week_str == this_week:
+                vibe_score = _vibe_alignment_score(records, repo_root)
+            else:
+                vibe_score = _get_prior_week_val(history_path, "arts/Output Quality/Vibe_Alignment") or 0.0
+                
+            prior_vibe_score = _get_prior_week_val(history_path, "arts/Output Quality/Vibe_Alignment") or 0.0
+            vibe_delta = max(0.0, vibe_score - prior_vibe_score)
+            vibe_coef = craft_coef.get("vibe_alignment_hrs_per_point", {}).get("benchmark", 0.5)
+            vibe_saved = vibe_delta * vibe_coef
+            
+            if week_str == this_week:
+                doc_lat = _doc_parity_latency_days(records, repo_root)
+            else:
+                doc_lat = _get_prior_week_val(history_path, "arts/Docs/Documentation_Parity_Latency") or 0.0
+                
+            prior_doc_lat = _get_prior_week_val(history_path, "arts/Docs/Documentation_Parity_Latency") or 0.0
+            doc_reduction = max(0.0, prior_doc_lat - doc_lat)
+            doc_coef = craft_coef.get("doc_parity_latency_hrs_per_day", {}).get("benchmark", 2.0)
+            doc_saved = doc_reduction * doc_coef
+            
+            promo_count = _get_weekly_promotions_count(check_time)
+            promo_coef = craft_coef.get("skill_promotion_hrs_per_promotion", {}).get("benchmark", 0.25)
+            promo_saved = promo_count * promo_coef
+            
+            arts_effort = _get_weekly_arts_effort(backlog, check_time)
+            arts_coef = craft_coef.get("arts_backlog_hrs_per_effort_point", {}).get("benchmark", 3.0)
+            arts_saved = arts_effort * arts_coef
+            
+            return vibe_saved + doc_saved + promo_saved + arts_saved
+            
+        val = calculate_week_saved(this_week, now)
+        last_val = calculate_week_saved(last_week, now - timedelta(days=7))
+        week_delta = val - last_val
+        
+        val_str = f"~{int(round(val))} hrs"
+        return {"val": val_str, "week_delta": round(week_delta, 1), "calibrated": calibrated}
+    except Exception as e:
+        return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
+
+
+def _pending_chain_proposals(records: list[dict], repo_root: Path) -> dict:  # noqa: ARG001
+    path = repo_root / "state" / "proposed_kill_chains.json"
+    if not path.exists():
+        return {"val": 0, "week_delta": 0, "calibrated": True}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        proposals = data.get("proposals", [])
+        val = sum(1 for p in proposals if p.get("status") == "proposed")
+        return {"val": val, "week_delta": 0, "calibrated": True}
+    except Exception as e:
+        return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
 
 
 # ---------------------------------------------------------------------------
@@ -712,7 +1059,65 @@ REGISTRY: list[dict[str, Any]] = [
         "reducer": _loop_breaker_fires,
         "tier": "AUTO",
     },
+    # ------------------------------------------------------------------
+    # SWORD — Kill_Chains_Disrupted  (NEW)
+    # ------------------------------------------------------------------
+    {
+        "pillar": "sword",
+        "metric": "Kill_Chains_Disrupted",
+        "key": "Kill_Chains_Disrupted",
+        "source": "state/kill_chain_events.jsonl",
+        "reducer": _kill_chains_disrupted,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # BOW — Estimated_Agent_Time_Saved  (NEW)
+    # ------------------------------------------------------------------
+    {
+        "pillar": "bow",
+        "metric": "Estimated_Agent_Time_Saved",
+        "key": "Estimated_Agent_Time_Saved",
+        "source": "state/DOJO_STATE.json",
+        "reducer": _estimated_agent_time_saved,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # BRUSH — Estimated_Cost_Savings  (NEW)
+    # ------------------------------------------------------------------
+    {
+        "pillar": "brush",
+        "metric": "Estimated_Cost_Savings",
+        "key": "Estimated_Cost_Savings",
+        "source": "state/budget_ledger.json",
+        "reducer": _estimated_cost_savings,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # ARTS — Estimated_Human_Time_Saved  (NEW)
+    # ------------------------------------------------------------------
+    {
+        "pillar": "arts",
+        "metric": "Estimated_Human_Time_Saved",
+        "key": "Estimated_Human_Time_Saved",
+        "source": "state/DOJO_STATE.json+vibe_alignment.json+doc_parity.json",
+        "reducer": _estimated_human_time_saved,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # SWORD — Pending_Chain_Proposals  (NEW)
+    # ------------------------------------------------------------------
+    {
+        "pillar": "sword",
+        "metric": "Pending_Chain_Proposals",
+        "key": "Pending_Chain_Proposals",
+        "source": "state/proposed_kill_chains.json",
+        "reducer": _pending_chain_proposals,
+        "tier": "AUTO",
+    },
 ]
+
+for _r in REGISTRY:
+    _r["key"] = _r.get("key", _r["metric"])
 
 
 # ---------------------------------------------------------------------------
@@ -746,12 +1151,28 @@ def compute_metric(
             "live": False,
             "error": str(exc),
         }
+    
+    calibrated = True
+    if isinstance(value, dict):
+        calibrated = value.get("calibrated", True)
+        if value.get("error"):
+            return {
+                "metric": name,
+                "value": None,
+                "source": entry["source"],
+                "tier": entry["tier"],
+                "live": False,
+                "error": value["error"],
+            }
+        value = value.get("val")
+
     return {
         "metric": name,
         "value": value,
         "source": entry["source"],
         "tier": entry["tier"],
         "live": True,
+        "calibrated": calibrated,
     }
 
 

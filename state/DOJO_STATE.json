@@ -46,7 +46,8 @@
       "title": "Build autonomic_events.jsonl emitter (unlocks Config Drift, MTTH, Zombie/Daemon, Hook Failure)",
       "value": 9,
       "effort": 4,
-      "status": "done"
+      "status": "done",
+      "started_at": null
     },
     {
       "id": "BOW-002",
@@ -57,7 +58,8 @@
       "effort": 2,
       "status": "done",
       "completed_at": "2026-06-07",
-      "note": "Tool_Failure_Rate reducer + tool_latencies field in telemetry.py"
+      "note": "Tool_Failure_Rate reducer + tool_latencies field in telemetry.py",
+      "started_at": null
     },
     {
       "id": "SWORD-001",
@@ -68,7 +70,8 @@
       "effort": 3,
       "status": "done",
       "completed_at": "2026-06-07",
-      "note": "Implemented Security_Score, Canary_Health, Secret_Scrub_Count in aggregate.py"
+      "note": "Implemented Security_Score, Canary_Health, Secret_Scrub_Count in aggregate.py",
+      "started_at": null
     },
     {
       "id": "SWORD-002",
@@ -79,7 +82,8 @@
       "effort": 2,
       "status": "done",
       "completed_at": "2026-06-07",
-      "note": "Implemented Security_Score, Canary_Health, Secret_Scrub_Count in aggregate.py"
+      "note": "Implemented Security_Score, Canary_Health, Secret_Scrub_Count in aggregate.py",
+      "started_at": null
     },
     {
       "id": "BRUSH-001",
@@ -88,7 +92,8 @@
       "title": "Extend telemetry.py with mcp_or_cli -> MCP-vs-CLI Ratio LIVE (MCP ~35x tokens)",
       "value": 10,
       "effort": 3,
-      "status": "done"
+      "status": "done",
+      "started_at": null
     },
     {
       "id": "BRUSH-002",
@@ -99,7 +104,8 @@
       "effort": 3,
       "status": "done",
       "completed_at": "2026-06-07",
-      "note": "Implemented in aggregate.py + telemetry.py by Agentica OS loop"
+      "note": "Implemented in aggregate.py + telemetry.py by Agentica OS loop",
+      "started_at": null
     },
     {
       "id": "BRUSH-003",
@@ -110,7 +116,8 @@
       "effort": 3,
       "status": "done",
       "completed_at": "2026-06-07",
-      "note": "Implemented in aggregate.py + telemetry.py by Agentica OS loop"
+      "note": "Implemented in aggregate.py + telemetry.py by Agentica OS loop",
+      "started_at": null
     },
     {
       "id": "ARTS-001",
@@ -121,7 +128,8 @@
       "effort": 3,
       "status": "done",
       "completed_at": "2026-06-07",
-      "note": "Documentation_Parity_Latency metric implemented via file mtime comparison"
+      "note": "Documentation_Parity_Latency metric implemented via file mtime comparison",
+      "started_at": null
     },
     {
       "id": "ARTS-002",
@@ -132,7 +140,8 @@
       "effort": 3,
       "status": "done",
       "completed_at": "2026-06-07",
-      "note": "vibe_alignment_scout.py (gemma-4-e4b local pass); Vibe_Alignment metric in aggregate.py; current score: 92"
+      "note": "vibe_alignment_scout.py (gemma-4-e4b local pass); Vibe_Alignment metric in aggregate.py; current score: 92",
+      "started_at": null
     },
     {
       "id": "AUTO-001",
@@ -141,7 +150,8 @@
       "title": "Config Drift Rate",
       "value": 1,
       "effort": 2,
-      "status": "todo"
+      "status": "todo",
+      "started_at": null
     },
     {
       "id": "AUTO-003",
@@ -150,7 +160,8 @@
       "title": "Loop-Breaker Fires",
       "value": 1,
       "effort": 2,
-      "status": "todo"
+      "status": "todo",
+      "started_at": null
     },
     {
       "id": "AUTO-006",
@@ -159,7 +170,8 @@
       "title": "Vibe Alignment (Anti-Slop) Score",
       "value": 1,
       "effort": 2,
-      "status": "done"
+      "status": "done",
+      "started_at": null
     },
     {
       "id": "AUTO-007",
@@ -168,7 +180,18 @@
       "title": "Vulnerability Window (Patch Latency)",
       "value": 1,
       "effort": 2,
-      "status": "todo"
+      "status": "todo",
+      "started_at": null
+    },
+    {
+      "id": "SWORD-kill_chain_discovery",
+      "pillar": "sword",
+      "kind": "scout",
+      "title": "MITRE ATT&CK Kill Chain Discovery Scout",
+      "value": 8,
+      "effort": 3,
+      "status": "todo",
+      "started_at": null
     }
   ],
   "budget": {

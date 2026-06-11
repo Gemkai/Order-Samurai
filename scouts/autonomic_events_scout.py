@@ -41,8 +41,8 @@ def _load_existing_keys(path: Path) -> set[str]:
     if not path.exists():
         return set()
     keys: set[str] = set()
-    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
-        line = line.strip()
+    for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw.strip()
         if not line:
             continue
         try:
@@ -99,7 +99,7 @@ def _read_hook_failures() -> list[dict]:
             "duration_ms": 0,
             "timestamp": ts_final,
         }
-        if not ts:
+        if ts is None:
             entry["inferred_at"] = ts_final
         events.append(entry)
     return events
