@@ -47,7 +47,8 @@ STEP C — ROUTE (pick one item per pillar)
 For each pillar in [bow, sword, brush, arts] where ronin_mode == "ronin":
   - Find the highest value/effort item with status != "done" and status != "doing"
   - If no item found for a pillar: mark that pillar as "skip" this cycle
-  - Mark selected items as status="doing"
+  - Mark selected items as status="doing" AND set started_at to the current UTC
+    ISO-8601 timestamp if it is null (calibration depends on this pair — never skip)
 
 If ALL pillars have no items:
   Run python bin/replenish_backlog.py
@@ -119,6 +120,11 @@ STEP F — PERSIST + EXIT
 ─────────────────────────────────────────────────────────────────
 Update state/DOJO_STATE.json:
   - Mark completed items done, set last_commit, update live_current per pillar
+  - Set completed_at to the current UTC ISO-8601 timestamp on every item you mark
+    done (and started_at from this cycle's Step C if still null — never fabricate
+    older timestamps)
+Run the timestamp backstop (idempotent, stamps anything missed):
+  python bin/stamp_dojo_timestamps.py
 Append to artifacts/ronin_logs.md one line per pillar:
   <date> | <pillar> | <metric>-><status> | <commit_hash or "blocked: reason">
 Print summary: pillars advanced, total LIVE delta, next cycle recommendation. Stop.
