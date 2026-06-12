@@ -1,5 +1,15 @@
 """Order Samurai metric aggregator.
 
+FROZEN repo-local kernel (2026-06-12). A second, larger agentica_core kernel
+lives in the Agentica OS Governance layer and produces the dashboard payload.
+Rules to prevent silent drift between the two:
+  - New DASHBOARD reducers/metrics go in the Governance copy
+    (C:/Users/jemak/Desktop/Agentica OS/Governance/agentica_core/aggregate.py).
+  - Shared logic (_parse_iso, _calibrate_coefficients) must stay semantically
+    identical in both copies — enforced by tests/test_kernel_drift.py.
+  - Repo-local reducers (DOJO_STATE, kill-chain, hub state files) stay here.
+Full merge is deferred to its own project; see SENSEI plan 2026-06-12.
+
 REGISTRY: the single source of truth for all LIVE metrics.
 Each entry declares a reducer that reads from a real source — never invented.
 
