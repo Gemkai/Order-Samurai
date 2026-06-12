@@ -47,7 +47,8 @@
       "value": 9,
       "effort": 4,
       "status": "done",
-      "started_at": null
+      "started_at": null,
+      "completed_at": "2026-06-07"
     },
     {
       "id": "BOW-002",
@@ -93,7 +94,8 @@
       "value": 10,
       "effort": 3,
       "status": "done",
-      "started_at": null
+      "started_at": null,
+      "completed_at": "2026-06-06"
     },
     {
       "id": "BRUSH-002",
@@ -171,7 +173,8 @@
       "value": 1,
       "effort": 2,
       "status": "done",
-      "started_at": null
+      "started_at": null,
+      "completed_at": "2026-06-09"
     },
     {
       "id": "AUTO-007",
