@@ -220,6 +220,28 @@ class RunPlanTests(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
+class TierFilterTests(unittest.TestCase):
+
+    def test_restricts_candidates_to_requested_tiers(self) -> None:
+        audit = _audit(
+            outdated=[_outdated("flask"), _outdated("certifi"), _outdated("numpy")],
+            cves=[_cve("certifi")],
+        )
+        report = run_plan(
+            audit,
+            installed=set(),
+            tiers={"cve", "security"},
+            dry_run_fn=lambda name: f"Would install {name}-x",
+        )
+        applied_names = {r["name"] for r in report["applied"]}
+        self.assertEqual(applied_names, {"certifi"})  # flask + numpy (rest tier) excluded
+
+    def test_default_none_considers_all_tiers(self) -> None:
+        audit = _audit(outdated=[_outdated("flask"), _outdated("numpy")])
+        report = run_plan(audit, installed=set(), dry_run_fn=lambda name: f"Would install {name}-x")
+        self.assertEqual(report["counts"]["candidates"], 2)
+
+
 # ---------------------------------------------------------------------------
 # Idempotency
 # ---------------------------------------------------------------------------

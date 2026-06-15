@@ -290,21 +290,31 @@ def _real_apply(name: str) -> bool:
     return proc.returncode == 0
 
 
+TIERS = ("cve", "security", "rest")
+
+
 def run_plan(
     audit: dict,
     installed: set[str],
     *,
+    tiers: set[str] | None = None,
     do_apply: bool = False,
     dry_run_fn: Callable[[str], str] = _real_dry_run,
     apply_fn: Callable[[str], bool] = _real_apply,
 ) -> dict:
     """Build and (optionally) execute the deterministic upgrade plan.
 
+    `tiers` restricts which risk tiers are considered (default: all). The reflex
+    engine wires this to {cve, security} so an autonomous run dry-runs only the
+    security-relevant subset — a handful of packages, not the full outdated list.
+
     Pure given its injected `dry_run_fn` / `apply_fn` — the unit test passes fixtures
     so it never shells out to pip. Returns a structured, JSON-serialisable report.
     """
     ml_mode = detect_ml_mode(installed)
     candidates = triage(audit)
+    if tiers is not None:
+        candidates = [c for c in candidates if c.tier in tiers]
 
     applied: list[dict] = []
     blocked: list[dict] = []
@@ -337,6 +347,7 @@ def run_plan(
 
     return {
         "ml_mode": ml_mode,
+        "tiers": sorted(tiers) if tiers is not None else "all",
         "applied": applied,
         "blocked": blocked,
         "skipped": skipped,
@@ -394,8 +405,18 @@ def main(argv: list[str] | None = None) -> int:
                         help="path to dependency_audit.json")
     parser.add_argument("--apply", action="store_true",
                         help="actually upgrade rule-cleared packages (default: plan only)")
+    parser.add_argument("--tiers", type=str, default=None,
+                        help=f"comma-separated risk tiers to consider (any of {','.join(TIERS)}; default: all)")
     parser.add_argument("--json", action="store_true", help="emit the report as JSON")
     args = parser.parse_args(argv)
+
+    tiers: set[str] | None = None
+    if args.tiers:
+        tiers = {t.strip() for t in args.tiers.split(",") if t.strip()}
+        invalid = tiers - set(TIERS)
+        if invalid:
+            print(f"pip-safe-upgrade: unknown tier(s) {sorted(invalid)}; valid: {TIERS}", file=sys.stderr)
+            return 2
 
     try:
         audit = json.loads(args.audit.read_text(encoding="utf-8"))
@@ -403,7 +424,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"pip-safe-upgrade: cannot read audit {args.audit}: {exc}", file=sys.stderr)
         return 1
 
-    report = run_plan(audit, _installed_packages(), do_apply=args.apply)
+    report = run_plan(audit, _installed_packages(), tiers=tiers, do_apply=args.apply)
     print(json.dumps(report, indent=2) if args.json else _format_report(report))
     return 0
 
