@@ -33,15 +33,29 @@ def _run_dojo_timestamp_checks() -> list[dict]:
     except Exception as exc:
         return [{"status": "WARN", "label": "dojo-timestamps",
                  "detail": f"DOJO_STATE.json unreadable: {exc}"}]
-    missing = [i.get("id", "?") for i in backlog
-               if (i.get("status") == "done" and not i.get("completed_at"))
-               or (i.get("status") == "doing" and not i.get("started_at"))]
-    if missing:
-        return [{"status": "WARN", "label": "dojo-timestamps",
-                 "detail": f"{len(missing)} item(s) missing calibration timestamps "
-                           f"({', '.join(missing[:5])}) — run bin/stamp_dojo_timestamps.py"}]
-    return [{"status": "OK", "label": "dojo-timestamps",
-             "detail": "all done/doing backlog items carry calibration timestamps"}]
+    # Recoverable: a backstop run of stamp_dojo_timestamps.py can fill these.
+    recoverable = [i.get("id", "?") for i in backlog
+                   if (i.get("status") == "done" and not i.get("completed_at"))
+                   or (i.get("status") == "doing" and not i.get("started_at"))]
+    # Lost: a done item with no started_at has no honest source for it (commit-span
+    # is not work-duration; stamping it = a fabricated 0-min sample). The real fix is
+    # forward — stamp started_at at dispatch, not only at cycle end.
+    lost = [i.get("id", "?") for i in backlog
+            if i.get("status") == "done" and not i.get("started_at")]
+    results: list[dict] = []
+    if recoverable:
+        results.append({"status": "WARN", "label": "dojo-timestamps",
+                        "detail": f"{len(recoverable)} item(s) missing recoverable timestamps "
+                                  f"({', '.join(recoverable[:5])}) — run bin/stamp_dojo_timestamps.py"})
+    if lost:
+        results.append({"status": "WARN", "label": "dojo-timestamps.lost-samples",
+                        "detail": f"{len(lost)} done item(s) missing started_at with no recoverable source "
+                                  f"({', '.join(lost[:5])}) — calibration samples permanently lost; fix "
+                                  f"forward capture (stamp started_at at dispatch, not only at cycle end)"})
+    if not results:
+        results.append({"status": "OK", "label": "dojo-timestamps",
+                        "detail": "all done/doing backlog items carry calibration timestamps"})
+    return results
 
 
 def main() -> int:
