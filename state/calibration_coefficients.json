@@ -14,5 +14,5 @@
     "skill_promotion_hrs_per_promotion": {"benchmark": 0.25, "calibrated": false, "sample_count": 0},
     "arts_backlog_hrs_per_effort_point": {"benchmark": 3.0, "calibrated": false, "sample_count": 0}
   },
-  "calibration_threshold": {"samples": 20, "weeks": 4}
+  "calibration_threshold": {"samples": 10, "weeks": 4}
 }
