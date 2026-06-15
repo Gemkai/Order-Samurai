@@ -49,6 +49,11 @@ For each pillar in [bow, sword, brush, arts] where ronin_mode == "ronin":
   - If no item found for a pillar: mark that pillar as "skip" this cycle
   - Mark selected items as status="doing" AND set started_at to the current UTC
     ISO-8601 timestamp if it is null (calibration depends on this pair — never skip)
+  - Immediately run the timestamp backstop so started_at is CODE-guaranteed at
+    dispatch (prompt instructions are not guarantees; an item that reaches "done"
+    without started_at is a permanently lost calibration sample — the Step F
+    backstop runs too late to catch it):
+    python bin/stamp_dojo_timestamps.py
 
 If ALL pillars have no items:
   Run python bin/replenish_backlog.py
