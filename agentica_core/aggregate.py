@@ -561,6 +561,7 @@ def _calibrate_coefficients(backlog: list[dict], coef_path: Path):
         return
     
     samples_by_kind = defaultdict(list)
+    earliest_start = None
     for item in backlog:
         if item.get("status") == "done":
             start = _parse_iso(item.get("started_at"))
@@ -568,17 +569,34 @@ def _calibrate_coefficients(backlog: list[dict], coef_path: Path):
             if start and comp:
                 duration = (comp - start).total_seconds() / 60
                 samples_by_kind[item.get("kind")].append(duration)
+                if earliest_start is None or start < earliest_start:
+                    earliest_start = start
 
     total_samples = sum(len(v) for v in samples_by_kind.values())
-    threshold = coef.get("calibration_threshold", {}).get("samples", 20)
+    thresholds = coef.get("calibration_threshold", {})
+    sample_threshold = thresholds.get("samples", 20)
+    week_threshold = thresholds.get("weeks")
 
-    if total_samples >= threshold:
+    enough_samples = total_samples >= sample_threshold
+    # Time-bounded fallback: once real samples have been collecting for `weeks`,
+    # calibrate from whatever exists rather than waiting for the full sample count.
+    # Never fabricates — a kind with zero samples stays on its seed benchmark.
+    enough_time = (
+        week_threshold is not None
+        and total_samples > 0
+        and earliest_start is not None
+        and (datetime.now(timezone.utc) - earliest_start) >= timedelta(weeks=week_threshold)
+    )
+
+    if enough_samples or enough_time:
+        via = "samples" if enough_samples else "time"
         for kind, values in samples_by_kind.items():
             if kind in coef.get("operations", {}):
                 avg = sum(values) / len(values)
                 coef["operations"][kind]["benchmark_min"] = avg
                 coef["operations"][kind]["calibrated"] = True
                 coef["operations"][kind]["sample_count"] = len(values)
+                coef["operations"][kind]["calibrated_via"] = via
         
         # Save coefficients back to file atomically (temp + replace)
         try:
