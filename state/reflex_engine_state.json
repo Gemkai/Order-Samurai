@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "timestamp": "2026-06-11T00:59:17.470Z",
+  "timestamp": "2026-06-15T00:11:25.814Z",
   "cooldowns": {
     "metric:sword:Deprecated_Deps::/codebase-cleanup-deps-audit": {
       "firedAt": 1780883938042
@@ -21,7 +21,7 @@
       "firedAt": 1780894581123
     },
     "metric:arts:Simplify_Age::/simplify": {
-      "firedAt": 1781139554097
+      "firedAt": 1781451942129
     },
     "metric:arts:Skill_Conflicts::/skill-consolidator": {
       "firedAt": 1780920969838
@@ -49,6 +49,27 @@
     },
     "trajectory:arts:Simplify_Age::/simplify": {
       "firedAt": 1781086368503
+    },
+    "metric:sword:Canary_Failures::/canary-fault-diagnosis": {
+      "firedAt": 1781413330193
+    },
+    "metric:sword:Deprecated_Deps::/pip-safe-upgrade": {
+      "firedAt": 1781413871943
+    },
+    "metric:brush:Subagent_Efficiency_Index::/subagent-audit": {
+      "firedAt": 1781414085026
+    },
+    "correlation:cost_and_quality_tradeoff::/model-selector": {
+      "firedAt": 1781436083118
+    },
+    "correlation:slop_and_docs_co_degraded::/humanizer": {
+      "firedAt": 1781434029245
+    },
+    "metric:sword:Vulnerability_MTTR::/pip-safe-upgrade": {
+      "firedAt": 1781452583700
+    },
+    "metric:bow:Agent_Autonomy_Ratio::/sensei-cycle": {
+      "firedAt": 1781482285302
     }
   },
   "noImprovement": {
@@ -77,7 +98,7 @@
       "stuck": true
     },
     "metric:arts:Simplify_Age::/simplify": {
-      "consecutive": 0,
+      "consecutive": 1,
       "stuck": false
     },
     "metric:arts:Skill_Conflicts::/skill-consolidator": {
@@ -115,6 +136,34 @@
     "trajectory:arts:Simplify_Age::/simplify": {
       "consecutive": 0,
       "stuck": false
+    },
+    "metric:sword:Canary_Failures::/canary-fault-diagnosis": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "metric:sword:Deprecated_Deps::/pip-safe-upgrade": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "metric:brush:Subagent_Efficiency_Index::/subagent-audit": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "correlation:cost_and_quality_tradeoff::/model-selector": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "correlation:slop_and_docs_co_degraded::/humanizer": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "metric:sword:Vulnerability_MTTR::/pip-safe-upgrade": {
+      "consecutive": 2,
+      "stuck": true
+    },
+    "metric:bow:Agent_Autonomy_Ratio::/sensei-cycle": {
+      "consecutive": 2,
+      "stuck": true
     }
   }
 }

@@ -1,9 +1,45 @@
 {
+  "sensei-cycle": {
+    "total_runs": 2,
+    "success_count": 0,
+    "success_rate": 0.0,
+    "cooldown_multiplier": 0.25
+  },
+  "pip-safe-upgrade": {
+    "total_runs": 4,
+    "success_count": 0,
+    "success_rate": 0.0,
+    "cooldown_multiplier": 3
+  },
   "simplify": {
-    "total_runs": 17,
+    "total_runs": 18,
     "success_count": 15,
-    "success_rate": 0.882,
+    "success_rate": 0.833,
     "cooldown_multiplier": 1
+  },
+  "model-selector": {
+    "total_runs": 7,
+    "success_count": 3,
+    "success_rate": 0.429,
+    "cooldown_multiplier": 1
+  },
+  "humanizer": {
+    "total_runs": 6,
+    "success_count": 0,
+    "success_rate": 0.0,
+    "cooldown_multiplier": 3
+  },
+  "subagent-audit": {
+    "total_runs": 3,
+    "success_count": 0,
+    "success_rate": 0.0,
+    "cooldown_multiplier": 3
+  },
+  "canary-fault-diagnosis": {
+    "total_runs": 2,
+    "success_count": 0,
+    "success_rate": 0.0,
+    "cooldown_multiplier": 0.25
   },
   "codebase-cleanup-deps-audit": {
     "total_runs": 15,
@@ -29,20 +65,8 @@
     "success_rate": 0.846,
     "cooldown_multiplier": 1
   },
-  "model-selector": {
-    "total_runs": 4,
-    "success_count": 2,
-    "success_rate": 0.5,
-    "cooldown_multiplier": 1
-  },
   "policy-enforcement-audit": {
     "total_runs": 2,
-    "success_count": 0,
-    "success_rate": 0.0,
-    "cooldown_multiplier": 0.25
-  },
-  "subagent-audit": {
-    "total_runs": 1,
     "success_count": 0,
     "success_rate": 0.0,
     "cooldown_multiplier": 0.25
@@ -52,12 +76,6 @@
     "success_count": 0,
     "success_rate": 0.0,
     "cooldown_multiplier": 0.25
-  },
-  "humanizer": {
-    "total_runs": 4,
-    "success_count": 0,
-    "success_rate": 0.0,
-    "cooldown_multiplier": 3
   },
   "audit-mechanisms": {
     "total_runs": 8,
