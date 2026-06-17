@@ -133,7 +133,7 @@ See RONIN-MECHANISM-ROUTE-PLAN.md §4 for full explanation.
 
 - Governance API server must be restarted for TS changes to take effect — tsx watch only picks up source file saves when the process is live, not after branch switches.
 - If `feat/reflex-mechanism-route` is ever rebased/merged into `feat/hero-metrics-honesty`, the mechanism blocks in METRIC_CONFIG may conflict (the earlier branch only wired `Deprecated_Deps` → `pip_safe_upgrade.py`; this commit wires 4 Tier-1 scripts). Resolve by keeping the Tier-1 entries from this commit.
-- `emit_event.py` flags added but NOT yet called from `_runMechanism` in reflex-engine.ts — calling `emit_event mechanism_run --kind mechanism --routing-efficient` from the TS spawn is a follow-up wiring step deferred to the next session.
+- ~~`emit_event.py` flags added but NOT yet called from reflex-engine.ts~~ **RESOLVED 2026-06-17** (Governance `1ca9559`): `_afterRun` now emits `mechanism_run --routing-efficient --kind mechanism` (pillar-tagged, fire-and-forget, 15s timeout) on a successful mechanism run. The routing loop is code-complete; `tsc --noEmit` clean, 216 tests pass.
 
 ---
 
