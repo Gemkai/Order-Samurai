@@ -4,7 +4,7 @@
       "chain_id": 1,
       "name": "Credential Harvesting via Reconnaissance",
       "status": "proposed",
-      "proposed_at": "2026-06-17T02:48:31.574406+00:00",
+      "proposed_at": "2026-06-17T03:30:17.849801+00:00",
       "firing_detection_points": [
         "secret_scrubber"
       ],
@@ -18,7 +18,7 @@
       "chain_id": 8,
       "name": "Credential Access (Registry/LSASS)",
       "status": "proposed",
-      "proposed_at": "2026-06-17T02:48:31.574406+00:00",
+      "proposed_at": "2026-06-17T03:30:17.849801+00:00",
       "firing_detection_points": [
         "secret_scrubber"
       ],
@@ -31,7 +31,7 @@
       "chain_id": 12,
       "name": "Exfiltration over DNS",
       "status": "proposed",
-      "proposed_at": "2026-06-17T02:48:31.574406+00:00",
+      "proposed_at": "2026-06-17T03:30:17.849801+00:00",
       "firing_detection_points": [
         "secret_scrubber"
       ],
@@ -44,7 +44,7 @@
       "chain_id": 13,
       "name": "Prompt Injection",
       "status": "proposed",
-      "proposed_at": "2026-06-17T02:48:31.574406+00:00",
+      "proposed_at": "2026-06-17T03:30:17.849801+00:00",
       "firing_detection_points": [
         "prompt_injection_guard"
       ],
@@ -54,6 +54,6 @@
       "confidence": 1.0
     }
   ],
-  "last_run": "2026-06-17T02:48:31.574406+00:00",
+  "last_run": "2026-06-17T03:30:17.849801+00:00",
   "approved_count": 0
 }
