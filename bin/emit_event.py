@@ -75,6 +75,13 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Duration in milliseconds (integer)",
     )
+    parser.add_argument(
+        "--routing-efficient",
+        action="store_true",
+        default=False,
+        help="Mark event as routing-efficient (mechanism ran instead of LLM skill)",
+    )
+    parser.add_argument("--kind", default=None, help="Execution kind: 'mechanism' or 'skill'")
     args = parser.parse_args(argv)
 
     # Validate event type.
@@ -94,6 +101,10 @@ def main(argv: list[str] | None = None) -> int:
         event["detail"] = args.detail
     if args.duration_ms is not None:
         event["duration_ms"] = args.duration_ms
+    if args.routing_efficient:
+        event["routing_efficient"] = True
+    if args.kind is not None:
+        event["kind"] = args.kind
 
     try:
         target = append_event(event)
