@@ -1,3 +1,133 @@
+## Handoff — 2026-06-15 Determinize mechanical ronin mechanisms (batch)
+
+### Scope
+Five additional deterministic mechanisms extracted from 0%-success LLM skills; rival adversarial review applied to each classifier. Full suite now: 7 determinized mechanisms, 216 tests, 0 regressions.
+
+### Files changed
+
+| File | Reason |
+|------|--------|
+| `bin/subagent_audit.py` | Deterministic spawn classifier; metric: `brush:Subagent_Efficiency_Index`; SA-01 fix: parallel rule requires non-trivial description |
+| `tests/test_subagent_audit.py` | 26 tests; includes 2 false-positive regression guards (SA-01, SA-02) |
+| `bin/policy_enforcement_audit.py` | Deterministic policy-reader classifier; metric: `sword:Rule_Violations`; PE-02: intent-context narrowing; PE-03: snippet-scoped classification |
+| `tests/test_policy_enforcement_audit.py` | 31 tests; includes `test_classifies_raise_key_error_as_observer` and snippet-scope guards |
+| `bin/model_selector.py` | Deterministic model routing mechanism; metric: `brush:Local_Routing_Share` |
+| `tests/test_model_selector.py` | Fixture-driven + idempotency tests |
+| `bin/canary_fault_detect.py` | Deterministic canary failure detector; metric: `bow:Canary_Failures` |
+| `tests/test_canary_fault_detect.py` | Fixture-driven + idempotency tests |
+| `bin/skill_consolidator.py` | Deterministic skill dedup detector; metric: `arts:Skills_Optimized` |
+| `tests/test_skill_consolidator.py` | Fixture-driven + idempotency tests |
+| `RONIN-MECHANISM-ROUTE-PLAN.md` | v2 verified wiring plan for live Governance kernel (supersedes draft) — staged, not applied |
+
+### Tests run
+
+```
+python -m pytest tests/test_subagent_audit.py tests/test_policy_enforcement_audit.py \
+    tests/test_model_selector.py tests/test_canary_fault_detect.py \
+    tests/test_skill_consolidator.py tests/test_codebase_deps_audit.py -q
+→  139 passed in 0.15s
+
+python -m pytest tests/ -q
+→  216 passed in 0.32s
+```
+
+### Key lessons captured (rival review found these despite green tests)
+
+1. **Priority rule before exclusion filter** (`SA-01`): `turn_spawn_count >= 3` fired before `TRIVIAL_KEYWORDS` check — trivial 3-spawn turns got `justified_parallel`. Fix: `and not any(kw in desc_low for kw in TRIVIAL_KEYWORDS)` added to parallel rule.
+2. **Intent-context required in semantic regex** (`PE-02`): `r"\braise\b.*[Ee]rror"` matched `raise KeyError`, `raise AttributeError` anywhere in file → false ENFORCER. Fix: `r"\braise\b.*(polic|block|violat|deny|[Pp]ermission)"`.
+3. **Classify the excerpt, not the file** (`PE-03`): `classify_reader(content)` on 500-line file → `return False` in any `__eq__` method triggered ENFORCER. Fix: extract ±2-line snippet around the policy filename reference, classify snippet only.
+4. **Real I/O fns must precede `run_audit`** (`PC-02`): Python evaluates default arg values at definition time — functions used as defaults must be defined first in the file.
+
+### Open risks
+
+- All 7 mechanisms are staged only: `RONIN-MECHANISM-ROUTE-PLAN.md` wires them but the live-kernel edits to `insights.py` + `reflex-engine.ts` have NOT been applied. Skill efficacy rates remain 0% until wired.
+- `audit-mechanisms` skill still LLM-only (last remaining mechanical candidate).
+
+### Security surface
+
+- No new endpoints, no auth changes, no user input paths
+- All mechanisms use `subprocess.run` with `shell=False` list args + explicit timeouts
+- `--apply` / `--fix` flags are opt-in; defaults are plan/report-only
+
+### Rollback plan
+
+`git revert ae90577 52c803d 0833474 3902bb1` removes all five mechanisms. Each test file has no external dependencies; no state files are written on revert.
+
+### 5 grep checks
+
+| # | Check | Result |
+|---|-------|--------|
+| 1 | No raw user input in subprocess args | PASS — all args are hardcoded lists |
+| 2 | No secrets in log calls | PASS — no `console.log`/`logger.` calls |
+| 3 | Every new route has auth middleware | N/A — no new routes |
+| 4 | Every new env var is read in code | N/A — no new env vars |
+| 5 | Every changed line traces to stated goal | PASS — all insertions in mechanism + eval files |
+
+### Expected Antigravity tasks
+
+- Apply `RONIN-MECHANISM-ROUTE-PLAN.md` wiring to live Governance kernel (`insights.py` METRIC_CONFIG + `reflex-engine.ts`) to activate autonomous execution path
+- Wire exec log writes so `no_op` vs `never_fired` is distinguishable in dashboard
+- Post-wire: confirm `skill_efficacy.json` rates flip from 0% after first live run
+
+---
+
+## Handoff — 2026-06-15 Determinize pip-safe-upgrade mechanism
+
+### Files changed
+
+| File | Reason |
+|------|--------|
+| `bin/pip_safe_upgrade.py` | New deterministic mechanism: triage by risk tier, ML constraint detection, dry-run parsing, apply/block/skip decisions — all as pure functions with injected I/O; `_SAFE_PKG_NAME` regex rejects URL-scheme names at intake |
+| `tests/test_pip_safe_upgrade.py` | 25-test eval harness covering all decision paths + URL-scheme injection rejection; no subprocess calls (lambda fixtures) |
+| `docs/solutions/best-practices/inject-io-callables-for-pure-testable-mechanisms-2026-06-15.md` | Solution doc capturing the I/O injection pattern |
+| `.mex/patterns/determinize-llm-skill-mechanism.md` | New pattern: step-by-step guide for extracting any LLM skill into a testable mechanism |
+| `.mex/patterns/INDEX.md` | Added pointer to new pattern |
+
+### Tests run
+
+```
+python -m pytest tests/test_pip_safe_upgrade.py -v  →  25 passed in 0.06s
+```
+
+### Open risks
+
+1. **No JSON schema validation on the audit file (security gate Medium finding)**: The mechanism validates package name format (`_SAFE_PKG_NAME`) but does not validate the overall JSON schema of `dependency_audit.json`. A crafted file with correct name format but wrong types (e.g., non-string `version`) could produce a misleading report. Near-term: add a structural type-check on the two top-level arrays after the file is read. For higher assurance: HMAC signature on audit file from `dependency_audit.py`.
+
+2. **`mechanism` field in live-kernel route not yet merged to `main`**: The wiring in `insights.py` + `reflex-engine.ts` is on branch `feat/reflex-mechanism-route` in the Agentica OS repo. This branch delivers the mechanism but the reflex engine won't invoke it automatically until that branch merges.
+2. **`torch` CVE (GHSA-rrmf-rvhw-rf47) has no upstream fix**: Mechanism correctly blocks it; no action needed until torch ≥2.13.0 is compatible with torchvision/accelerate pins.
+3. **`state/exec_log.jsonl` write not yet implemented in the mechanism**: The mechanism prints a report but does not write to the exec log, so the dashboard "ran and found nothing to do" vs "never fired" distinction is not yet surfaced.
+4. **`docs/solutions/best-practices/` doc uses 2026-06-15 date** despite file creation on 2026-06-17 (session spanned dates). Date reflects the work date, not the doc creation date.
+
+### Security surface
+
+- No new endpoints, no auth changes, no user input paths
+- `bin/pip_safe_upgrade.py` shells out to `pip install --upgrade` via `subprocess.run` — explicitly `shell=False` (list args), explicit 300s timeout, never reads or executes user-supplied strings
+- `--apply` flag is opt-in; default is plan-only (no side effects)
+
+### Rollback plan
+
+`git revert 604c15c 7d8ec26` removes both committed files cleanly. The test file has no external dependencies; the mechanism file has no state files. Zero risk of data loss on revert.
+
+If the live-kernel route (`feat/reflex-mechanism-route`) is already merged before revert: also revert the `insights.py` and `reflex-engine.ts` changes in the Agentica OS repo — the `mechanism` field will be ignored if the script doesn't exist, but it's cleaner to remove it.
+
+### 5 grep checks
+
+| # | Check | Result |
+|---|-------|--------|
+| 1 | No raw user input in subprocess args | PASS — no `spawn()`; args are hardcoded list |
+| 2 | No secrets in log calls | PASS — no `console.log`/`logger.` calls |
+| 3 | Every new route has auth middleware | N/A — no new routes |
+| 4 | Every new env var is read in code | N/A — no new env vars |
+| 5 | Every changed line traces to stated goal | PASS — 709 insertions, all in mechanism + eval |
+
+### Expected Antigravity tasks
+
+- Merge `feat/reflex-mechanism-route` (Agentica OS) to activate the autonomous execution path
+- Wire exec log write to `state/exec_log.jsonl` so no-op runs are visible in the dashboard
+- Post-merge: verify `Deprecated_Deps` reflex fires `bin/pip_safe_upgrade.py --tiers cve,security` via the TS engine
+
+---
+
 ## Handoff — 2026-06-10 Aggregate Metrics Rethink + Kill Chain Security Layer
 _Generated by /grill-me — Act 3_
 

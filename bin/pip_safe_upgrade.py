@@ -46,6 +46,11 @@ SETUPTOOLS_ML_CEILING = 82
 # pip subprocess timeout — remote index calls must never hang the mechanism.
 PIP_TIMEOUT_S = 300
 
+# PEP 508 package name: only alphanum, dots, hyphens, underscores.
+# Rejects URL schemes (git+, http://) and path separators that pip would
+# interpret as non-index install sources from an untrusted audit file.
+_SAFE_PKG_NAME = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$")
+
 
 # ---------------------------------------------------------------------------
 # Version helpers
@@ -111,9 +116,26 @@ def triage(audit: dict) -> list[Candidate]:
     over rest. Packages in pip_cves but absent from pip_outdated still upgrade (their
     target is the audit's latest if known, else "latest"). Deterministic ordering:
     within each tier, alphabetical by name.
+
+    Names that do not conform to PEP 508 (e.g., URL schemes like git+https://) are
+    rejected at intake to prevent a tampered audit file from injecting arbitrary pip
+    install targets into subprocess args.
     """
-    outdated = {p["name"].lower(): p for p in audit.get("pip_outdated", [])}
-    cve_names = {c["package"].lower() for c in audit.get("pip_cves", [])}
+    outdated: dict[str, dict] = {}
+    for p in audit.get("pip_outdated", []):
+        raw = p.get("name", "")
+        if _SAFE_PKG_NAME.match(raw):
+            outdated[raw.lower()] = p
+        else:
+            print(f"pip-safe-upgrade: skipping unsafe package name: {raw!r}", file=sys.stderr)
+
+    cve_names: set[str] = set()
+    for c in audit.get("pip_cves", []):
+        raw = c.get("package", "")
+        if _SAFE_PKG_NAME.match(raw):
+            cve_names.add(raw.lower())
+        else:
+            print(f"pip-safe-upgrade: skipping unsafe CVE entry: {raw!r}", file=sys.stderr)
 
     candidates: list[Candidate] = []
     seen: set[str] = set()

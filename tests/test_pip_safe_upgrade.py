@@ -85,6 +85,17 @@ class TriageTests(unittest.TestCase):
         self.assertEqual(plan[0].name, "requests")
         self.assertEqual(plan[0].target, "latest")
 
+    def test_rejects_url_scheme_names_from_outdated_and_cves(self) -> None:
+        audit = _audit(
+            outdated=[_outdated("flask"), _outdated("git+https://evil.com/pkg")],
+            cves=[_cve("requests"), _cve("git+https://evil.com/pkg")],
+        )
+        plan = triage(audit)
+        names = {c.name.lower() for c in plan}
+        self.assertNotIn("git+https://evil.com/pkg", names)
+        self.assertIn("flask", names)
+        self.assertIn("requests", names)
+
 
 # ---------------------------------------------------------------------------
 # detect_ml_mode
