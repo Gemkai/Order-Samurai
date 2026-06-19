@@ -54,6 +54,15 @@ SEARCH_DIRS = [
     r"C:\Users\jemak\Desktop\Agentica OS\Governance",
 ]
 
+# Dependency/build/VCS dirs to prune from the os.walk — they never contain
+# this project's own policy enforcers, and walking node_modules under the
+# Governance dir made the mechanism exceed its 120s timeout (each of the ~6
+# policy files triggered a full re-walk). Mirrors aggregate.py's _KC_PRUNE.
+_PRUNE_DIRS = frozenset({
+    "node_modules", ".git", "__pycache__", "dist", "build",
+    ".venv", "venv", ".next", ".turbo", ".cache",
+})
+
 # File extensions considered for reader search — text-based code/config only.
 READER_EXTENSIONS = {".py", ".js", ".ts", ".sh", ".json", ".yaml", ".yml", ".md"}
 
@@ -225,7 +234,9 @@ def _real_readers(policy_path: str) -> list[dict]:
     for search_dir in SEARCH_DIRS:
         if not os.path.isdir(search_dir):
             continue
-        for dirpath, _dirnames, filenames in os.walk(search_dir):
+        for dirpath, dirnames, filenames in os.walk(search_dir):
+            # Prune heavy dependency/build/VCS dirs in place so os.walk skips them.
+            dirnames[:] = [d for d in dirnames if d not in _PRUNE_DIRS]
             for fname in filenames:
                 if Path(fname).suffix not in READER_EXTENSIONS:
                     continue
