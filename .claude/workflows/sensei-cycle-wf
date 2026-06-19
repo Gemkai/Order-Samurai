@@ -1,7 +1,7 @@
 export const meta = {
   name: 'sensei-cycle-wf',
   description: 'Verified auto-remediation cycle as a workflow: scout 4 pillars, adversarially verify with rival, post verdicts',
-  whenToUse: 'The dynamic-workflow form of the sensei-cycle skill. Fans out 4 ronin scouts in parallel, runs the rival adversarial verifier per real finding, then persists verdicts to the reflex engine. Pass {dryRun:true} to stop before any write/POST. Runs alongside the sensei-cycle skill; A/B them before retiring the skill.',
+  whenToUse: 'The dynamic-workflow form of the sensei-cycle skill. Fans out 4 ronin scouts in parallel, runs the rival adversarial verifier per real finding, then persists verdicts to the reflex engine. FAIL-SAFE: defaults to dry-run (no write/POST); pass {live:true} to actually persist. Runs alongside the sensei-cycle skill; A/B them before retiring the skill.',
   phases: [
     { title: 'Load', detail: 'read payload + ledger + budget; group active reflexes by pillar' },
     { title: 'Scout+Verify', detail: 'per pillar: ronin scout re-measures, then rival verifies each real finding' },
@@ -9,7 +9,12 @@ export const meta = {
   ],
 }
 
-const DRY_RUN = !!(args && args.dryRun)
+// Args may arrive as an object OR a JSON string — parse defensively.
+const A = (() => { try { return typeof args === 'string' ? JSON.parse(args) : (args || {}) } catch { return {} } })()
+// FAIL-SAFE: this cycle POSTs to the live reflex engine, so it stays in dry-run unless the
+// caller EXPLICITLY opts into live with {live:true}. A missing/malformed flag can never POST.
+const DRY_RUN = A.live !== true
+const RIVAL_MODEL = A.rivalModel || 'sonnet'  // rival agentType pins an inaccessible model; override
 const REPO = 'C:\\Users\\jemak\\Desktop\\Projects\\Order Samurai'
 const GOV = 'C:\\Users\\jemak\\Desktop\\Agentica OS\\Governance'
 const WID = `${GOV}\\dashboard-ui\\public\\wid_payload.json`
@@ -117,7 +122,7 @@ const perPillar = await pipeline(
         `Adversarially verify this ${pillar} finding. Try to REFUTE it: re-measure the real source `
         + `independently. Return CONFIRMED only if the breach is real and the scout's evidence holds; `
         + `REFUTED if phantom/stale; SUSPECT if you cannot tell. Finding: ${JSON.stringify(f)}`,
-        { label: `rival:${f.reflex_id}`, phase: 'Scout+Verify', agentType: 'rival', schema: VERDICT },
+        { label: `rival:${f.reflex_id}`, phase: 'Scout+Verify', agentType: 'rival', model: RIVAL_MODEL, schema: VERDICT },
       )),
   ),
 )

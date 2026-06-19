@@ -12,6 +12,7 @@ export const meta = {
 // runtime constraint: only agents touch the filesystem/shell).
 const REPO = 'C:\\Users\\jemak\\Desktop\\Projects\\Order Samurai'
 const GOV = 'C:\\Users\\jemak\\Desktop\\Agentica OS\\Governance'
+const CLAUDE = 'C:\\Users\\jemak\\.claude'
 
 const FINDINGS = {
   type: 'object',
@@ -42,7 +43,7 @@ const FINDINGS = {
 const AUDITS = [
   { key: 'policy-enforcement', run: `python "${REPO}/bin/policy_enforcement_audit.py" --json`, note: 'declared-but-unenforced policy' },
   { key: 'mechanism', run: `python "${GOV}/agentica_core/doctor_audits/mechanism_audit.py"`, note: 'orphan/dormant mechanisms, stale state' },
-  { key: 'orphans', run: `python "${REPO}/scripts/find_orphans.py"`, note: 'producer/consumer file orphans' },
+  { key: 'orphans', run: `python "${CLAUDE}\\skills\\find-orphan-mechanisms\\scripts\\find_orphans.py"`, note: 'producer/consumer file orphans' },
   { key: 'subagent', run: `python "${REPO}/bin/subagent_audit.py"`, note: 'wasteful subagent spawns' },
   { key: 'deps', run: `python "${REPO}/bin/codebase_deps_audit.py"`, note: 'dependency / CVE drift' },
   {
