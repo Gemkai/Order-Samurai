@@ -59,4 +59,29 @@
 
 ---
 
-### Last Updated: 2026-04-12
+## Terminology
+
+The dojo has three nested units of work. Naming them precisely prevents the drift that
+makes "run the cycle" / "the sweep" / "the session" ambiguous.
+
+- **Keiko** (稽古) — *one bounded run of the dojo*: a `run_id` with a start and deadline that
+  executes a series of cycles (e.g. `bin/dojo_overnight.sh`, the ~6-hour batch of up to 60
+  cycles, or a shorter manual sitting). "Keiko" is the dojo-native word for a training session.
+  **Do not call this a "session"** — that term is reserved for telemetry/work sessions
+  (`Session_Count`, `Avg_Session_Turns`, Claude/Codex/Antigravity work sessions) and would collide.
+- **Cycle** — *one iteration inside a keiko*: one ronin, one pillar, one work-unit, advanced through
+  Steps B→F of `prompts/dojo_cycle.md`. Tracked by the `cycle` counter in `state/DOJO_STATE.json`.
+  The dashboard **RUN button triggers a single cycle**, not a keiko.
+- **Work-unit** — *one backlog item* (`kind` ∈ stream/field/scout/skill) a cycle advances
+  `todo → doing → done`. A completed, timestamped work-unit is one calibration sample for the
+  Est. Agent Hours Saved coefficients (`state/calibration_coefficients.json`).
+
+**Two triggers, opposite jobs.** *Auto-remediation* fires a cycle **reactively** when a pillar's
+`live_current < live_baseline` — it defends the floor (fix regressions). The **RUN button** fires a
+cycle **proactively** regardless of regression — it raises the ceiling (work the backlog, accumulate
+calibration samples). When all pillars sit at/above baseline, auto is silent and the manual trigger
+is the only thing that runs.
+
+---
+
+### Last Updated: 2026-06-19

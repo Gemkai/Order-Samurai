@@ -4,8 +4,10 @@ set -euo pipefail
 REPO_DIR="${REPO_DIR:-$(pwd)}"
 RUN_HOURS="${RUN_HOURS:-6}"
 MAX_CYCLES="${MAX_CYCLES:-60}"
-MAX_TURNS="${MAX_TURNS:-30}"
-CYCLE_TIMEOUT="${CYCLE_TIMEOUT:-1200}"
+# Fallback literals MUST match dojo.env (the single source) so a missing dojo.env can
+# never silently run with different limits than a present one. See dojo.env.
+MAX_TURNS="${MAX_TURNS:-80}"
+CYCLE_TIMEOUT="${CYCLE_TIMEOUT:-2400}"
 COOLDOWN="${COOLDOWN:-15}"
 ENABLED_RONINS="${ENABLED_RONINS:-bow,sword,brush,arts}"
 VALIDATE_CMD="${VALIDATE_CMD:-python execution/doctor.py && python agentica_core/aggregate.py}"
@@ -72,6 +74,14 @@ while :; do
     124) log "cycle $cycle TIMED OUT after ${CYCLE_TIMEOUT}s" ;;
     *)   log "cycle $cycle exited rc=$rc — backing off"; sleep 30 ;;
   esac
+
+  # Loop-until-dry: halt once KEIKO_FLAT_LIMIT consecutive cycles show no metric
+  # improvement (exit 3). Call ONCE (it mutates flat_cycle_count); `|| keiko_rc=$?`
+  # keeps set -e from aborting on the non-zero halt signal.
+  keiko_rc=0
+  keiko_out="$(python3 bin/keiko_improvement.py --k "${KEIKO_FLAT_LIMIT:-5}")" || keiko_rc=$?
+  printf '%s\n' "$keiko_out" | tee -a "$LOGBOOK"
+  [ "$keiko_rc" -eq 3 ] && { log "Early stop: no improvement for ${KEIKO_FLAT_LIMIT:-5} cycles — halting."; break; }
 
   [ "$DOJO_DRYRUN" = "1" ] && { log "DRYRUN — one cycle done, stopping."; break; }
   sleep "$COOLDOWN"

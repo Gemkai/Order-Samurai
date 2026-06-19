@@ -1,0 +1,156 @@
+export const meta = {
+  name: 'sensei-cycle-wf',
+  description: 'Verified auto-remediation cycle as a workflow: scout 4 pillars, adversarially verify with rival, post verdicts',
+  whenToUse: 'The dynamic-workflow form of the sensei-cycle skill. Fans out 4 ronin scouts in parallel, runs the rival adversarial verifier per real finding, then persists verdicts to the reflex engine. Pass {dryRun:true} to stop before any write/POST. Runs alongside the sensei-cycle skill; A/B them before retiring the skill.',
+  phases: [
+    { title: 'Load', detail: 'read payload + ledger + budget; group active reflexes by pillar' },
+    { title: 'Scout+Verify', detail: 'per pillar: ronin scout re-measures, then rival verifies each real finding' },
+    { title: 'Persist', detail: 'one agent writes the ledger, POSTs verdicts, escalates the backlog' },
+  ],
+}
+
+const DRY_RUN = !!(args && args.dryRun)
+const REPO = 'C:\\Users\\jemak\\Desktop\\Projects\\Order Samurai'
+const GOV = 'C:\\Users\\jemak\\Desktop\\Agentica OS\\Governance'
+const WID = `${GOV}\\dashboard-ui\\public\\wid_payload.json`
+const LEDGER = `${REPO}\\state\\SENSEI_LEDGER.jsonl`
+const BACKLOG = `${REPO}\\state\\PROPOSED_BACKLOG.json`
+const BUDGET = `${REPO}\\state\\budget_ledger.json`
+const VERDICT_ENDPOINT = 'http://localhost:3001/api/reflex/verdicts'
+const PILLARS = ['bow', 'sword', 'brush', 'arts']
+
+// ── Phase 1: Load ─────────────────────────────────────────────────────────────
+// One agent does the reads (the script can't). Returns the cycle inputs.
+const LOAD = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    budget_ok: { type: 'boolean' },
+    window_days: { type: 'number' },
+    by_pillar: {
+      type: 'object', additionalProperties: false,
+      properties: Object.fromEntries(PILLARS.map((p) => [p, {
+        type: 'array',
+        items: {
+          type: 'object', additionalProperties: false,
+          properties: {
+            reflex_id: { type: 'string' }, tier: { type: 'string' },
+            command: { type: 'string' }, snapshot_value: { type: 'string' },
+            threshold: { type: 'number' },
+          },
+          required: ['reflex_id', 'tier'],
+        },
+      }])),
+    },
+  },
+  required: ['budget_ok', 'window_days', 'by_pillar'],
+}
+
+phase('Load')
+const load = await agent(
+  `Load the sensei-cycle inputs. Read these files and return structured data:\n`
+  + `1. Budget: read "${BUDGET}". Set budget_ok=false if today's daily remaining <= 0, else true.\n`
+  + `2. Payload: read "${WID}". window_days = .window.days.\n`
+  + `3. From .reflexes, keep only entries with status=="active", tier in ["CRITICAL","HIGH"], and id `
+  + `starting with "metric:"/"trajectory:"/"correlation:" (DROP "nudge:"). Group them by pillar `
+  + `(the 2nd ":"-segment of the id). For each, fill reflex_id, tier, command (mitigation_command), `
+  + `snapshot_value (the metric val), threshold (rule.fail) by looking the metric up under .pillars.\n`
+  + `4. Skip any reflex REFUTED in the last 24h per the tail of "${LEDGER}" (if the file exists).`,
+  { phase: 'Load', schema: LOAD },
+)
+
+if (!load || !load.budget_ok) {
+  log('sensei-cycle-wf: budget exhausted or load failed — stopping before scouts')
+  return { stopped: 'budget_or_load', dryRun: DRY_RUN }
+}
+const total = PILLARS.reduce((n, p) => n + (load.by_pillar[p]?.length || 0), 0)
+if (total === 0) {
+  log('sensei-cycle-wf: no active CRITICAL/HIGH reflexes — nothing to verify')
+  return { stopped: 'no_reflexes', dryRun: DRY_RUN }
+}
+
+// ── Phase 2: Scout + Verify (pipeline: no barrier between scout and rival) ──────
+const FINDINGS = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    pillar: { type: 'string' },
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          reflex_id: { type: 'string' },
+          real: { type: 'boolean' },
+          fixability: { type: 'string', enum: ['autonomous', 'structural'] },
+          reasoning: { type: 'string' }, evidence: { type: 'string' },
+        },
+        required: ['reflex_id', 'real', 'fixability', 'evidence'],
+      },
+    },
+  },
+  required: ['pillar', 'findings'],
+}
+const VERDICT = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    reflex_id: { type: 'string' },
+    verdict: { type: 'string', enum: ['CONFIRMED', 'REFUTED', 'SUSPECT'] },
+    reasoning: { type: 'string' }, evidence: { type: 'string' },
+  },
+  required: ['reflex_id', 'verdict', 'evidence'],
+}
+
+phase('Scout+Verify')
+const perPillar = await pipeline(
+  PILLARS.filter((p) => (load.by_pillar[p]?.length || 0) > 0),
+  // Stage 1: the pillar's ronin scout re-measures its reflexes LIVE.
+  (pillar) => agent(
+    `You are the ${pillar} scout. Re-measure these reflexes against their REAL sources (never trust `
+    + `the snapshot, never hardcode). For each, return real (true if the breach is genuine now), `
+    + `fixability (autonomous|structural), and evidence (the real measurement). window_days=${load.window_days}.\n`
+    + `Reflexes: ${JSON.stringify(load.by_pillar[pillar])}`,
+    { label: `scout:${pillar}`, phase: 'Scout+Verify', agentType: `ronin-${pillar}`, schema: FINDINGS },
+  ),
+  // Stage 2: rival adversarially verifies each REAL finding (independent re-check).
+  (scout, pillar) => parallel(
+    (scout?.findings || []).filter((f) => f.real).map((f) => () =>
+      agent(
+        `Adversarially verify this ${pillar} finding. Try to REFUTE it: re-measure the real source `
+        + `independently. Return CONFIRMED only if the breach is real and the scout's evidence holds; `
+        + `REFUTED if phantom/stale; SUSPECT if you cannot tell. Finding: ${JSON.stringify(f)}`,
+        { label: `rival:${f.reflex_id}`, phase: 'Scout+Verify', agentType: 'rival', schema: VERDICT },
+      )),
+  ),
+)
+
+// Flatten verdicts across pillars. perPillar is an array (one entry per pillar) of verdict arrays.
+const verdicts = perPillar.flat().filter(Boolean)
+const confirmed = verdicts.filter((v) => v.verdict === 'CONFIRMED')
+
+// ── Phase 3: Persist (one agent does all writes + the POST) ─────────────────────
+phase('Persist')
+const PERSIST = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    ledger_rows_written: { type: 'number' },
+    verdicts_posted: { type: 'number' },
+    backlog_escalations: { type: 'number' },
+    note: { type: 'string' },
+  },
+  required: ['note'],
+}
+const persistPrompt = DRY_RUN
+  ? `DRY RUN — do NOT write or POST anything. Report what WOULD happen: ${verdicts.length} verdicts `
+    + `(${confirmed.length} CONFIRMED) would be appended to the ledger and POSTed; list any structural/`
+    + `repeatedly-refuted findings that would escalate. Verdicts: ${JSON.stringify(verdicts)}`
+  : `Persist this cycle's results:\n`
+    + `1. Append one JSONL row per verdict to "${LEDGER}" (atomic: write tmp + rename). Fields: `
+    + `ts, reflex_id, pillar, rival_verdict, action_taken.\n`
+    + `2. POST the CONFIRMED verdicts as a VerdictRecord[] to ${VERDICT_ENDPOINT} `
+    + `(each: {reflex_id, command, verdict, reasoning, evidence, cycle_id, ts}). Localhost only; report the HTTP status.\n`
+    + `3. For findings that are structural OR refuted twice consecutively (check the ledger tail), append an `
+    + `escalation to "${BACKLOG}" with approved=false.\n`
+    + `Verdicts: ${JSON.stringify(verdicts)}`
+const summary = await agent(persistPrompt, { phase: 'Persist', schema: PERSIST })
+
+log(`sensei-cycle-wf${DRY_RUN ? ' [dry-run]' : ''}: ${verdicts.length} verdicts, ${confirmed.length} confirmed`)
+return { dryRun: DRY_RUN, verdicts: verdicts.length, confirmed: confirmed.length, summary }

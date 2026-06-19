@@ -1,0 +1,89 @@
+export const meta = {
+  name: 'governance-sweep',
+  description: 'Audit cross-layer seams + config drift across the Order Samurai and Governance repos',
+  whenToUse: 'Run periodically (or after touching the dojo/reflex plumbing) to catch the seam/config-drift bug family — duplicated constants, declared-but-unenforced policy, orphan mechanisms, wasteful subagent spawns, dependency drift — in one pass.',
+  phases: [
+    { title: 'Audit', detail: 'one agent per existing audit tool + a config-drift differ, in parallel' },
+    { title: 'Synthesize', detail: 'merge findings into one grouped, evidence-cited report' },
+  ],
+}
+
+// Repos. The script itself does no I/O — every read/run happens inside an agent (workflow
+// runtime constraint: only agents touch the filesystem/shell).
+const REPO = 'C:\\Users\\jemak\\Desktop\\Projects\\Order Samurai'
+const GOV = 'C:\\Users\\jemak\\Desktop\\Agentica OS\\Governance'
+
+const FINDINGS = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    tool: { type: 'string' },
+    ran: { type: 'boolean', description: 'true if the tool executed; false if it could not be run' },
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          severity: { type: 'string', enum: ['high', 'medium', 'low', 'info'] },
+          area: { type: 'string' },
+          detail: { type: 'string' },
+          evidence: { type: 'string', description: 'file:line or command output backing the finding' },
+        },
+        required: ['severity', 'area', 'detail', 'evidence'],
+      },
+    },
+  },
+  required: ['tool', 'ran', 'findings'],
+}
+
+// Each audit reuses an EXISTING tool — never reimplement. The config-drift entry has no tool;
+// it asks an agent to diff duplicated constants directly.
+const AUDITS = [
+  { key: 'policy-enforcement', run: `python "${REPO}/bin/policy_enforcement_audit.py" --json`, note: 'declared-but-unenforced policy' },
+  { key: 'mechanism', run: `python "${GOV}/agentica_core/doctor_audits/mechanism_audit.py"`, note: 'orphan/dormant mechanisms, stale state' },
+  { key: 'orphans', run: `python "${REPO}/scripts/find_orphans.py"`, note: 'producer/consumer file orphans' },
+  { key: 'subagent', run: `python "${REPO}/bin/subagent_audit.py"`, note: 'wasteful subagent spawns' },
+  { key: 'deps', run: `python "${REPO}/bin/codebase_deps_audit.py"`, note: 'dependency / CVE drift' },
+  {
+    key: 'config-drift', run: null,
+    note: 'duplicated constants that could diverge across layers',
+  },
+]
+
+phase('Audit')
+const results = await parallel(AUDITS.map((a) => () => {
+  const base = a.run
+    ? `Run this exact command and report what it surfaces:\n\`${a.run}\`\nIf the command path does not exist, set ran=false and findings=[]. Summarize its output as findings (${a.note}); cite the tool's own output as evidence. Do not reimplement the tool.`
+    : `Audit CONFIG DRIFT (${a.note}). Compare the values of these constants across every place they are defined, and report any that DISAGREE or that default to a different value when the env file is absent:\n`
+      + `- CYCLE_TIMEOUT, MAX_TURNS, COOLDOWN, MAX_CYCLES, DAILY_BUDGET_USD across "${REPO}/dojo.env", "${REPO}/bin/dojo_overnight.sh", "${REPO}/bin/ronin-pillar"\n`
+      + `- timeout/port constants in "${GOV}/api/src/dojo.ts", "${GOV}/api/src/reflex-engine.ts", "${GOV}/api/src/state.ts" vs the dojo.env values (the TS server does NOT source dojo.env — flag any hardcoded timeout that should track CYCLE_TIMEOUT)\n`
+      + `- subprocess timeout constants (SCAN_TIMEOUT_S / PIP_TIMEOUT_S) across "${REPO}/bin/policy_enforcement_audit.py", "${REPO}/bin/codebase_deps_audit.py", "${REPO}/bin/pip_safe_upgrade.py"\n`
+      + `For each, report severity=high if the values disagree today, medium if they only diverge when an env file is missing. Cite file:line.`
+  return agent(base, { label: `audit:${a.key}`, phase: 'Audit', schema: FINDINGS })
+}))
+
+const ran = results.filter(Boolean)
+
+phase('Synthesize')
+const REPORT = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    summary: { type: 'string' },
+    drifting_constants: { type: 'array', items: { type: 'string' } },
+    unenforced_or_orphan: { type: 'array', items: { type: 'string' } },
+    recommended_fixes: { type: 'array', items: { type: 'string' }, description: 'highest-leverage single-source / wiring fixes' },
+  },
+  required: ['summary', 'drifting_constants', 'recommended_fixes'],
+}
+const report = await agent(
+  `Synthesize these governance-audit findings into one report. Group by (a) drifting constants, `
+  + `(b) declared-but-unenforced policy / orphan mechanisms, (c) recommended structural fixes (single-source config, `
+  + `verifier wiring). Dedupe overlapping findings. Be concrete with file:line evidence. `
+  + `Findings JSON:\n${JSON.stringify(ran)}`,
+  { phase: 'Synthesize', schema: REPORT },
+)
+
+log(`governance-sweep: ${ran.length}/${AUDITS.length} audits ran`)
+return report

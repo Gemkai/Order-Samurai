@@ -25,7 +25,8 @@ Skip Step B if state/DOJO_STATE.json already has live_current set.
 In Step C, only consider backlog items where pillar=${PILLAR}.
 Proceed through Steps D → E → F normally."
 
-exec timeout "${CYCLE_TIMEOUT:-1200}s" claude -p "$FULL_PROMPT" \
+# Fallback literals match dojo.env (single source) — no silent divergence if dojo.env is absent.
+exec timeout "${CYCLE_TIMEOUT:-2400}s" claude -p "$FULL_PROMPT" \
   --allowedTools "$ALLOWED" \
   --permission-mode acceptEdits \
-  --max-turns "${MAX_TURNS:-30}"
+  --max-turns "${MAX_TURNS:-80}"
