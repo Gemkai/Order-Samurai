@@ -44,6 +44,7 @@ BUDGET_FLAG=()
 export DOJO_ENABLED_RONINS="$ENABLED_RONINS" DOJO_VALIDATE_CMD="$VALIDATE_CMD"
 
 cycle=0
+spend_total=0   # running daily spend (USD) for DAILY_BUDGET_USD enforcement
 while :; do
   [ -f DOJO_STOP ] && { log "DOJO_STOP present — halting."; break; }
   now=$(date +%s)
@@ -74,6 +75,18 @@ while :; do
     124) log "cycle $cycle TIMED OUT after ${CYCLE_TIMEOUT}s" ;;
     *)   log "cycle $cycle exited rc=$rc — backing off"; sleep 30 ;;
   esac
+
+  # Daily budget enforcement: DAILY_BUDGET_USD (from dojo.env) was previously DEAD — nothing
+  # consulted it (spend was gated only by the optional per-invocation MAX_BUDGET_USD). Now we
+  # accumulate each cycle's REAL cost from the stream-json result and halt the keiko once the
+  # day's spend reaches the cap. Fails open (cost=0) if the cost field is absent — never blocks blindly.
+  cycle_cost=$(tail -n1 "${CYCLE_LOG}.json" 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('total_cost_usd') or d.get('cost_usd') or 0)" 2>/dev/null || echo 0)
+  spend_total=$(python3 -c "print(${spend_total:-0} + ${cycle_cost:-0})" 2>/dev/null || echo "${spend_total:-0}")
+  log "cycle $cycle cost \$${cycle_cost} · day total \$${spend_total}"
+  if [ -n "${DAILY_BUDGET_USD:-}" ] && python3 -c "import sys; sys.exit(0 if ${spend_total:-0} >= ${DAILY_BUDGET_USD:-0} else 1)" 2>/dev/null; then
+    log "Daily budget reached: \$${spend_total} >= \$${DAILY_BUDGET_USD} — halting keiko."
+    break
+  fi
 
   # Loop-until-dry: halt once KEIKO_FLAT_LIMIT consecutive cycles show no metric
   # improvement (exit 3). Call ONCE (it mutates flat_cycle_count); `|| keiko_rc=$?`
