@@ -270,6 +270,14 @@ def _format_report(report: dict) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows stdout defaults to cp1252, which can't encode characters like ↔ (U+2194)
+    # that appear in session descriptions — the resulting UnicodeEncodeError exits the
+    # mechanism non-zero, so the engine falls through to the slow LLM skill and the
+    # reflex re-freezes. Force UTF-8 so the deterministic mechanism exits 0.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
     parser = argparse.ArgumentParser(description="Deterministic subagent-audit mechanism")
     parser.add_argument(
         "--sessions", type=int, default=30,
