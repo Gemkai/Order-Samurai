@@ -4,7 +4,7 @@ export const meta = {
   whenToUse: 'The dynamic-workflow form of the sensei-cycle skill. Fans out 4 ronin scouts in parallel, runs the rival adversarial verifier per real finding, then persists verdicts to the reflex engine. FAIL-SAFE: defaults to dry-run (no write/POST); pass {live:true} to actually persist. Runs alongside the sensei-cycle skill; A/B them before retiring the skill.',
   phases: [
     { title: 'Load', detail: 'read payload + ledger + budget; group active reflexes by pillar' },
-    { title: 'Scout+Verify', detail: 'per pillar: ronin scout re-measures, then rival verifies each real finding' },
+    { title: 'Scout+Verify', detail: 'per pillar: ronin scout re-measures; CRITICAL findings get 3 lensed rivals (majority), HIGH gets 1' },
     { title: 'Persist', detail: 'one agent writes the ledger, POSTs verdicts, escalates the backlog' },
   ],
 }
@@ -104,6 +104,44 @@ const VERDICT = {
   required: ['reflex_id', 'verdict', 'evidence'],
 }
 
+// ── Perspective-diverse rival (W2.3) ────────────────────────────────────────────
+// CRITICAL findings are the highest-stakes, so verify each from 3 DISTINCT lenses and take
+// majority; HIGH keeps a single rival to control cost. Tier comes from the load data — the
+// scout's FINDINGS schema does not carry it.
+const LENSES = [
+  { name: 'correctness', focus: 'logical correctness — is the metric computed right, or is the breach a measurement artifact?' },
+  { name: 'security', focus: 'security/governance integrity — could this be a gamed or weakened gate, a masked failure, or a genuine safety breach?' },
+  { name: 'reproducibility', focus: 'reproducibility — re-measure the real source independently; does the breach still reproduce now, or was it stale/transient?' },
+]
+const tierOf = (pillar, reflexId) =>
+  (load.by_pillar[pillar] || []).find((r) => r.reflex_id === reflexId)?.tier || 'HIGH'
+
+// One rival call. lens=null → the original single-rival prompt (HIGH); lens set → a lensed pass.
+// model:RIVAL_MODEL is REQUIRED on every call — the rival agentType pins an inaccessible model.
+const rivalCall = (f, pillar, lens) => agent(
+  `Adversarially verify this ${pillar} finding. Try to REFUTE it: re-measure the real source `
+  + `independently. ${lens ? `LENS — ${lens.name}: focus on ${lens.focus} ` : ''}`
+  + `Return CONFIRMED only if the breach is real and the scout's evidence holds; `
+  + `REFUTED if phantom/stale; SUSPECT if you cannot tell. Finding: ${JSON.stringify(f)}`,
+  { label: `rival:${lens ? lens.name + ':' : ''}${f.reflex_id}`, phase: 'Scout+Verify', agentType: 'rival', model: RIVAL_MODEL, schema: VERDICT },
+)
+
+// Verify one real finding → exactly one verdict record. CRITICAL collapses 3 lensed rivals to a
+// majority (>=2 CONFIRMED → CONFIRMED, else SUSPECT — ties/failures fail safe to SUSPECT).
+async function verifyFinding(f, pillar) {
+  if (tierOf(pillar, f.reflex_id) !== 'CRITICAL') return await rivalCall(f, pillar, null)
+  const voted = (await parallel(LENSES.map((lens) => () =>
+    rivalCall(f, pillar, lens).then((v) => v && { ...v, lens: lens.name })))).filter(Boolean)
+  const yes = voted.filter((v) => v.verdict === 'CONFIRMED').length
+  const verdict = yes >= 2 ? 'CONFIRMED' : 'SUSPECT'
+  return {
+    reflex_id: f.reflex_id,
+    verdict,
+    reasoning: `perspective-diverse rival — ${yes}/${voted.length} lenses CONFIRMED → ${verdict}`,
+    evidence: voted.map((v) => `[${v.lens}] ${v.verdict}: ${v.evidence}`).join(' | ') || 'all lensed rivals failed',
+  }
+}
+
 phase('Scout+Verify')
 const perPillar = await pipeline(
   PILLARS.filter((p) => (load.by_pillar[p]?.length || 0) > 0),
@@ -115,15 +153,10 @@ const perPillar = await pipeline(
     + `Reflexes: ${JSON.stringify(load.by_pillar[pillar])}`,
     { label: `scout:${pillar}`, phase: 'Scout+Verify', agentType: `ronin-${pillar}`, schema: FINDINGS },
   ),
-  // Stage 2: rival adversarially verifies each REAL finding (independent re-check).
+  // Stage 2: rival adversarially verifies each REAL finding. CRITICAL → 3 lensed rivals
+  // (majority); HIGH → 1 rival. Each finding collapses to exactly one verdict record.
   (scout, pillar) => parallel(
-    (scout?.findings || []).filter((f) => f.real).map((f) => () =>
-      agent(
-        `Adversarially verify this ${pillar} finding. Try to REFUTE it: re-measure the real source `
-        + `independently. Return CONFIRMED only if the breach is real and the scout's evidence holds; `
-        + `REFUTED if phantom/stale; SUSPECT if you cannot tell. Finding: ${JSON.stringify(f)}`,
-        { label: `rival:${f.reflex_id}`, phase: 'Scout+Verify', agentType: 'rival', model: RIVAL_MODEL, schema: VERDICT },
-      )),
+    (scout?.findings || []).filter((f) => f.real).map((f) => () => verifyFinding(f, pillar)),
   ),
 )
 
