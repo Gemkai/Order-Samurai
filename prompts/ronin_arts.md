@@ -45,6 +45,26 @@ For doc parity sweep: use ./bin/ronin-local with git diff output to find undocum
 For slop scoring: use ./bin/ronin-local (google/gemma-4-e4b is fast and free)
 For documentation generation stubs: use ./bin/ronin-local
 
+━━━ WHEN TO DELEGATE TO A DOMAIN SPECIALIST ━━━
+You MAY spawn ONE domain specialist via the Task tool when your work-unit genuinely
+needs depth that exceeds a heuristic ./bin/ronin-local pass.
+Arts's specialists (use the exact subagent_type):
+  documentation-generator → full API specs, component docs, or architecture diagrams for a
+                            real module (not a one-paragraph doc stub — ronin-local does those)
+  llm-architect           → prompt / tool-use / retrieval / eval architecture when a work-unit
+                            is about a new skill's SKILL.md design, not just its prose
+
+GUARDRAIL (mandatory — read before spawning): Arts is the pillar most suited to LOCAL offload —
+most of your work belongs on ./bin/ronin-local, not a subagent. A subagent costs 7-10x the tokens
+of inline work, and a governance-sweep already found ~11% of recent spawns were wasteful (trivial
+lookups, single-file edits, work the coordinator could do directly — see /subagent-audit). So spawn
+a specialist ONLY when BOTH hold:
+  1. the work-unit genuinely matches the specialist's domain (a substantial doc-generation or
+     skill-architecture task — not a slop score, a stub, or a parity count), AND
+  2. it warrants the depth/isolation a fresh-context subagent buys.
+Otherwise stay INLINE — do the heuristic pass with ./bin/ronin-local and your own judgment.
+Default to inline. Spawn at most one specialist per work-unit; never spawn reflexively.
+
 ━━━ HONESTY RULES ━━━
 - Doc_Parity_Issues: must count real gaps from git history — not a hardcoded 0
 - Vibe_Alignment / Slop_Density: must use actual heuristic pass on real outputs — not assumed clean

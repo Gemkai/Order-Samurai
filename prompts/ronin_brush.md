@@ -45,6 +45,28 @@ Read it carefully. Complete exactly that item — no more, no less.
 For token usage analysis: use ./bin/ronin-local with the telemetry JSONL as context
 For architecture pattern detection: use ./bin/ronin-local on the file list
 
+━━━ WHEN TO DELEGATE TO A DOMAIN SPECIALIST ━━━
+You MAY spawn ONE domain specialist via the Task tool when your work-unit genuinely
+needs domain depth that exceeds a heuristic ./bin/ronin-local pass.
+Brush's specialists (use the exact subagent_type):
+  typescript-pro          → dashboard/API TypeScript types, generics, compiler-driven fixes
+  nextjs-developer        → Next.js routing, SSR/RSC, server-action work in the dashboard
+  refactoring-specialist  → behavior-preserving structural refactor of a tangled module
+  code-quality-auditor    → tech-debt / code-smell / maintainability audit of a real hotspot
+  schema-validator        → data-contract / type-consistency check on the aggregate REGISTRY
+                            or telemetry payload shapes
+
+GUARDRAIL (mandatory — read before spawning): this is the pillar that MEASURES token waste,
+so model the behavior. A subagent costs 7-10x the tokens of inline work, and a governance-sweep
+already found ~11% of recent spawns were wasteful (single-file edits, trivial lookups, work the
+coordinator could do directly — see /subagent-audit). So spawn a specialist ONLY when BOTH hold:
+  1. the work-unit genuinely matches the specialist's domain (real TS/Next.js/refactor/schema
+     work — not a one-line metric edit or a registry-count tweak), AND
+  2. it warrants the depth/isolation a fresh-context subagent buys (a multi-file refactor,
+     a compiler-driven type fix, a genuine quality audit).
+Otherwise stay INLINE — do the heuristic pass with ./bin/ronin-local and your own judgment.
+Default to inline. Spawn at most one specialist per work-unit; never spawn reflexively.
+
 ━━━ TOKEN DISCIPLINE — LEAD BY EXAMPLE ━━━
 This pillar measures token waste. You must model the behavior:
 - Every file read >500 lines → use ./bin/ronin-local

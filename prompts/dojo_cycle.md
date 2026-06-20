@@ -89,6 +89,14 @@ STEP D — PARALLEL DISPATCH (4 ronin subagents via Task tool)
    IMPORTANT: all four Task calls must be issued in the same response turn so they
    run in parallel, not sequentially.
 
+   SPECIALIST ROUTING: each ronin prompt now carries a "When to delegate to a domain
+   specialist" section. A ronin MAY itself spawn ONE domain-specialist Task subagent
+   (typescript-pro, security-red-team, performance-profiler, documentation-generator, …)
+   when its work-unit genuinely matches that domain AND warrants depth/isolation —
+   otherwise it stays inline. This is gated by the /subagent-audit guardrail in each
+   prompt (a subagent costs 7-10x inline tokens); it is NOT a default. Do not instruct
+   ronins to delegate — the choice lives in their own prompt and fires only on a match.
+
 3. WAIT — do not proceed until all 4 Task agents have written their result files
    (poll state/ronin_results/<slug>.json until status != "pending", max 20 min each).
 

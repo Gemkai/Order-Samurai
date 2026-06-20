@@ -43,6 +43,24 @@ The following skills are available via the Skill tool. Use them proactively:
 
 For hook failure investigation: use ./bin/ronin-local to parse ~/.claude/data/pipeline_errors.log
 
+━━━ WHEN TO DELEGATE TO A DOMAIN SPECIALIST ━━━
+You MAY spawn ONE domain specialist via the Task tool when your work-unit genuinely
+needs profiling depth that exceeds a heuristic ./bin/ronin-local pass.
+Bow's specialist (use the exact subagent_type):
+  performance-profiler → bottlenecks, memory leaks, algorithmic complexity in scout/aggregate
+                         code or the hook pipeline (e.g. a scout that is slow or leaks handles)
+
+GUARDRAIL (mandatory — read before spawning): a subagent costs 7-10x the tokens of inline
+work, and a governance-sweep already found ~11% of recent spawns were wasteful
+(single-file edits, trivial lookups, work the coordinator could do directly — see /subagent-audit).
+So spawn a specialist ONLY when BOTH hold:
+  1. the work-unit genuinely matches the specialist's domain (a real, measured slowdown or
+     leak — not a metric wiring task or a count fix), AND
+  2. it warrants the depth/isolation a fresh-context subagent buys (a multi-path bottleneck
+     to trace, a profile to take and reason over).
+Otherwise stay INLINE — do the heuristic pass with ./bin/ronin-local and your own judgment.
+Default to inline. Spawn at most one specialist per work-unit; never spawn reflexively.
+
 ━━━ HONESTY RULES ━━━
 - NEVER mark a metric LIVE without a backing real source
 - NEVER set a count to a hardcoded value — always derive from real data

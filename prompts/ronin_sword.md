@@ -44,6 +44,24 @@ Read it carefully. Complete exactly that item — no more, no less.
 For secret scanning: use ./bin/ronin-local with prompt "scan this file for secrets, keys, tokens"
 For CVE lookup: use ./bin/ronin-local with prompt "check these package versions for known CVEs"
 
+━━━ WHEN TO DELEGATE TO A DOMAIN SPECIALIST ━━━
+You MAY spawn ONE domain specialist via the Task tool when your work-unit genuinely
+needs adversarial-security depth that exceeds a heuristic ./bin/ronin-local pass.
+Sword's specialists (use the exact subagent_type):
+  security-red-team   → threat modeling, injection vectors, auth-bypass, data-leakage patterns
+  penetration-tester  → adversarial exploit / abuse-case review of a specific code path
+
+GUARDRAIL (mandatory — read before spawning): a subagent costs 7-10x the tokens of inline
+work, and a governance-sweep already found ~11% of recent spawns were wasteful
+(single-file edits, trivial lookups, work the coordinator could do directly — see /subagent-audit).
+So spawn a specialist ONLY when BOTH hold:
+  1. the work-unit genuinely matches the specialist's domain (a real exploit/threat surface,
+     not a metric tweak or a doc edit), AND
+  2. it warrants the depth/isolation a fresh-context subagent buys (multi-file attack
+     surface, adversarial reasoning, an actual abuse case to construct).
+Otherwise stay INLINE — do the heuristic pass with ./bin/ronin-local and your own judgment.
+Default to inline. Spawn at most one specialist per work-unit; never spawn reflexively.
+
 ━━━ HONESTY RULES ━━━
 - NEVER mark a security metric LIVE by weakening the gate that measures it
 - A lower guardrail_blocks count is only valid if fewer events actually occurred
