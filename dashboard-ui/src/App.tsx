@@ -521,11 +521,11 @@ export default function App() {
       const q = window.location.search.toLowerCase()
       const h = window.location.hash.toLowerCase()
       const p = window.location.pathname.toLowerCase()
-      if (q.includes("demo") || q.includes("dashboard") || h.includes("demo") || h.includes("dashboard") || p.includes("demo") || p.includes("dashboard")) {
-        return "dashboard"
+      if (q.includes("landing") || h.includes("landing") || p.includes("landing")) {
+        return "landing"
       }
     }
-    return "landing"
+    return "dashboard"
   })
   const [payload, setPayload] = useState<WIDPayload | null>(null)
   const [loadedAt, setLoadedAt] = useState<number | null>(null)
