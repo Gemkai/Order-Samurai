@@ -1,0 +1,112 @@
+# ============================================================
+# Order Samurai — public release .gitignore
+# Default-deny for runtime state: anything under state/ is ignored
+# unless explicitly allow-listed below, so a new runtime/telemetry
+# file can never leak into the public repo by accident.
+# ============================================================
+
+# ── Reinstallable dependencies ──────────────────────────────
+node_modules/
+**/node_modules/
+.venv/
+**/.venv/
+
+# ── Python caches ───────────────────────────────────────────
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# ── OS cruft ────────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# ── Ephemeral agent worktrees + scratch (may contain real keys/paths) ──
+.tmp/
+**/.tmp/
+worktrees/
+**/worktrees/
+scratch/
+test_env/
+
+# ── Generated dashboard artifacts (recomputed by refresh_dashboard.py) ──
+dashboard-ui/dist/
+**/publicwid_payload.json
+wid_payload*.json
+# ...but never the SOURCE schema contract (the pattern above is for GENERATED payloads;
+# without this negation the schema never ships and every clone fails 13 schema tests
+# and the API's startup validation — caught by clone-and-run 2026-07-19)
+!schema/wid_payload.schema.json
+Data/
+
+# ── Generated reports / run outputs ─────────────────────────
+reports/
+artifacts/*.json
+artifacts/*.md
+governance_review_output/
+
+# ── Secrets — never commit ──────────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+**/mcp_config.json
+
+# ── Logs ────────────────────────────────────────────────────
+*.log
+state/logs/
+
+# ── Runtime state: DEFAULT-DENY under ANY state/ dir (top-level AND
+#    nested, e.g. Order Samurai/state/), then allow-list the top-level
+#    seeds/config below. Nested runtime state dirs keep nothing. ──
+**/state/*
+!state/charters/
+!state/DOJO_STATE.seed.json
+!state/calibration_coefficients.json
+!state/kill_chain_taxonomy.json
+!state/skill_tiers.json
+!state/vibe_alignment.json
+!state/budget_ledger.json
+!state/demo_dataset.json
+# charters/ is content (pillar definitions), keep all of it
+!state/charters/**
+
+# nested runtime state (no seeds live here)
+Order Samurai/state/
+
+# ── Internal-only: business / planning / strategy (never public) ──
+go-to-market/
+docs/productization/
+PLAN.md
+PLAN-REVIEW-LOG.md
+HANDOFF.md
+# Quality-agent shared scratch (regenerated per session by /simplify → /security-gate → /review)
+.quality_register.md
+**/.quality_register.md
+
+# ── Dev-only media tooling (hardcode internal .gemini/antigravity scratch paths) ──
+build_perfect_pillars_gifs.py
+compile_dashboard_simulation_gif.py
+convert_pngs_to_gifs.py
+generate_perfect_gifs.js
+record_dashboard_walkthrough.js
+
+# Concept/demo/dummy dashboard imagery — AI-generated GIFs/JPGs and scratch media__<ts>.jpg
+# files. NOT shipped publicly (44MB of concept assets). Exception: the approved 16:9 brand
+# logo is the one real asset kept public.
+dashboard-ui/public/media/*
+!dashboard-ui/public/media/order_samurai_logo_letterbox.jpg
+
+# Design-tool concept exports / import bundles (e.g. "…(imp).zip": .dc.html mockups, uploads)
+*.zip
+
+# internal dev docs
+backlog/
+docs/handoffs/
+
+# Internal working dirs — never ship (design assets, dev-tool state)
+.mex/
+.impeccable/
+Order Samurai/

@@ -1,0 +1,18 @@
+{
+  "operations": {
+    "stream": {"benchmark_min": 45, "benchmark_unit": "minutes", "calibrated": false, "sample_count": 0},
+    "field":  {"benchmark_min": 90, "benchmark_unit": "minutes", "calibrated": false, "sample_count": 0},
+    "scout":  {"benchmark_min": 20, "benchmark_unit": "minutes", "calibrated": false, "sample_count": 0},
+    "skill":  {"benchmark_min": 30, "benchmark_unit": "minutes", "calibrated": false, "sample_count": 0}
+  },
+  "architecture": {
+    "routing_efficiency_usd_per_event": {"benchmark": 0.05, "calibrated": false, "sample_count": 0}
+  },
+  "craft": {
+    "vibe_alignment_hrs_per_point": {"benchmark": 0.5, "calibrated": false, "sample_count": 0},
+    "doc_parity_latency_hrs_per_day": {"benchmark": 2.0, "calibrated": false, "sample_count": 0},
+    "skill_promotion_hrs_per_promotion": {"benchmark": 0.25, "calibrated": false, "sample_count": 0},
+    "arts_backlog_hrs_per_effort_point": {"benchmark": 3.0, "calibrated": false, "sample_count": 0}
+  },
+  "calibration_threshold": {"samples": 10, "weeks": 4}
+}

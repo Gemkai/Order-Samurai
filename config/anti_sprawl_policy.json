@@ -1,0 +1,84 @@
+{
+  "version": 1,
+  "name": "Order Samurai Anti-Sprawl Policy",
+  "scope": "All repo surfaces, discovery artifacts, and lifecycle boundaries.",
+  "surfaceRoles": [
+    "runtime",
+    "source",
+    "registry",
+    "operator",
+    "state",
+    "support",
+    "dependency",
+    "archive"
+  ],
+  "rules": [
+    {
+      "id": "every-surface-must-be-classified",
+      "severity": "critical",
+      "statement": "No major surface may exist without an explicit role, owner, and discoverability decision.",
+      "expectedArtifacts": [
+        "config/agentica_surface_matrix.json"
+      ],
+      "verifier": "execution/verify_surface_governance.py"
+    },
+    {
+      "id": "every-root-entry-must-be-classified",
+      "severity": "high",
+      "statement": "All top-level directories and files must be classified as live, state, support, dependency, or archive.",
+      "expectedArtifacts": [
+        "config/root_hygiene_policy.json"
+      ],
+      "verifier": "execution/verify_root_hygiene.py"
+    },
+    {
+      "id": "discovery-must-be-factual",
+      "severity": "high",
+      "statement": "Capability discovery must be generated from approved discoverable surfaces rather than inferred from memory.",
+      "expectedArtifacts": [
+        "config/hub_capability_manifest.json"
+      ],
+      "verifier": "execution/verify_registry_truth.py"
+    },
+    {
+      "id": "archive-and-exploratory-surfaces-are-non-runtime",
+      "severity": "critical",
+      "statement": "Live runtime code must not depend on archive, scratch, playground, or other exploratory roots.",
+      "expectedArtifacts": [
+        "config/root_hygiene_policy.json",
+        "config/promotion_policy.json"
+      ],
+      "verifier": "execution/verify_archive_boundaries.py"
+    },
+    {
+      "id": "promotion-before-runtime-ownership",
+      "severity": "critical",
+      "statement": "Exploratory assets must pass promotion policy before entering live runtime or operator-facing planes.",
+      "expectedArtifacts": [
+        "config/promotion_policy.json"
+      ],
+      "verifier": "execution/verify_promotion_policy.py"
+    },
+    {
+      "id": "retirement-must-be-explicit",
+      "severity": "medium",
+      "statement": "Deprecated or historical assets must move behind archive boundaries rather than remain visually adjacent to live surfaces.",
+      "expectedArtifacts": [
+        "config/root_hygiene_policy.json"
+      ],
+      "verifier": "execution/verify_root_hygiene.py"
+    }
+  ],
+  "warningModel": {
+    "warnOn": [
+      "unclassified root entries",
+      "stale optional surfaces",
+      "undocumented top-level growth"
+    ],
+    "failOn": [
+      "live runtime references archive or exploratory roots",
+      "surface governance artifacts missing",
+      "discoverability contracts unresolved"
+    ]
+  }
+}

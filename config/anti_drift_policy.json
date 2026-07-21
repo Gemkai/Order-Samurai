@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "name": "Order Samurai Anti-Drift Policy",
+  "scope": "All live runtime, verification, and operator-facing control-plane code.",
+  "principles": [
+    "Executable contracts are stronger than prose-only guidance.",
+    "Generated truth is authoritative for existence questions.",
+    "One canonical path layer must anchor all repo-local path construction.",
+    "Documentation parity is required for architectural changes."
+  ],
+  "rules": [
+    {
+      "id": "single-path-authority",
+      "severity": "critical",
+      "statement": "No live runtime module may hardcode repo-local or machine-local absolute paths.",
+      "expectedArtifacts": [
+        "execution/runtime_paths.py"
+      ],
+      "verifier": "execution/verify_path_authority.py"
+    },
+    {
+      "id": "generated-truth-over-manual-inventory",
+      "severity": "high",
+      "statement": "Artifacts that answer what exists must be generated from disk or source state, not curated by hand.",
+      "expectedArtifacts": [
+        "execution/sync_inventory.py",
+        "execution/sync_capability_manifest.py"
+      ],
+      "verifier": "execution/verify_generated_truth.py"
+    },
+    {
+      "id": "doctor-is-the-operator-entrypoint",
+      "severity": "high",
+      "statement": "Repository health must aggregate through one operator-facing doctor command that surfaces blocking architectural failures.",
+      "expectedArtifacts": [
+        "execution/doctor.py"
+      ],
+      "verifier": "execution/verify_runtime_contract.py"
+    },
+    {
+      "id": "docs-move-with-runtime",
+      "severity": "medium",
+      "statement": "Any change to architecture contracts must update the corresponding project docs in the same change.",
+      "expectedArtifacts": [
+        "PROJECT.md",
+        "RONIN_SPEC.md"
+      ],
+      "verifier": "execution/verify_doc_parity.py"
+    },
+    {
+      "id": "verification-before-claim",
+      "severity": "critical",
+      "statement": "No architecture improvement may be claimed complete until verifiers, doctor, and targeted tests have passed.",
+      "expectedArtifacts": [
+        "backlog/verifier_backlog.md"
+      ],
+      "verifier": "execution/doctor.py"
+    }
+  ],
+  "mergeGates": [
+    "path authority passes",
+    "runtime contract passes",
+    "doc parity passes for architecture-changing work"
+  ],
+  "releaseGates": [
+    "doctor passes with zero blocking failures",
+    "architecture score meets release floor",
+    "generated truth artifacts are fresh"
+  ]
+}

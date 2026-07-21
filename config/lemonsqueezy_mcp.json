@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "lemonsqueezy": {
+      "command": "python3",
+      "args": [
+        "execution/lemonsqueezy_mcp.py"
+      ],
+      "env": {
+        "LEMONSQUEEZY_API_KEY": "${LEMONSQUEEZY_API_KEY}",
+        "LEMONSQUEEZY_STORE_ID": "${LEMONSQUEEZY_STORE_ID}"
+      }
+    }
+  }
+}

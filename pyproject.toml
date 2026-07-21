@@ -1,0 +1,9 @@
+[project]
+name = "order-samurai"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    # P4 typed-envelope seam: aggregate.write_payload validates wid_payload.json
+    # against schema/wid_payload.schema.json before persisting.
+    "jsonschema>=4.0",
+]

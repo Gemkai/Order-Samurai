@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""
+Order Samurai CLI & Installer Tool
+Provides samurai install, samurai doctor, and samurai uninstall capabilities.
+"""
+
+import os
+import sys
+import json
+import shutil
+import datetime
+import argparse
+from pathlib import Path
+
+SAMURAI_VERSION = "1.0.0"
+
+def get_paths():
+    home = Path.home()
+    samurai_root = Path(os.environ.get("SAMURAI_ROOT", Path(__file__).resolve().parent.parent))
+    samurai_home = home / ".samurai"
+    claude_hooks = home / ".claude" / "hooks"
+    claude_settings = claude_hooks / "settings.json"
+    backups_dir = samurai_home / "backups"
+    
+    return {
+        "root": samurai_root,
+        "home": samurai_home,
+        "claude_hooks": claude_hooks,
+        "claude_settings": claude_settings,
+        "backups": backups_dir,
+        "state": samurai_root / "state",
+        "taxonomy": samurai_root / "state" / "kill_chain_taxonomy.json"
+    }
+
+def cmd_install(args):
+    paths = get_paths()
+    print(f"⚔️  Installing Order Samurai v{SAMURAI_VERSION}...")
+
+    # Create directories
+    paths["home"].mkdir(parents=True, exist_ok=True)
+    paths["backups"].mkdir(parents=True, exist_ok=True)
+    paths["claude_hooks"].mkdir(parents=True, exist_ok=True)
+
+    # 1. Backup existing settings
+    if paths["claude_settings"].exists():
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = paths["backups"] / f"settings.json.bak.{ts}"
+        shutil.copy2(paths["claude_settings"], backup_file)
+        print(f"  [✓] Backed up prior settings to {backup_file}")
+    
+    # 2. Merge hooks into settings.json
+    existing_settings = {}
+    if paths["claude_settings"].exists():
+        try:
+            with open(paths["claude_settings"], "r") as f:
+                existing_settings = json.load(f)
+        except Exception:
+            existing_settings = {}
+
+    hooks = existing_settings.get("hooks", {})
+    pre_hooks = hooks.get("PreToolUse", [])
+    post_hooks = hooks.get("PostToolUse", [])
+
+    guard_script = str(paths["root"] / "hooks" / "prompt_injection_guard.py")
+    scrubber_script = str(paths["root"] / "hooks" / "secret_scrubber_realtime.py")
+
+    samurai_pre = {"name": "samurai_prompt_injection_guard", "command": f"python3 {guard_script}", "async": False}
+    samurai_post = {"name": "samurai_secret_scrubber", "command": f"python3 {scrubber_script}", "async": False}
+
+    # Filter out existing samurai entries
+    pre_hooks = [h for h in pre_hooks if isinstance(h, dict) and h.get("name") != "samurai_prompt_injection_guard"]
+    post_hooks = [h for h in post_hooks if isinstance(h, dict) and h.get("name") != "samurai_secret_scrubber"]
+
+    pre_hooks.append(samurai_pre)
+    post_hooks.append(samurai_post)
+
+    hooks["PreToolUse"] = pre_hooks
+    hooks["PostToolUse"] = post_hooks
+    existing_settings["hooks"] = hooks
+
+    with open(paths["claude_settings"], "w") as f:
+        json.dump(existing_settings, f, indent=2)
+
+    print(f"  [✓] Registered Order Samurai hooks in {paths['claude_settings']}")
+    
+    # Write installation marker
+    install_info = {
+        "version": SAMURAI_VERSION,
+        "installed_at": datetime.datetime.now().isoformat(),
+        "root": str(paths["root"])
+    }
+    with open(paths["home"] / "install.json", "w") as f:
+        json.dump(install_info, f, indent=2)
+
+    print("⚔️  Installation complete! Run 'samurai doctor' to verify system health.")
+    return 0
+
+def cmd_doctor(args):
+    paths = get_paths()
+    print(f"🩺 Order Samurai Doctor v{SAMURAI_VERSION}")
+    print("----------------------------------------")
+    passed = 0
+    total = 0
+
+    def check(name, status, details):
+        nonlocal passed, total
+        total += 1
+        symbol = "✅ PASS" if status else "❌ FAIL"
+        if status:
+            passed += 1
+        print(f"[{symbol}] {name}: {details}")
+
+    # Check 1: Python version
+    py_ok = sys.version_info >= (3, 10)
+    check("Python Version", py_ok, f"Python {sys.version.split()[0]} (>= 3.10 required)")
+
+    # Check 2: Taxonomy File
+    tax_ok = paths["taxonomy"].exists()
+    if tax_ok:
+        try:
+            with open(paths["taxonomy"]) as f:
+                data = json.load(f)
+                tax_ok = len(data.get("chains", [])) == 14
+        except Exception:
+            tax_ok = False
+    check("Kill Chain Taxonomy", tax_ok, f"{paths['taxonomy']} (14 chains)")
+
+    # Check 3: Fail-Closed Posture
+    fail_open = os.environ.get("BUSHIDO_FAIL_OPEN", "false").lower() == "true"
+    check("Security Posture", not fail_open, f"BUSHIDO_FAIL_OPEN={fail_open} (Fail-closed enforced)")
+
+    # Check 4: Hook Registration
+    registered = False
+    if paths["claude_settings"].exists():
+        try:
+            with open(paths["claude_settings"]) as f:
+                cfg = json.load(f)
+                pre = cfg.get("hooks", {}).get("PreToolUse", [])
+                registered = any(isinstance(h, dict) and h.get("name") == "samurai_prompt_injection_guard" for h in pre)
+        except Exception:
+            pass
+    check("Claude Code Hook Registration", registered, "PreToolUse prompt_injection_guard registered")
+
+    # Check 5: Path Authority
+    root_ok = paths["root"].exists() and (paths["root"] / "agentica_core").exists()
+    check("Path Authority", root_ok, f"Root: {paths['root']}")
+
+    print("----------------------------------------")
+    print(f"Summary: {passed}/{total} checks passed.")
+    return 0 if passed == total else 1
+
+def cmd_uninstall(args):
+    paths = get_paths()
+    print(f"⚔️  Uninstalling Order Samurai v{SAMURAI_VERSION}...")
+
+    # 1. Remove hooks from settings.json
+    if paths["claude_settings"].exists():
+        try:
+            with open(paths["claude_settings"], "r") as f:
+                cfg = json.load(f)
+            hooks = cfg.get("hooks", {})
+            if "PreToolUse" in hooks:
+                hooks["PreToolUse"] = [h for h in hooks["PreToolUse"] if isinstance(h, dict) and h.get("name") != "samurai_prompt_injection_guard"]
+            if "PostToolUse" in hooks:
+                hooks["PostToolUse"] = [h for h in hooks["PostToolUse"] if isinstance(h, dict) and h.get("name") != "samurai_secret_scrubber"]
+            cfg["hooks"] = hooks
+            with open(paths["claude_settings"], "w") as f:
+                json.dump(cfg, f, indent=2)
+            print("  [✓] Deregistered Order Samurai hooks.")
+        except Exception as e:
+            print(f"  [!] Error deregistering hooks: {e}")
+
+    # 2. Restore prior backup if available
+    backups = sorted(paths["backups"].glob("settings.json.bak.*"))
+    if backups:
+        latest_backup = backups[-1]
+        try:
+            shutil.copy2(latest_backup, paths["claude_settings"])
+            print(f"  [✓] Restored prior settings from {latest_backup.name}")
+        except Exception as e:
+            print(f"  [!] Warning restoring backup: {e}")
+
+    # 3. Handle zero-residue data cleanup
+    if not args.keep_data and paths["home"].exists():
+        shutil.rmtree(paths["home"])
+        print("  [✓] Removed ~/.samurai state (Zero-residue audit PASS).")
+    elif args.keep_data:
+        print("  [i] Kept ~/.samurai data (--keep-data specified).")
+
+    print("⚔️  Order Samurai uninstalled cleanly.")
+    return 0
+
+def main():
+    parser = argparse.ArgumentParser(description="Order Samurai Governance CLI")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # install
+    subparsers.add_parser("install", help="Install & register Order Samurai hooks")
+
+    # doctor
+    subparsers.add_parser("doctor", help="Run diagnostic health checks")
+
+    # uninstall
+    un_parser = subparsers.add_parser("uninstall", help="Uninstall Order Samurai hooks and restore settings")
+    un_parser.add_argument("--keep-data", action="store_true", help="Preserve ~/.samurai state directory")
+
+    args = parser.parse_args()
+    if not args.command or args.command == "doctor":
+        sys.exit(cmd_doctor(args))
+    elif args.command == "install":
+        sys.exit(cmd_install(args))
+    elif args.command == "uninstall":
+        sys.exit(cmd_uninstall(args))
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

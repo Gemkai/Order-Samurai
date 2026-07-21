@@ -1,0 +1,70 @@
+{
+  "version": "1.0.0",
+  "description": "Order Samurai Cold-Start Demo Dataset",
+  "generated_at": "2026-07-13T00:00:00Z",
+  "metrics": {
+    "kill_chains_disrupted": {
+      "value": 14,
+      "unit": "chains this week",
+      "calibrated": true,
+      "events": [
+        {
+          "chain_id": 13,
+          "name": "Prompt Injection Defense",
+          "blocked": 9,
+          "recent_detail": "Blocked system prompt override attempt in tool parameter"
+        },
+        {
+          "chain_id": 14,
+          "name": "Exfiltration & Secret Scrubber",
+          "blocked": 5,
+          "recent_detail": "Interception of internal RFC1918 IP address exposure in bash output"
+        }
+      ]
+    },
+    "estimated_agent_time_saved": {
+      "value": 42.5,
+      "unit": "hours",
+      "calibrated": false,
+      "benchmark_label": "Industry Benchmark",
+      "samples": 12
+    },
+    "estimated_cost_savings": {
+      "value": 318.40,
+      "unit": "USD",
+      "calibrated": true,
+      "actual_spend_delta": 240.00,
+      "routing_efficiency_delta": 78.40
+    },
+    "estimated_human_time_saved": {
+      "value": 18.2,
+      "unit": "hours",
+      "calibrated": false,
+      "benchmark_label": "Industry Benchmark",
+      "samples": 8
+    }
+  },
+  "reflexes": [
+    {
+      "id": "RFL-001",
+      "name": "Fail-Closed Gate Guard",
+      "status": "ACTIVE",
+      "latency_ms": 14,
+      "enforced_count": 184
+    },
+    {
+      "id": "RFL-002",
+      "name": "Secret Scrubber PostToolUse",
+      "status": "ACTIVE",
+      "latency_ms": 8,
+      "enforced_count": 312
+    },
+    {
+      "id": "RFL-003",
+      "name": "Chain 13 PreToolUse Inspector",
+      "status": "ACTIVE",
+      "latency_ms": 22,
+      "enforced_count": 94
+    }
+  ]
+}

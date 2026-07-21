@@ -1,0 +1,37 @@
+{
+  "Latency_P50": {
+    "warn": 2.88,
+    "fail": 5069.86,
+    "n": 14
+  },
+  "Latency_P95": {
+    "warn": 25200.97,
+    "fail": 26823.9,
+    "n": 14
+  },
+  "Avg_Session_Turns": {
+    "warn": 42.75,
+    "fail": 149.16,
+    "n": 14
+  },
+  "Token_Execution_Density": {
+    "warn": 287107.72,
+    "fail": 501477.92,
+    "n": 14
+  },
+  "Local_Routing_Share": {
+    "warn": 25.8,
+    "fail": 4.5,
+    "n": 14
+  },
+  "Chain_Depth_Avg": {
+    "warn": 60.75,
+    "fail": 99.95,
+    "n": 10
+  },
+  "Slop_Density": {
+    "warn": 9.84,
+    "fail": 18.02,
+    "n": 10
+  }
+}

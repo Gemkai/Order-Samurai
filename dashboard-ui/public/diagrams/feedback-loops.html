@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Order Samurai — Feedback Loop Architecture</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #07071200;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 16px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  background: radial-gradient(ellipse at 50% 0%, #12102800 0%, #070712 60%),
+              linear-gradient(180deg, #0a0916 0%, #07070f 100%);
+}
+
+header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+header h1 {
+  font-size: 0.85rem;
+  letter-spacing: 5px;
+  text-transform: uppercase;
+  color: #a78bfa;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+header p {
+  font-size: 0.6rem;
+  color: #444;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+
+/* Legend */
+.legend {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.6rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #888;
+}
+.legend-line {
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  position: relative;
+}
+.legend-line::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -3px;
+  border-left: 8px solid;
+  border-top: 4.5px solid transparent;
+  border-bottom: 4.5px solid transparent;
+  border-left-color: inherit;
+}
+.legend-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 2px solid;
+}
+
+/* Main diagram wrapper */
+.diagram-wrap {
+  width: 100%;
+  max-width: 1200px;
+  background: #0b0b18;
+  border: 1px solid #1e1e35;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 0 80px rgba(100, 60, 240, 0.06), 0 0 0 1px #1a1a28;
+}
+
+svg {
+  display: block;
+  width: 100%;
+}
+
+/* Animated flow arrows */
+@keyframes flow-fwd {
+  from { stroke-dashoffset: 28; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes flow-rev {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 28; }
+}
+@keyframes pulse-node {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+@keyframes glow-pulse {
+  0%, 100% { filter: drop-shadow(0 0 4px currentColor); }
+  50% { filter: drop-shadow(0 0 10px currentColor); }
+}
+
+.flow-main    { stroke-dasharray: 8 5; animation: flow-fwd 1.4s linear infinite; }
+.flow-ronin   { stroke-dasharray: 8 5; animation: flow-fwd 2.0s linear infinite; }
+.flow-reflex  { stroke-dasharray: 6 4; animation: flow-fwd 0.9s linear infinite; }
+.flow-gov     { stroke-dasharray: 8 5; animation: flow-fwd 2.5s linear infinite; }
+.flow-learn   { stroke-dasharray: 10 6; animation: flow-fwd 3.0s linear infinite; }
+.flow-gray    { stroke-dasharray: 4 4; animation: flow-fwd 2.0s linear infinite; }
+
+/* Info panels */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+.info-card {
+  background: #0e0e1e;
+  border-radius: 8px;
+  padding: 12px 14px;
+  border-left: 3px solid;
+  font-size: 0.6rem;
+  line-height: 1.7;
+  color: #888;
+}
+.info-card strong {
+  display: block;
+  font-size: 0.65rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚔&nbsp; Order Samurai &nbsp;·&nbsp; Feedback Loop Architecture</h1>
+  <p>Five interlocking governance loops &nbsp;·&nbsp; agentica core</p>
+</header>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item">
+    <div class="legend-line" style="background:#4ade80; border-left-color:#4ade80;"></div>
+    <span style="color:#4ade80">① Collection</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-line" style="background:#f87171; border-left-color:#f87171;"></div>
+    <span style="color:#f87171">② Ronin Auto</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-line" style="background:#fbbf24; border-left-color:#fbbf24;"></div>
+    <span style="color:#fbbf24">③ Reflex</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-line" style="background:#60a5fa; border-left-color:#60a5fa;"></div>
+    <span style="color:#60a5fa">④ Governance</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-line" style="background:#a78bfa; border-left-color:#a78bfa;"></div>
+    <span style="color:#a78bfa">⑤ Learning</span>
+  </div>
+</div>
+
+<div class="diagram-wrap">
+<svg viewBox="0 0 1160 680" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <!-- Arrow markers -->
+  <marker id="arr-green"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#4ade80"/></marker>
+  <marker id="arr-red"    viewBox="0 0 10 8" refX="9" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#f87171"/></marker>
+  <marker id="arr-amber"  viewBox="0 0 10 8" refX="9" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#fbbf24"/></marker>
+  <marker id="arr-blue"   viewBox="0 0 10 8" refX="9" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#60a5fa"/></marker>
+  <marker id="arr-purple" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#a78bfa"/></marker>
+  <marker id="arr-gray"   viewBox="0 0 10 8" refX="9" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#444"/></marker>
+  <marker id="arr-green2" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#4ade80"/></marker>
+  <!-- Small markers for data lines -->
+  <marker id="arr-sm-gray" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#333"/></marker>
+
+  <!-- Glow filter -->
+  <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+    <feGaussianBlur stdDeviation="5" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="glow-sm" x="-20%" y="-20%" width="140%" height="140%">
+    <feGaussianBlur stdDeviation="2" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="drop" x="-5%" y="-5%" width="110%" height="110%">
+    <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.6"/>
+  </filter>
+</defs>
+
+<!-- ═══════════════════════════════════════════════════════
+     SWIM LANE BACKGROUNDS
+═══════════════════════════════════════════════════════ -->
+
+<!-- Top lane: Auto-Remediation -->
+<rect x="8" y="8" width="1144" height="138" rx="10" fill="#0d0d1c" stroke="#1c1c32" stroke-width="1"/>
+<text x="20" y="25" font-size="8" fill="#2a2a44" font-family="monospace" letter-spacing="3" text-anchor="start">AUTO-REMEDIATION LAYER</text>
+
+<!-- Middle lane: Core Pipeline -->
+<rect x="8" y="158" width="1144" height="172" rx="10" fill="#090912" stroke="#161628" stroke-width="1"/>
+<text x="20" y="175" font-size="8" fill="#2a2a3a" font-family="monospace" letter-spacing="3">CORE PROCESSING PIPELINE</text>
+
+<!-- Bottom lane: Alert + Action -->
+<rect x="8" y="342" width="1144" height="168" rx="10" fill="#0d0d1c" stroke="#1c1c32" stroke-width="1"/>
+<text x="20" y="360" font-size="8" fill="#2a2a44" font-family="monospace" letter-spacing="3">ALERT · ACTION LAYER</text>
+
+<!-- Far bottom: Effect zone -->
+<rect x="8" y="522" width="1144" height="150" rx="10" fill="#090912" stroke="#161628" stroke-width="1"/>
+<text x="20" y="540" font-size="8" fill="#2a2a3a" font-family="monospace" letter-spacing="3">BEHAVIOR EFFECT ZONE</text>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     NODES
+     Positions:
+       sessions   circle cx=90  cy=250  r=44
+       scouts     rect   x=165  cy=250  w=110 h=46  cx=220
+       aggregate  rect   x=315  cy=250  w=140 h=46  cx=385
+       payload    rect   x=495  cy=250  w=155 h=46  cx=572
+       dashboard  rect   x=690  cy=250  w=135 h=46  cx=757
+       skills     rect   x=875  cy=250  w=135 h=46  cx=942
+
+       insights   rect   x=315  cy=410  w=140 h=42  cx=385
+       metric_cfg badge on insights
+       verifiers  rect   x=165  cy=410  w=110 h=42  cx=220
+       nudge      rect   x=495  cy=410  w=155 h=42  cx=572
+       reflexes   rect   x=690  cy=410  w=135 h=42  cx=757
+       behavior   rect   x=875  cy=410  w=135 h=42  cx=942
+
+       dojo_state  rect  x=495  cy=77   w=155 h=42  cx=572
+       auto_engine rect  x=690  cy=77   w=135 h=42  cx=757
+       bin_ronin   rect  x=875  cy=77   w=135 h=42  cx=942
+
+       claude_md  circle cx=165  cy=600  r=40
+       os_rules   rect   x=315  cy=580  w=140 h=42  cx=385
+       session_out rect  x=875  cy=580  w=135 h=42  cx=942
+═══════════════════════════════════════════════════════ -->
+
+<!-- ── Auto-remediation row ── -->
+
+<!-- DOJO_STATE.json -->
+<rect x="497" y="56" width="152" height="46" rx="8" fill="#1a0e0e" stroke="#f87171" stroke-width="1.5" filter="url(#drop)"/>
+<text x="573" y="74" font-size="10" font-family="monospace" fill="#f87171" text-anchor="middle" font-weight="700">DOJO_STATE.json</text>
+<text x="573" y="89" font-size="8" font-family="monospace" fill="#8a5555" text-anchor="middle">pillar scores · baselines</text>
+
+<!-- AutoRemediationEngine -->
+<rect x="692" y="56" width="140" height="46" rx="8" fill="#1a0e0e" stroke="#f87171" stroke-width="1.5" filter="url(#drop)"/>
+<text x="762" y="74" font-size="10" font-family="monospace" fill="#f87171" text-anchor="middle" font-weight="700">AutoRemedy</text>
+<text x="762" y="89" font-size="8" font-family="monospace" fill="#8a5555" text-anchor="middle">dojo.ts · check()</text>
+
+<!-- bin/ronin -->
+<rect x="877" y="56" width="140" height="46" rx="8" fill="#1a0e0e" stroke="#f87171" stroke-width="1.5" filter="url(#drop)"/>
+<text x="947" y="74" font-size="10" font-family="monospace" fill="#f87171" text-anchor="middle" font-weight="700">bin/ronin</text>
+<text x="947" y="89" font-size="8" font-family="monospace" fill="#8a5555" text-anchor="middle">&lt;pillar&gt; script</text>
+
+
+<!-- ── Core Pipeline row ── -->
+
+<!-- Session Telemetry (circle) -->
+<circle cx="90" cy="249" r="44" fill="#0f1c10" stroke="#4ade80" stroke-width="2" filter="url(#drop)"/>
+<text x="90" y="243" font-size="10" font-family="monospace" fill="#4ade80" text-anchor="middle" font-weight="700">Sessions</text>
+<text x="90" y="258" font-size="8" font-family="monospace" fill="#3a7a42" text-anchor="middle">telemetry</text>
+
+<!-- Scouts -->
+<rect x="163" y="226" width="116" height="46" rx="8" fill="#0e1810" stroke="#4ade80" stroke-width="1.5" filter="url(#drop)"/>
+<text x="221" y="247" font-size="10" font-family="monospace" fill="#4ade80" text-anchor="middle" font-weight="700">Scouts</text>
+<text x="221" y="261" font-size="8" font-family="monospace" fill="#3a6a42" text-anchor="middle">metric collectors</text>
+
+<!-- aggregate.py -->
+<rect x="315" y="226" width="142" height="46" rx="8" fill="#101018" stroke="#818cf8" stroke-width="1.5" filter="url(#drop)"/>
+<text x="386" y="247" font-size="10" font-family="monospace" fill="#818cf8" text-anchor="middle" font-weight="700">aggregate.py</text>
+<text x="386" y="261" font-size="8" font-family="monospace" fill="#555588" text-anchor="middle">22+ live metrics</text>
+
+<!-- wid_payload.json -->
+<rect x="497" y="226" width="152" height="46" rx="8" fill="#101020" stroke="#60a5fa" stroke-width="1.5" filter="url(#drop)"/>
+<text x="573" y="247" font-size="10" font-family="monospace" fill="#60a5fa" text-anchor="middle" font-weight="700">wid_payload.json</text>
+<text x="573" y="261" font-size="8" font-family="monospace" fill="#3a5888" text-anchor="middle">annotated · scored</text>
+
+<!-- Dashboard UI -->
+<rect x="692" y="226" width="140" height="46" rx="8" fill="#101820" stroke="#38bdf8" stroke-width="1.5" filter="url(#drop)"/>
+<text x="762" y="247" font-size="10" font-family="monospace" fill="#38bdf8" text-anchor="middle" font-weight="700">Dashboard UI</text>
+<text x="762" y="261" font-size="8" font-family="monospace" fill="#2a6888" text-anchor="middle">React · WebSocket</text>
+
+<!-- Skills Library -->
+<rect x="877" y="226" width="140" height="46" rx="8" fill="#18100a" stroke="#fbbf24" stroke-width="1.5" filter="url(#drop)"/>
+<text x="947" y="247" font-size="10" font-family="monospace" fill="#fbbf24" text-anchor="middle" font-weight="700">Skills Library</text>
+<text x="947" y="261" font-size="8" font-family="monospace" fill="#886822" text-anchor="middle">~/.claude/skills/</text>
+
+
+<!-- ── Alert + Action row ── -->
+
+<!-- Verifiers -->
+<rect x="163" y="390" width="116" height="46" rx="8" fill="#0c1018" stroke="#60a5fa" stroke-width="1.5" filter="url(#drop)"/>
+<text x="221" y="408" font-size="10" font-family="monospace" fill="#60a5fa" text-anchor="middle" font-weight="700">Verifiers</text>
+<text x="221" y="422" font-size="8" font-family="monospace" fill="#3a5878" text-anchor="middle">4 check modules</text>
+
+<!-- insights.py + METRIC_CONFIG -->
+<rect x="315" y="390" width="142" height="46" rx="8" fill="#101018" stroke="#818cf8" stroke-width="1.5" filter="url(#drop)"/>
+<text x="386" y="406" font-size="10" font-family="monospace" fill="#818cf8" text-anchor="middle" font-weight="700">insights.py</text>
+<text x="386" y="420" font-size="8" font-family="monospace" fill="#555588" text-anchor="middle">METRIC_CONFIG · _health()</text>
+<!-- small badge -->
+<rect x="386" y="430" width="60" height="14" rx="3" fill="#1a1a30" stroke="#818cf866" stroke-width="1" transform="translate(-30,-2)"/>
+<text x="386" y="440" font-size="7" font-family="monospace" fill="#818cf8aa" text-anchor="middle">annotate()</text>
+
+<!-- Nudge Catalog -->
+<rect x="497" y="390" width="152" height="46" rx="8" fill="#0e0e18" stroke="#a78bfa" stroke-width="1.5" filter="url(#drop)"/>
+<text x="573" y="408" font-size="10" font-family="monospace" fill="#a78bfa" text-anchor="middle" font-weight="700">Nudge Catalog</text>
+<text x="573" y="422" font-size="8" font-family="monospace" fill="#5a4888" text-anchor="middle">CLAUDE.md violations</text>
+
+<!-- Reflexes Engine -->
+<rect x="692" y="390" width="140" height="46" rx="8" fill="#181008" stroke="#fbbf24" stroke-width="1.5" filter="url(#drop)"/>
+<text x="762" y="408" font-size="10" font-family="monospace" fill="#fbbf24" text-anchor="middle" font-weight="700">Reflexes</text>
+<text x="762" y="422" font-size="8" font-family="monospace" fill="#885822" text-anchor="middle">reflexes.py · σ-anomaly</text>
+
+<!-- ronin-remediate (NEW skill) -->
+<rect x="877" y="390" width="140" height="46" rx="8" fill="#18100a" stroke="#f87171" stroke-width="1.5" stroke-dasharray="5 3" filter="url(#drop)"/>
+<text x="947" y="408" font-size="10" font-family="monospace" fill="#f87171" text-anchor="middle" font-weight="700">/ronin-remediate</text>
+<text x="947" y="422" font-size="8" font-family="monospace" fill="#884422" text-anchor="middle">orchestrator skill ✦ new</text>
+
+
+<!-- ── Behavior Effect Zone ── -->
+
+<!-- CLAUDE.md / OS Rules -->
+<rect x="163" y="560" width="116" height="46" rx="8" fill="#0e0e18" stroke="#a78bfa" stroke-width="1.5" filter="url(#drop)"/>
+<text x="221" y="578" font-size="10" font-family="monospace" fill="#a78bfa" text-anchor="middle" font-weight="700">CLAUDE.md</text>
+<text x="221" y="592" font-size="8" font-family="monospace" fill="#5a4888" text-anchor="middle">OS rules · policies</text>
+
+<!-- Session Behavior -->
+<circle cx="90" cy="597" r="38" fill="#0d1c10" stroke="#4ade8066" stroke-width="1.5" stroke-dasharray="5 3" filter="url(#drop)"/>
+<text x="90" y="591" font-size="9" font-family="monospace" fill="#4ade8099" text-anchor="middle">behavior</text>
+<text x="90" y="605" font-size="9" font-family="monospace" fill="#4ade8099" text-anchor="middle">change</text>
+
+<!-- Next session outcome -->
+<rect x="315" y="560" width="142" height="46" rx="8" fill="#0e1810" stroke="#4ade8055" stroke-width="1.5" stroke-dasharray="5 3" filter="url(#drop)"/>
+<text x="386" y="578" font-size="10" font-family="monospace" fill="#4ade8099" text-anchor="middle">Improved</text>
+<text x="386" y="592" font-size="8" font-family="monospace" fill="#3a6a4299" text-anchor="middle">next session metrics</text>
+
+<!-- Security posture -->
+<rect x="497" y="560" width="152" height="46" rx="8" fill="#180e0e" stroke="#f8717155" stroke-width="1.5" stroke-dasharray="5 3" filter="url(#drop)"/>
+<text x="573" y="578" font-size="10" font-family="monospace" fill="#f8717199" text-anchor="middle">Security Posture</text>
+<text x="573" y="592" font-size="8" font-family="monospace" fill="#8a455599" text-anchor="middle">verified · hardened</text>
+
+<!-- Skill quality -->
+<rect x="877" y="560" width="140" height="46" rx="8" fill="#18100a" stroke="#fbbf2455" stroke-width="1.5" stroke-dasharray="5 3" filter="url(#drop)"/>
+<text x="947" y="578" font-size="10" font-family="monospace" fill="#fbbf2499" text-anchor="middle">Skill Quality</text>
+<text x="947" y="592" font-size="8" font-family="monospace" fill="#88682299" text-anchor="middle">optimized · consolidated</text>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     STRUCTURAL DATA FLOWS (gray, thin)
+     These are the always-on data pipes
+═══════════════════════════════════════════════════════ -->
+
+<!-- Sessions → Scouts -->
+<line x1="134" y1="249" x2="162" y2="249" stroke="#333" stroke-width="1.5" marker-end="url(#arr-sm-gray)" class="flow-gray"/>
+
+<!-- Scouts → aggregate.py -->
+<line x1="279" y1="249" x2="314" y2="249" stroke="#333" stroke-width="1.5" marker-end="url(#arr-sm-gray)" class="flow-gray"/>
+
+<!-- aggregate.py → wid_payload.json -->
+<line x1="457" y1="249" x2="496" y2="249" stroke="#444" stroke-width="2" marker-end="url(#arr-sm-gray)" class="flow-gray"/>
+
+<!-- wid_payload.json → Dashboard -->
+<line x1="649" y1="249" x2="691" y2="249" stroke="#444" stroke-width="2" marker-end="url(#arr-sm-gray)" class="flow-gray"/>
+
+<!-- aggregate.py ↔ insights.py (bidirectional) -->
+<line x1="386" y1="272" x2="386" y2="389" stroke="#333" stroke-width="1.5" marker-end="url(#arr-sm-gray)" class="flow-gray"/>
+<line x1="380" y1="389" x2="380" y2="273" stroke="#333" stroke-width="1.5" marker-end="url(#arr-sm-gray)" class="flow-gray" stroke-dasharray="3 3"/>
+
+<!-- wid_payload → DOJO_STATE -->
+<line x1="573" y1="226" x2="573" y2="102" stroke="#444" stroke-width="1.5" marker-end="url(#arr-sm-gray)" class="flow-gray"/>
+
+<!-- DOJO_STATE → AutoRemediationEngine -->
+<line x1="649" y1="79" x2="691" y2="79" stroke="#f87171" stroke-width="1.5" marker-end="url(#arr-red)" class="flow-ronin"/>
+
+<!-- AutoRemediationEngine → bin/ronin -->
+<line x1="832" y1="79" x2="876" y2="79" stroke="#f87171" stroke-width="1.5" marker-end="url(#arr-red)" class="flow-ronin"/>
+
+<!-- Verifiers → aggregate.py (Governance_Pass_Rate contribution) -->
+<path d="M 221,390 C 221,320 386,320 386,272" stroke="#60a5fa" stroke-width="1.5" fill="none" marker-end="url(#arr-blue)" class="flow-gov" stroke-dasharray="5 4"/>
+
+<!-- Nudge Catalog → Reflexes (nudge_reflexes pipe) -->
+<line x1="649" y1="413" x2="691" y2="413" stroke="#a78bfa" stroke-width="1.5" marker-end="url(#arr-purple)" class="flow-learn"/>
+
+<!-- Reflexes → Dashboard (reflex card overlay) -->
+<line x1="762" y1="390" x2="762" y2="272" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#arr-amber)" class="flow-reflex"/>
+
+<!-- Dashboard → Skills (user clicks ⚡) -->
+<line x1="832" y1="249" x2="876" y2="249" stroke="#fbbf24" stroke-width="2" marker-end="url(#arr-amber)" class="flow-reflex"/>
+
+<!-- ronin-remediate feeds back (arrow up to skills) -->
+<line x1="947" y1="390" x2="947" y2="272" stroke="#f87171" stroke-width="1.5" marker-end="url(#arr-red)" class="flow-ronin" stroke-dasharray="4 3"/>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     FEEDBACK LOOP PATHS (thick, colored, labeled)
+═══════════════════════════════════════════════════════ -->
+
+<!-- ① MAIN COLLECTION LOOP (green) — outermost arc
+     Sessions → (all pipeline) → Skills → behavior change → next Sessions
+     Big arc going under the whole diagram -->
+<path d="M 947,272 C 947,640 90,640 90,293"
+  stroke="#4ade80" stroke-width="2.5" fill="none"
+  marker-end="url(#arr-green)" class="flow-main" filter="url(#glow-sm)"/>
+<text x="518" y="658" font-size="9" font-family="monospace" fill="#4ade80" text-anchor="middle" letter-spacing="1">① COLLECTION LOOP — behavior change feeds next session cycle</text>
+
+
+<!-- ② RONIN AUTO-REMEDIATION LOOP (red)
+     bin/ronin → (metric improves) → wid_payload → DOJO_STATE → AutoRemedy → bin/ronin
+     Arc going from bin/ronin up and back around through the top -->
+<path d="M 947,56 C 947,20 573,20 573,56"
+  stroke="#f87171" stroke-width="2" fill="none"
+  marker-end="url(#arr-red)" class="flow-ronin" filter="url(#glow-sm)"/>
+<!-- label along top arc -->
+<text x="760" y="20" font-size="8" font-family="monospace" fill="#f87171" text-anchor="middle" letter-spacing="1">② RONIN AUTO LOOP — pillar regression triggers auto-remediation</text>
+
+<!-- Dotted effect line from bin/ronin outcome back to payload -->
+<path d="M 947,102 C 1050,200 1050,249 902,249"
+  stroke="#f87171" stroke-width="1.5" fill="none" stroke-dasharray="5 4"
+  marker-end="url(#arr-red)" opacity="0.6"/>
+<!-- label -->
+<text x="1060" y="200" font-size="7.5" font-family="monospace" fill="#f8717188" text-anchor="middle" transform="rotate(-70, 1060, 200)">metric improves</text>
+
+
+<!-- ③ REFLEX LOOP (amber) — fast inner loop
+     wid_payload → Reflexes → Dashboard → Skills → Sessions
+     Arc on right side, goes from reflexes up around dashboard and skills -->
+<path d="M 762,436 C 820,520 1060,520 1060,436"
+  stroke="#fbbf24" stroke-width="2" fill="none"
+  marker-end="url(#arr-amber)" class="flow-reflex" filter="url(#glow-sm)"/>
+<!-- right-side label -->
+<text x="940" y="510" font-size="8.5" font-family="monospace" fill="#fbbf24" text-anchor="middle" letter-spacing="0.5">③ REFLEX LOOP</text>
+<text x="940" y="522" font-size="7.5" font-family="monospace" fill="#fbbf2499" text-anchor="middle">σ-anomaly → skill → next metric</text>
+
+<!-- /ronin-remediate orchestrates multiple skills in the reflex loop -->
+<path d="M 1060,436 C 1060,380 1060,340 1017,295"
+  stroke="#fbbf24" stroke-width="2" fill="none" stroke-dasharray="4 3"
+  marker-end="url(#arr-amber)" opacity="0.7"/>
+
+
+<!-- ④ GOVERNANCE LOOP (blue) — verification cycle
+     Verifiers → Governance_Pass_Rate (via aggregate) → wid_payload →
+     Dashboard shows low score → user runs /verifier-repair → fixes files → Verifiers re-check
+     Arc on left side -->
+<path d="M 221,436 C 100,520 60,560 60,597 C 60,640 163,640 163,606"
+  stroke="#60a5fa" stroke-width="2" fill="none"
+  marker-end="url(#arr-blue)" class="flow-gov" filter="url(#glow-sm)"/>
+<text x="40" y="570" font-size="8.5" font-family="monospace" fill="#60a5fa" text-anchor="middle" transform="rotate(-90,40,570)">④ GOVERNANCE LOOP</text>
+
+<!-- CLAUDE.md → Verifiers (OS rules feed into what verifiers check) -->
+<path d="M 221,560 C 221,510 221,480 221,436"
+  stroke="#60a5fa" stroke-width="1.5" fill="none"
+  marker-end="url(#arr-blue)" class="flow-gov" stroke-dasharray="5 4"/>
+
+
+<!-- ⑤ LEARNING LOOP (purple) — OS improvement cycle
+     Nudge Catalog → Skills (/improve-system) → CLAUDE.md →
+     better behavior → sessions → new nudges (or absence)
+     Arc going left from Nudge Catalog to CLAUDE.md -->
+<path d="M 497,413 C 380,480 280,540 279,560"
+  stroke="#a78bfa" stroke-width="2" fill="none"
+  marker-end="url(#arr-purple)" class="flow-learn" filter="url(#glow-sm)"/>
+<text x="348" y="500" font-size="8" font-family="monospace" fill="#a78bfa" text-anchor="middle" transform="rotate(-40, 348, 500)">⑤ LEARNING LOOP</text>
+
+<!-- CLAUDE.md → Sessions (rules → behavior) -->
+<path d="M 163,583 C 140,590 118,592 90,635"
+  stroke="#a78bfa" stroke-width="1.5" fill="none" stroke-dasharray="5 4"
+  marker-end="url(#arr-purple)" opacity="0.7"/>
+
+<!-- Sessions (bottom) → Sessions (top / next cycle) — the great cycle -->
+<path d="M 90,635 C 42,635 42,249 50,249"
+  stroke="#4ade8055" stroke-width="1.5" fill="none" stroke-dasharray="6 4"
+  marker-end="url(#arr-green2)" opacity="0.5"/>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     LABELS & ANNOTATIONS
+═══════════════════════════════════════════════════════ -->
+
+<!-- Sigma anomaly label on reflexes -->
+<text x="762" y="448" font-size="7" font-family="monospace" fill="#fbbf2499" text-anchor="middle">3σ=CRIT · 2σ=HIGH · 1σ=MED</text>
+
+<!-- Skills annotation -->
+<text x="947" y="282" font-size="7" font-family="monospace" fill="#fbbf2499" text-anchor="middle">43 remediation commands</text>
+
+<!-- nudge_command gap label -->
+<rect x="658" y="388" width="4" height="50" fill="#a78bfa66" rx="2"/>
+<text x="662" y="400" font-size="7" font-family="monospace" fill="#a78bfa88">_nudge_command()</text>
+<text x="662" y="411" font-size="7" font-family="monospace" fill="#a78bfa88">18 keywords</text>
+
+<!-- Security gate sub-note -->
+<text x="573" y="612" font-size="7.5" font-family="monospace" fill="#f8717188" text-anchor="middle">/canary-fault-diagnosis</text>
+<text x="573" y="624" font-size="7.5" font-family="monospace" fill="#f8717166" text-anchor="middle">→ /security-gate → refresh canary</text>
+
+<!-- 4 pillar label badges at top right -->
+<g transform="translate(1070, 170)">
+  <rect x="0" y="0" width="80" height="16" rx="4" fill="#1a0e0e" stroke="#f87171" stroke-width="1"/>
+  <text x="40" y="11" font-size="7.5" font-family="monospace" fill="#f87171" text-anchor="middle">⚔ SWORD</text>
+  <rect x="0" y="20" width="80" height="16" rx="4" fill="#0e1810" stroke="#4ade80" stroke-width="1"/>
+  <text x="40" y="31" font-size="7.5" font-family="monospace" fill="#4ade80" text-anchor="middle">🏹 BOW</text>
+  <rect x="0" y="40" width="80" height="16" rx="4" fill="#101018" stroke="#818cf8" stroke-width="1"/>
+  <text x="40" y="51" font-size="7.5" font-family="monospace" fill="#818cf8" text-anchor="middle">🖌 BRUSH</text>
+  <rect x="0" y="60" width="80" height="16" rx="4" fill="#18100a" stroke="#fbbf24" stroke-width="1"/>
+  <text x="40" y="71" font-size="7.5" font-family="monospace" fill="#fbbf24" text-anchor="middle">🎭 ARTS</text>
+</g>
+
+<!-- Timing annotations -->
+<g font-size="7" font-family="monospace" fill="#333">
+  <text x="762" y="108" text-anchor="middle">auto: pillar regression</text>
+  <text x="762" y="118" text-anchor="middle">timeout: 5 min</text>
+  <text x="947" y="108" text-anchor="middle">one-at-a-time queue</text>
+</g>
+
+<!-- Gap callout: no orchestrator in dojo.ts -->
+<rect x="694" y="140" width="198" height="24" rx="5" fill="#1a0a0a" stroke="#f8717155" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="793" y="152" font-size="7.5" font-family="monospace" fill="#f8717188" text-anchor="middle">⚠ runs bin/ronin, NOT skill commands</text>
+<text x="793" y="163" font-size="7.5" font-family="monospace" fill="#f8717166" text-anchor="middle">→ /ronin-remediate closes this gap</text>
+
+<!-- Title inside SVG bottom right -->
+<text x="1140" y="668" font-size="8" font-family="monospace" fill="#2a2a3a" text-anchor="end">order-samurai · feedback-loops · 2026-06-07</text>
+
+</svg>
+</div>
+
+<!-- Info cards below the diagram -->
+<div class="info-grid" style="max-width:1200px; width:100%; margin-top:20px;">
+
+  <div class="info-card" style="border-left-color:#4ade80">
+    <strong style="color:#4ade80">① Collection Loop</strong>
+    Scouts harvest session telemetry → aggregate.py computes 22+ metrics →
+    insights.py scores health (0–100) and annotates mitigation commands →
+    wid_payload.json written → Dashboard reads it → user (or ronin)
+    executes a skill → behavior changes → next session measured differently.
+    <br><em style="color:#555">Cadence: per session + on-demand refresh</em>
+  </div>
+
+  <div class="info-card" style="border-left-color:#f87171">
+    <strong style="color:#f87171">② Ronin Auto Loop</strong>
+    dojo.ts watches DOJO_STATE.json for <code>live_current &lt; live_baseline</code>
+    on any pillar → AutoRemediationEngine queues that pillar →
+    spawns <code>bin/ronin &lt;pillar&gt;</code> (shell script) → probes run →
+    DOJO_STATE updated. Single-concurrency — one pillar at a time, 5-min timeout.
+    <br><em style="color:#555">Gap: runs pillar script, not per-metric skill commands → /ronin-remediate skill closes this</em>
+  </div>
+
+  <div class="info-card" style="border-left-color:#fbbf24">
+    <strong style="color:#fbbf24">③ Reflex Loop</strong>
+    reflexes.py fires when metric value deviates ≥1σ from rolling history (needs ≥4 points)
+    OR grade falls below threshold → Dashboard shows reflex card with mitigation command →
+    user clicks ⚡ → WebSocket → spawnExec() → skill streams output →
+    next payload shows improved metric.
+    <br><em style="color:#555">New: /ronin-remediate orchestrates de-dup + priority ordering across simultaneous reflexes</em>
+  </div>
+
+  <div class="info-card" style="border-left-color:#60a5fa">
+    <strong style="color:#60a5fa">④ Governance Loop</strong>
+    4 verifier modules (root_hygiene, path_authority, archive_boundaries, runtime_contract)
+    return OK/FAIL/WARN per check → aggregate.py counts FAILs to compute
+    Governance_Pass_Rate → /verifier-repair maps each failure type to a concrete fix →
+    verifiers re-run → pass rate rises.
+    <br><em style="color:#555">Key gotcha: verifiers use "OK" not "PASS" — fixed in _governance_pass_rate reducer</em>
+  </div>
+
+  <div class="info-card" style="border-left-color:#a78bfa">
+    <strong style="color:#a78bfa">⑤ Learning Loop</strong>
+    CLAUDE.md principle violations accumulate in the Nudge Catalog → reflexes.py
+    wraps them as armed alerts via _nudge_command() → user runs /improve-system
+    or /ce-compound → lessons written to CLAUDE.md and docs/solutions/ →
+    OS rules improve → future sessions generate fewer violations.
+    <br><em style="color:#555">Gap partially closed: _nudge_command() now routes to all 5 new skills</em>
+  </div>
+
+  <div class="info-card" style="border-left-color:#818cf8">
+    <strong style="color:#818cf8">Cross-Loop Shared State</strong>
+    <code>wid_payload.json</code> is the single fan-out point — all loops read from it.
+    <code>DOJO_STATE.json</code> is the pillar-level truth. <code>METRIC_CONFIG</code>
+    (insights.py) is the single source of truth for skill→metric mappings.
+    Loop ①③ share the annotated metric envelope (<code>mitigation_command</code>).
+    Loop ② reads DOJO_STATE scores, not individual metric commands.
+  </div>
+
+</div>
+
+</body>
+</html>

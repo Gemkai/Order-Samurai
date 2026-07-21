@@ -1,0 +1,209 @@
+{
+  "version": 1,
+  "name": "Claude Surface Matrix",
+  "targetRuntimeRoot": "~/.claude",
+  "surfaceRoles": [
+    "runtime",
+    "registry",
+    "generator",
+    "generated_truth",
+    "operator",
+    "state",
+    "support",
+    "dependency",
+    "compatibility",
+    "source",
+    "archive"
+  ],
+  "surfaces": [
+    {
+      "path": "scripts/runtime_paths.py",
+      "role": "runtime",
+      "owner": "Claude control plane",
+      "discoverabilityContract": "canonical path authority",
+      "notes": "All Claude-home path construction should resolve through this module."
+    },
+    {
+      "path": "scripts/doctor.py",
+      "role": "operator",
+      "owner": "Claude control plane",
+      "discoverabilityContract": "canonical doctor entrypoint",
+      "notes": "Primary operator-facing runtime health aggregation surface."
+    },
+    {
+      "path": "execution/doctor.py",
+      "role": "compatibility",
+      "owner": "Claude control plane",
+      "discoverabilityContract": "legacy shim",
+      "notes": "Compatibility-only surface that forwards to scripts/doctor.py."
+    },
+    {
+      "path": "scripts/verify_claude_home.py",
+      "role": "operator",
+      "owner": "Claude control plane",
+      "discoverabilityContract": "canonical invariant gate",
+      "notes": "Enforces runtime drift, coupling, and canonical doc contracts."
+    },
+    {
+      "path": "scripts/hook_registry.py",
+      "role": "registry",
+      "owner": "Claude hook control plane",
+      "discoverabilityContract": "canonical hook registry",
+      "notes": "Source of truth for live hook commands."
+    },
+    {
+      "path": "scripts/sync_settings_config.py",
+      "role": "generator",
+      "owner": "Claude hook control plane",
+      "discoverabilityContract": "settings renderer",
+      "notes": "Renders settings.json from the hook registry."
+    },
+    {
+      "path": "settings.json",
+      "role": "generated_truth",
+      "owner": "Claude hook control plane",
+      "discoverabilityContract": "generated live hook config",
+      "notes": "Must not be treated as handwritten source of truth."
+    },
+    {
+      "path": "scripts/mcp_server_registry.py",
+      "role": "registry",
+      "owner": "Claude MCP control plane",
+      "discoverabilityContract": "canonical MCP registry",
+      "notes": "Source of truth for launcher-backed MCP configuration and activation metadata."
+    },
+    {
+      "path": "scripts/launch_mcp_server.py",
+      "role": "runtime",
+      "owner": "Claude MCP control plane",
+      "discoverabilityContract": "launcher abstraction",
+      "notes": "Unified launcher for eligible MCP servers."
+    },
+    {
+      "path": "scripts/sync_mcp_config.py",
+      "role": "generator",
+      "owner": "Claude MCP control plane",
+      "discoverabilityContract": "mcp renderer",
+      "notes": "Renders mcp.json from the MCP registry."
+    },
+    {
+      "path": "mcp.json",
+      "role": "generated_truth",
+      "owner": "Claude MCP control plane",
+      "discoverabilityContract": "generated live MCP config",
+      "notes": "Launcher-backed runtime config for all configured servers."
+    },
+    {
+      "path": "scripts/sync_runtime_inventory.py",
+      "role": "generator",
+      "owner": "Claude runtime governance",
+      "discoverabilityContract": "runtime inventory generator",
+      "notes": "Generates factual runtime inventory and operator summary."
+    },
+    {
+      "path": "data/runtime_inventory.json",
+      "role": "generated_truth",
+      "owner": "Claude runtime governance",
+      "discoverabilityContract": "machine-readable runtime truth",
+      "notes": "Authoritative runtime inventory artifact."
+    },
+    {
+      "path": "data/runtime_summary.md",
+      "role": "generated_truth",
+      "owner": "Claude runtime governance",
+      "discoverabilityContract": "human-readable runtime truth",
+      "notes": "Operator summary of the generated runtime inventory."
+    },
+    {
+      "path": "CLAUDE.md",
+      "role": "operator",
+      "owner": "Claude governance docs",
+      "discoverabilityContract": "global runtime guidance",
+      "notes": "Must reference generated truth rather than restating mutable runtime counts."
+    },
+    {
+      "path": "AGENTS.md",
+      "role": "operator",
+      "owner": "Claude governance docs",
+      "discoverabilityContract": "global agent guidance",
+      "notes": "Companion governance document for agent and workflow behavior."
+    },
+    {
+      "path": "commands/doctor.md",
+      "role": "operator",
+      "owner": "Claude governance docs",
+      "discoverabilityContract": "doctor usage contract",
+      "notes": "Explains the doctor surface and points to generated runtime truth."
+    },
+    {
+      "path": "directives/mcp-server-inventory.md",
+      "role": "operator",
+      "owner": "Claude governance docs",
+      "discoverabilityContract": "MCP discipline contract",
+      "notes": "Explains MCP planning and references generated runtime inventory."
+    },
+    {
+      "path": "skills",
+      "role": "runtime",
+      "owner": "Claude skill runtime",
+      "discoverabilityContract": "active skill plane",
+      "notes": "Active skills available in the live runtime."
+    },
+    {
+      "path": "skill-source",
+      "role": "source",
+      "owner": "Claude skill library",
+      "discoverabilityContract": "cold-storage skill plane",
+      "notes": "Source or cold-storage skill surface, not equivalent to the live runtime plane."
+    },
+    {
+      "path": "subagents",
+      "role": "runtime",
+      "owner": "Claude subagent runtime",
+      "discoverabilityContract": "active subagent plane",
+      "notes": "Active subagents available to the live runtime."
+    },
+    {
+      "path": "subagent-source",
+      "role": "source",
+      "owner": "Claude subagent library",
+      "discoverabilityContract": "cold-storage subagent plane",
+      "notes": "Source or cold-storage subagent surface, not equivalent to the live runtime plane."
+    },
+    {
+      "path": "projects",
+      "role": "state",
+      "owner": "Claude runtime state",
+      "discoverabilityContract": "per-project state store",
+      "notes": "Live state surface, but not a control-plane source of truth."
+    },
+    {
+      "path": "backups",
+      "role": "archive",
+      "owner": "Claude recovery state",
+      "discoverabilityContract": "historical backup plane",
+      "notes": "Must not become a live runtime dependency."
+    },
+    {
+      "path": "file-history",
+      "role": "archive",
+      "owner": "Claude recovery state",
+      "discoverabilityContract": "historical file snapshot plane",
+      "notes": "Must not become a live runtime dependency."
+    },
+    {
+      "path": "node_modules",
+      "role": "dependency",
+      "owner": "package manager",
+      "discoverabilityContract": "installed dependency plane",
+      "notes": "Dependency surface, not a policy or generated-truth surface."
+    },
+    {
+      "path": "plugins",
+      "role": "dependency",
+      "owner": "plugin runtime",
+      "discoverabilityContract": "plugin and plugin-cache plane",
+      "notes": "Out of scope for the audited live runtime control-plane score unless a verifier explicitly includes it."
+    }
+  ]
+}

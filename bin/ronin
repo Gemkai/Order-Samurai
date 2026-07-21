@@ -1,0 +1,456 @@
+#!/usr/bin/env bash
+# ronin — arm/disarm/status/propose/promote CLI for the Order Samurai daemon lifecycle.
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+STATE_DIR="$REPO_DIR/state"
+ARTIFACTS_DIR="$REPO_DIR/artifacts"
+BIN_DIR="$REPO_DIR/bin"
+
+DAEMON_SCRIPT="$BIN_DIR/ronin-daemon.sh"
+PID_FILE="$STATE_DIR/daemon.pid"
+STOP_FILE="$REPO_DIR/DOJO_STOP"
+LEDGER_FILE="$STATE_DIR/budget_ledger.json"
+PROPOSED_FILE="$STATE_DIR/PROPOSED_BACKLOG.json"
+STATE_FILE="$STATE_DIR/DOJO_STATE.json"
+LOG_FILE="$ARTIFACTS_DIR/ronin_logs.md"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+_err()  { echo "ronin: ERROR: $*" >&2; exit 1; }
+_info() { echo "ronin: $*"; }
+
+_python() {
+  if command -v python3 >/dev/null 2>&1; then python3 "$@"; else python "$@"; fi
+}
+
+_pid_running() {
+  local pid="${1:-}"
+  [[ -z "$pid" ]] && return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
+_read_pid() {
+  [[ -f "$PID_FILE" ]] || { echo ""; return; }
+  cat "$PID_FILE" 2>/dev/null || echo ""
+}
+
+_json_get() {
+  # Usage: _json_get <file> <key> [default]
+  local file="$1" key="$2" default="${3:-n/a}"
+  _python -c "
+import json, sys
+try:
+    d = json.load(open('$file'))
+    v = d.get('$key')
+    print(v if v is not None else '$default')
+except Exception:
+    print('$default')
+" 2>/dev/null || echo "$default"
+}
+
+# ---------------------------------------------------------------------------
+# arm
+# ---------------------------------------------------------------------------
+cmd_arm() {
+  command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1 \
+    || _err "python/python3 not found in PATH"
+
+  # 1. Check clean git tree
+  if git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+    local dirty
+    dirty="$(git -C "$REPO_DIR" status --porcelain 2>/dev/null || true)"
+    if [[ -n "$dirty" ]]; then
+      echo "ronin: WARNING: working tree is not clean:"
+      echo "$dirty"
+      echo "ronin: Continuing arm with dirty tree (not blocking)."
+    else
+      _info "Working tree is clean."
+    fi
+  else
+    _info "Not a git repo — skipping tree check."
+  fi
+
+  # 2. Remove DOJO_STOP if present
+  if [[ -f "$STOP_FILE" ]]; then
+    rm -f "$STOP_FILE"
+    _info "Removed DOJO_STOP."
+  fi
+
+  # 3. Check if daemon already running
+  local existing_pid
+  existing_pid="$(_read_pid)"
+  if [[ -n "$existing_pid" ]] && _pid_running "$existing_pid"; then
+    _info "Daemon already running (PID $existing_pid). Nothing to do."
+    return 0
+  fi
+
+  # 4. Check Ollama reachability (warn, don't block)
+  if command -v curl >/dev/null 2>&1; then
+    if ! curl -sf --max-time 3 http://localhost:11434/api/tags >/dev/null 2>&1; then
+      echo "ronin: WARNING: Ollama not reachable at http://localhost:11434 - local routing will fall back to Claude (higher cost)."
+    else
+      _info "Ollama reachable - local routing active."
+    fi
+  fi
+
+  # 5. Require daemon script
+  [[ -f "$DAEMON_SCRIPT" ]] || _err "Daemon script not found: $DAEMON_SCRIPT"
+  [[ -x "$DAEMON_SCRIPT" ]] || chmod +x "$DAEMON_SCRIPT"
+
+  # 6. Launch with nohup, redirect output to log
+  mkdir -p "$ARTIFACTS_DIR" "$STATE_DIR"
+  local nohup_log="$ARTIFACTS_DIR/ronin_daemon_nohup.log"
+  nohup bash "$DAEMON_SCRIPT" >> "$nohup_log" 2>&1 &
+  local new_pid=$!
+
+  # 7. Save PID
+  echo "$new_pid" > "$PID_FILE"
+
+  local daily_limit
+  daily_limit="$(_json_get "$LEDGER_FILE" daily_limit_usd "5.00")"
+
+  _info "Daemon armed (PID $new_pid)."
+  _info "Daily budget: \$${daily_limit}"
+  _info "Log: $nohup_log"
+  _info "Disarm: bash bin/ronin disarm"
+}
+
+# ---------------------------------------------------------------------------
+# disarm
+# ---------------------------------------------------------------------------
+cmd_disarm() {
+  # 1. Create DOJO_STOP
+  touch "$STOP_FILE"
+  _info "DOJO_STOP created — daemon will halt at next cycle check."
+
+  # 2. SIGTERM the daemon if running
+  local pid
+  pid="$(_read_pid)"
+  if [[ -n "$pid" ]] && _pid_running "$pid"; then
+    if kill -TERM "$pid" 2>/dev/null; then
+      _info "Sent SIGTERM to PID $pid."
+    else
+      _info "SIGTERM failed for PID $pid (may have already exited)."
+    fi
+  else
+    _info "No running daemon found (PID file: ${pid:-none})."
+  fi
+
+  _info "Final log: $LOG_FILE"
+}
+
+# ---------------------------------------------------------------------------
+# status
+# ---------------------------------------------------------------------------
+cmd_status() {
+  echo "=== Ronin Status ==="
+
+  # Running / stopped
+  local pid
+  pid="$(_read_pid)"
+  if [[ -n "$pid" ]] && _pid_running "$pid"; then
+    echo "Daemon  : RUNNING (PID $pid)"
+  else
+    echo "Daemon  : STOPPED${pid:+ (last PID $pid)}"
+  fi
+
+  # DOJO_STOP
+  if [[ -f "$STOP_FILE" ]]; then
+    echo "Stop    : DOJO_STOP present"
+  else
+    echo "Stop    : no DOJO_STOP"
+  fi
+
+  # Daily spend from budget_ledger.json
+  if [[ -f "$LEDGER_FILE" ]]; then
+    _python - <<PYEOF
+import json
+try:
+    d = json.load(open("$LEDGER_FILE"))
+    spent       = d.get("spent_usd", 0)
+    limit       = d.get("daily_limit_usd", 5.0)
+    date        = d.get("date", "n/a")
+    cycles      = d.get("cycles", d.get("cycles_today", 0))
+    print(f"Spend   : \${spent:.2f} / \${limit:.2f} (date: {date})")
+    print(f"Cycles  : {cycles} today")
+except Exception as e:
+    print(f"Spend   : (parse error: {e})")
+PYEOF
+  else
+    echo "Spend   : budget_ledger.json not found"
+  fi
+
+  # Lifetime cycle from DOJO_STATE.json
+  if [[ -f "$STATE_FILE" ]]; then
+    local cycle
+    cycle="$(_json_get "$STATE_FILE" cycle "n/a")"
+    echo "Cycle   : ${cycle} (lifetime)"
+  fi
+
+  # Last log line
+  if [[ -f "$LOG_FILE" ]]; then
+    local last_line
+    last_line="$(grep -v '^[[:space:]]*$' "$LOG_FILE" 2>/dev/null | tail -n 1 || echo "(empty)")"
+    echo "Last log: ${last_line}"
+  else
+    echo "Last log: $LOG_FILE not found"
+  fi
+
+  # Proposed backlog count
+  if [[ -f "$PROPOSED_FILE" ]]; then
+    _python - <<PYEOF
+import json
+try:
+    d = json.load(open("$PROPOSED_FILE"))
+    items    = d.get("items", [])
+    approved = [i for i in items if i.get("approved") is True]
+    print(f"Proposed: {len(items)} items ({len(approved)} approved)")
+except Exception:
+    print("Proposed: (parse error)")
+PYEOF
+  else
+    echo "Proposed: PROPOSED_BACKLOG.json not found"
+  fi
+
+  # Bushido HITL queue summary (use argv to bypass POSIX-vs-Windows path issues)
+  local hitl_file="$STATE_DIR/hitl_queue.json"
+  if [[ -f "$hitl_file" ]]; then
+    _python - "$hitl_file" <<'PYEOF'
+import json, sys, os
+try:
+    p = sys.argv[1]
+    # Normalize POSIX-style /c/... to C:\... on native Windows Python
+    if os.name == "nt" and p.startswith("/") and len(p) > 2 and p[2] == "/":
+        p = p[1].upper() + ":" + p[2:].replace("/", "\\")
+    d = json.load(open(p))
+    items = d.get("items", [])
+    pending = [i for i in items if i.get("status") == "pending"]
+    hitl = sum(1 for i in pending if i.get("tier_assigned") == "hitl")
+    queue = sum(1 for i in pending if i.get("tier_assigned") == "queue")
+    if pending:
+        print(f"HITL Q  : {len(pending)} pending ({hitl} HITL, {queue} QUEUE)")
+        print("          Run: bash bin/ronin approve-hitl")
+    else:
+        print("HITL Q  : 0 pending")
+except Exception as e:
+    print(f"HITL Q  : (parse error: {e})")
+PYEOF
+  else
+    echo "HITL Q  : hitl_queue.json not found"
+  fi
+
+  # Bushido global ronin mode
+  if [[ -f "$STATE_FILE" ]]; then
+    _python - "$STATE_FILE" <<'PYEOF'
+import json, sys, os
+try:
+    p = sys.argv[1]
+    if os.name == "nt" and p.startswith("/") and len(p) > 2 and p[2] == "/":
+        p = p[1].upper() + ":" + p[2:].replace("/", "\\")
+    d = json.load(open(p))
+    mode = d.get("ronin_mode", "dormant")
+    if str(mode).lower() == "ronin":
+        print(f"Global  : RONIN -- collapses QUEUE+HITL -> AUTO (every pillar + reflex)")
+    else:
+        print(f"Global  : {mode} (per-pillar ronin_mode applies)")
+except Exception:
+    pass
+PYEOF
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# propose
+# ---------------------------------------------------------------------------
+cmd_propose() {
+  [[ -f "$PROPOSED_FILE" ]] || _err "PROPOSED_BACKLOG.json not found: $PROPOSED_FILE"
+  _python -m json.tool "$PROPOSED_FILE"
+  echo ""
+  echo "To approve an item: edit $PROPOSED_FILE and set \"approved\": true"
+  echo "Then run: bash bin/ronin promote"
+}
+
+# ---------------------------------------------------------------------------
+# promote
+# ---------------------------------------------------------------------------
+cmd_promote() {
+  [[ -f "$PROPOSED_FILE" ]] || _err "PROPOSED_BACKLOG.json not found: $PROPOSED_FILE"
+  [[ -f "$STATE_FILE" ]]    || _err "DOJO_STATE.json not found: $STATE_FILE"
+
+  _python - <<PYEOF
+import json, sys, pathlib
+
+_REPO = pathlib.Path("$REPO_DIR")
+proposed_path = _REPO / "state" / "PROPOSED_BACKLOG.json"
+state_path = _REPO / "state" / "DOJO_STATE.json"
+
+with open(proposed_path) as f:
+    proposed = json.load(f)
+with open(state_path) as f:
+    state = json.load(f)
+
+approved = [i for i in proposed.get("items", []) if i.get("approved") is True]
+if not approved:
+    print("ronin: No approved items to promote.")
+    sys.exit(0)
+
+# Capture IDs before mutating items
+promoted_ids = {i["id"] for i in approved}
+
+# Merge into backlog (drop 'approved' flag — it's a proposal-only field)
+for item in approved:
+    item.pop("approved", None)
+    item["status"] = "todo"
+
+state.setdefault("backlog", []).extend(approved)
+
+# Remove promoted items from proposed by ID (not by approved flag — it was already popped)
+proposed["items"] = [i for i in proposed.get("items", []) if i.get("id") not in promoted_ids]
+
+with open(state_path, "w") as f:
+    json.dump(state, f, indent=2)
+with open(proposed_path, "w") as f:
+    json.dump(proposed, f, indent=2)
+
+print(f"ronin: Promoted {len(approved)} item(s) to DOJO_STATE.json backlog.")
+for item in approved:
+    print(f"  + [{item.get('pillar','?')}] {item.get('id','?')}: {item.get('title','?')}")
+PYEOF
+}
+
+# ---------------------------------------------------------------------------
+# approve-hitl
+# ---------------------------------------------------------------------------
+cmd_approve_hitl() {
+  local hitl_queue="$STATE_DIR/hitl_queue.json"
+  [[ -f "$hitl_queue" ]] || _err "hitl_queue.json not found: $hitl_queue"
+
+  local arg="${1:-}"
+  PYTHONIOENCODING=utf-8 _python - "$REPO_DIR" "$arg" <<'PYEOF'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+arg = sys.argv[2] if len(sys.argv) > 2 else ""
+queue_path = repo_root / "state" / "hitl_queue.json"
+
+# Atomic write helper
+def write(data):
+    tmp = queue_path.with_suffix(queue_path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        tmp.replace(queue_path)
+    except OSError:
+        import shutil
+        shutil.copyfile(tmp, queue_path)
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+
+data = json.loads(queue_path.read_text(encoding="utf-8"))
+items = data.get("items", [])
+pending = [i for i in items if i.get("status") == "pending"]
+
+if not arg:
+    # List mode
+    if not pending:
+        print("ronin: hitl_queue is empty (no pending items).")
+        sys.exit(0)
+    print(f"=== Pending HITL items ({len(pending)}) ===")
+    by_tier = {"hitl": [], "queue": [], "auto": [], "hard_stop": []}
+    for it in pending:
+        by_tier.setdefault(it.get("tier_assigned", "queue"), []).append(it)
+    for tier in ("hitl", "queue", "auto", "hard_stop"):
+        if not by_tier.get(tier):
+            continue
+        print(f"\n-- {tier.upper()} ({len(by_tier[tier])}) --")
+        for it in by_tier[tier]:
+            pillar = (it.get("pillar") or "-")
+            source = (it.get("source") or "?")
+            print(f"  {it['id']:14s}  [{pillar:5s}]  {it['skill']:30s}  source={source:6s}  enq={it.get('enqueued_at','?')}")
+    print("\nUse: bash bin/ronin approve-hitl <id>")
+    print("Or:  bash bin/ronin approve-hitl --all   (QUEUE tier only)")
+    sys.exit(0)
+
+now = datetime.now(timezone.utc).isoformat()
+if arg == "--all":
+    approved = []
+    for it in items:
+        if it.get("status") == "pending" and it.get("tier_assigned") == "queue":
+            it["status"] = "approved"
+            it["approved_at"] = now
+            approved.append(it["id"])
+    if not approved:
+        print("ronin: No QUEUE-tier pending items to approve.")
+        sys.exit(0)
+    data["updated_at"] = now
+    write(data)
+    print(f"ronin: Approved {len(approved)} QUEUE-tier item(s):")
+    for aid in approved:
+        print(f"  + {aid}")
+    sys.exit(0)
+
+# Specific id
+target = None
+for it in items:
+    if it.get("id") == arg:
+        target = it
+        break
+if target is None:
+    print(f"ronin: ERROR: item {arg} not found.", file=sys.stderr)
+    sys.exit(1)
+if target.get("status") != "pending":
+    print(f"ronin: ERROR: item {arg} status is '{target.get('status')}' (need pending).", file=sys.stderr)
+    sys.exit(1)
+target["status"] = "approved"
+target["approved_at"] = now
+data["updated_at"] = now
+write(data)
+print(f"ronin: Approved {arg} ({target.get('tier_assigned')}/{target['skill']}).")
+print("Item will execute on its next natural trigger (reflex or dojo cycle).")
+PYEOF
+}
+
+# ---------------------------------------------------------------------------
+# Usage
+# ---------------------------------------------------------------------------
+usage() {
+  cat <<'EOF'
+Usage: bash bin/ronin <command> [args]
+
+Commands:
+  arm                          Remove DOJO_STOP, start ronin-daemon.sh in background
+  disarm                       Create DOJO_STOP, SIGTERM daemon
+  status                       Show running/stopped, daily spend, cycle count, last log line
+  propose                      Pretty-print state/PROPOSED_BACKLOG.json
+  promote                      Move approved==true items from PROPOSED_BACKLOG into DOJO_STATE backlog
+  approve-hitl                 List pending items in state/hitl_queue.json
+  approve-hitl <id>            Approve a single queued item (any tier)
+  approve-hitl --all           Approve every pending QUEUE-tier item (HITL tier excluded)
+EOF
+}
+
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
+CMD="${1:-}"
+case "$CMD" in
+  arm)            cmd_arm     ;;
+  disarm)         cmd_disarm  ;;
+  status)         cmd_status  ;;
+  propose)        cmd_propose ;;
+  promote)        cmd_promote ;;
+  approve-hitl)   shift; cmd_approve_hitl "${1:-}" ;;
+  ""|--help|-h)   usage; exit 0 ;;
+  *) echo "ronin: unknown command: $CMD" >&2; usage; exit 1 ;;
+esac

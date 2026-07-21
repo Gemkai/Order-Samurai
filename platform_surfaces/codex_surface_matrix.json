@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "platform": "codex",
+  "targetRoot": "~/.codex",
+  "description": "Codex runtime surface matrix for Agentica OS governance. This is intentionally tracked in Governance so Codex is measured and governed, not only counted in telemetry.",
+  "surfaceRoles": [
+    "runtime_root",
+    "telemetry_record",
+    "rules",
+    "skills",
+    "sessions",
+    "scripts",
+    "sandbox"
+  ],
+  "surfaces": [
+    {
+      "path": ".",
+      "role": "runtime_root",
+      "owner": "Codex runtime",
+      "discoverabilityContract": "runtime home exists and is not silently substituted"
+    },
+    {
+      "path": "telemetry/telemetry.jsonl",
+      "role": "telemetry_record",
+      "owner": "Data layer via Codex emitter",
+      "discoverabilityContract": "append-only canonical Agentica telemetry"
+    },
+    {
+      "path": "rules",
+      "role": "rules",
+      "owner": "Codex runtime",
+      "discoverabilityContract": "runtime instruction/rule assets"
+    },
+    {
+      "path": "skills",
+      "role": "skills",
+      "owner": "Codex runtime",
+      "discoverabilityContract": "installed Codex skill manifests"
+    },
+    {
+      "path": "sessions",
+      "role": "sessions",
+      "owner": "Codex runtime",
+      "discoverabilityContract": "session records used by the Codex telemetry emitter"
+    },
+    {
+      "path": "scripts",
+      "role": "scripts",
+      "owner": "Codex runtime",
+      "discoverabilityContract": "runtime helper scripts, including telemetry emitters"
+    },
+    {
+      "path": ".sandbox",
+      "role": "sandbox",
+      "owner": "Codex runtime",
+      "discoverabilityContract": "sandbox state stays inside the runtime root"
+    }
+  ],
+  "boundaryInvariants": [
+    "Codex telemetry must validate against the canonical agentica.1 schema.",
+    "Codex runtime surfaces must resolve under ~/.codex; no local fallback copy is acceptable.",
+    "Governance owns this matrix; Codex runtime may emit telemetry but must not rewrite its own governance policy."
+  ],
+  "knownGaps": [
+    "This first verifier covers runtime shape, surface resolution, and telemetry schema. Deeper Codex hook and sandbox policy checks should be added once the runtime contract is formalized."
+  ]
+}

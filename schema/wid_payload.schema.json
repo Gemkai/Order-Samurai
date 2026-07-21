@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentica-os/governance/schema/wid_payload.schema.json",
+  "title": "Agentica WID Payload (reflex/metric envelope)",
+  "description": "Versioned contract for the wid_payload.json envelope produced by agentica_core.aggregate.write_payload (Python) and consumed by api/src/reflex-engine.ts (TypeScript). Validates the cross-language seam: the envelope identity (schema_version, timestamp) and the reflex entries the engine dispatches. Open by design (additionalProperties allowed) so the rich dashboard payload can evolve without breaking the seam — only the seam-critical invariants are enforced.",
+  "type": "object",
+  "required": ["schema_version", "timestamp", "reflexes"],
+  "properties": {
+    "schema_version": {
+      "description": "Envelope version. Pinned so a Python/TS version skew fails fast on both sides instead of silently mis-parsing.",
+      "const": "agentica.1"
+    },
+    "timestamp": {
+      "description": "ISO-8601 UTC time the payload was aggregated.",
+      "type": "string",
+      "minLength": 1
+    },
+    "reflexes": {
+      "description": "Priority-ordered reflex/metric breaches the engine may dispatch.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/reflex" }
+    }
+  },
+  "additionalProperties": true,
+  "definitions": {
+    "reflex": {
+      "type": "object",
+      "required": ["id", "tier", "command", "status", "source"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "tier": {
+          "type": "string",
+          "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+        },
+        "command": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "generator": "execution/sync_capability_manifest.py",
+  "surfaceCount": 8,
+  "surfaces": [
+    {
+      "path": "Research",
+      "role": "support",
+      "discoverable": true
+    },
+    {
+      "path": "backlog",
+      "role": "support",
+      "discoverable": true
+    },
+    {
+      "path": "bin",
+      "role": "operator",
+      "discoverable": true
+    },
+    {
+      "path": "config",
+      "role": "registry",
+      "discoverable": true
+    },
+    {
+      "path": "execution",
+      "role": "runtime",
+      "discoverable": true
+    },
+    {
+      "path": "reports",
+      "role": "support",
+      "discoverable": true
+    },
+    {
+      "path": "scouts",
+      "role": "runtime",
+      "discoverable": true
+    },
+    {
+      "path": "tests",
+      "role": "support",
+      "discoverable": true
+    }
+  ]
+}

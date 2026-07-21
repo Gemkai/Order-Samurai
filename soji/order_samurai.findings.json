@@ -1,0 +1,134 @@
+{
+  "layer": "order_samurai",
+  "generated_at": "2026-06-13T15:45:56.2126347-04:00",
+  "mode": "execute",
+  "count": 14,
+  "findings": [
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "analyze_skills.py",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    },
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "analyze_skills2.py",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    },
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "analyze_skills3.py",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    },
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "check_licenses_tmp.py",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    },
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "state/daemon.pid",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    },
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "state/reflex_engine_state.json.bak",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    },
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "temppip_audit_results.json",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    },
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "tmp_debug2.py",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    },
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "tmp_debug_gate.py",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    },
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "tmp_hook_audit.py",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    },
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "tmp_read_scripts.py",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    },
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "tmp_read_scripts2.py",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    },
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "tmp_verify_gates.py",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    },
+    {
+      "layer": "order_samurai",
+      "kind": "temp_zombie",
+      "path": "tmp_verify_gates2.py",
+      "detected_at": "2026-06-13T15:45:56.2126347-04:00",
+      "severity": "low",
+      "suggested_action": "DELETE",
+      "actuation": "auto"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "description": "Platform registry for the Agentica OS adapter. Adding a platform is a config entry here, not a code change. Path specs support ~ (home), {home}, and {governance} (the Agentica OS Governance dir) tokens.",
+  "platforms": {
+    "claude": {
+      "runtime_root": "~/.claude",
+      "telemetry_source": "~/.claude/telemetry/telemetry.jsonl",
+      "surface_matrix": "{governance}/Order Samurai/config/claude_surface_matrix.json",
+      "verifiers": "agentica_core.providers.claude_verifiers:get_verifiers"
+    },
+    "codex": {
+      "runtime_root": "~/.codex",
+      "telemetry_source": "~/.codex/telemetry/telemetry.jsonl",
+      "surface_matrix": "{governance}/platform_surfaces/codex_surface_matrix.json",
+      "verifiers": "agentica_core.providers.codex_verifiers:get_verifiers"
+    }
+  }
+}

@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# ronin-pillar — single-pillar SENSEI invocation, no branch or dirty-tree machinery.
+# Usage: bin/ronin-pillar <bow|sword|brush|arts>
+set -euo pipefail
+
+PILLAR="${1:?Usage: bin/ronin-pillar <bow|sword|brush|arts>}"
+case "$PILLAR" in bow|sword|brush|arts) ;; *) echo "Unknown pillar: $PILLAR" >&2; exit 1 ;; esac
+
+REPO_DIR="${REPO_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "$REPO_DIR"
+
+[ -f dojo.env ] && set -a && . ./dojo.env && set +a
+
+PROMPT_FILE="prompts/dojo_cycle.md"
+[ -f "$PROMPT_FILE" ] || { echo "Missing $PROMPT_FILE" >&2; exit 1; }
+
+ALLOWED='Read,Edit,Write,Grep,Glob,Task,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git checkout -- :*),Bash(./bin/ronin-local:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(node:*),Bash(jq:*)'
+
+FULL_PROMPT="$(cat "$PROMPT_FILE")
+
+---
+DISPATCH OVERRIDE (TUI-triggered single-pillar run):
+Focus this cycle exclusively on pillar=${PILLAR}.
+Skip Step B if state/DOJO_STATE.json already has live_current set.
+In Step C, only consider backlog items where pillar=${PILLAR}.
+Proceed through Steps D → E → F normally."
+
+# Fallback literals match dojo.env (single source) — no silent divergence if dojo.env is absent.
+CLAUDE_CMD=(claude -p "$FULL_PROMPT"
+  --allowedTools "$ALLOWED"
+  --permission-mode acceptEdits
+  --max-turns "${MAX_TURNS:-80}")
+
+if command -v timeout >/dev/null 2>&1; then
+  exec timeout "${CYCLE_TIMEOUT:-2400}s" "${CLAUDE_CMD[@]}"
+fi
+# macOS has no GNU `timeout` — this exec failed silently on every Mac cycle
+# ("exec: timeout: not found"), so no dojo cycle ever ran here. Bash watchdog
+# with the same kill-after semantics:
+"${CLAUDE_CMD[@]}" & PID=$!
+( sleep "${CYCLE_TIMEOUT:-2400}" && kill -TERM "$PID" 2>/dev/null ) & WD=$!
+RC=0
+wait "$PID" || RC=$?
+kill "$WD" 2>/dev/null || true
+exit "$RC"

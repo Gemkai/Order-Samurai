@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "name": "Claude Runtime Promotion Policy",
+  "targetRuntimeRoot": "~/.claude",
+  "goal": "Prevent fragile scripts, handwritten config, or ambiguous optional capabilities from entering Claude's live runtime plane without explicit governance.",
+  "lifecycleStates": [
+    "source",
+    "candidate",
+    "runtime",
+    "compatibility",
+    "deprecated",
+    "archive"
+  ],
+  "promotionChecklist": [
+    {
+      "id": "explicit-purpose-owner",
+      "required": true,
+      "statement": "The asset has one clear runtime purpose and a named control-plane owner."
+    },
+    {
+      "id": "canonical-pathing",
+      "required": true,
+      "statement": "All Claude-home path construction resolves through scripts/runtime_paths.py or an explicitly approved portable entrypoint helper."
+    },
+    {
+      "id": "generated-config-integration",
+      "required": true,
+      "statement": "If the asset affects settings.json or mcp.json, it integrates through the canonical generator rather than direct hand editing."
+    },
+    {
+      "id": "inventory-parity",
+      "required": true,
+      "statement": "The asset is represented in generated runtime truth where operators would reasonably expect to discover it."
+    },
+    {
+      "id": "platform-portability",
+      "required": true,
+      "statement": "Required live runtime flows do not depend on shell assumptions that the target platform cannot guarantee."
+    },
+    {
+      "id": "activation-contract-declared",
+      "required": true,
+      "statement": "Optional integrations declare required environment activation conditions instead of remaining enabled-but-broken."
+    },
+    {
+      "id": "runtime-coupling-clean",
+      "required": true,
+      "statement": "The asset does not reference sibling-runtime, backup, or historical roots except through explicit bridge policy."
+    },
+    {
+      "id": "doctor-and-invariant-coverage",
+      "required": true,
+      "statement": "The asset is visible to doctor, invariants, or both when its failure would matter operationally."
+    },
+    {
+      "id": "tests-or-deterministic-smoke-check",
+      "required": true,
+      "statement": "The asset has targeted tests or a deterministic smoke path that can be rerun after changes."
+    },
+    {
+      "id": "doc-parity",
+      "required": true,
+      "statement": "Human-readable runtime docs are updated in the same architectural batch."
+    }
+  ],
+  "blockers": [
+    "handwritten live config drift",
+    "hardcoded Claude-home or sibling-runtime absolute paths",
+    "bash-only dependency in required Windows runtime flow",
+    "enabled-but-broken optional capability",
+    "missing generated truth coverage",
+    "missing invariant or doctor visibility"
+  ],
+  "compatibilityShimPolicy": {
+    "requirements": [
+      "must point to one canonical owner",
+      "must be documented as compatibility only",
+      "must not become the source of truth"
+    ]
+  },
+  "retirementPolicy": {
+    "requirements": [
+      "mark deprecated state explicitly",
+      "remove live references before archival move",
+      "preserve historical material only behind archive boundaries"
+    ]
+  }
+}

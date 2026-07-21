@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "name": "Claude Root Hygiene Policy",
+  "targetRuntimeRoot": "~/.claude",
+  "directories": {
+    "runtime": [
+      "commands",
+      "directives",
+      "execution",
+      "hooks",
+      "llm",
+      "orchestration",
+      "safety",
+      "scripts",
+      "skills",
+      "subagents"
+    ],
+    "source": [
+      "skill-source",
+      "subagent-source"
+    ],
+    "generated_truth": [
+      "artifacts",
+      "data"
+    ],
+    "support": [
+      ".agents",
+      "agents",
+      "cognition",
+      "config",
+      "debug",
+      "get-shit-done",
+      "ide",
+      "plans",
+      "rules",
+      "tests"
+    ],
+    "state": [
+      ".tmp",
+      "cache",
+      "downloads",
+      "paste-cache",
+      "projects",
+      "scheduled-tasks",
+      "session-env",
+      "sessions",
+      "shell-snapshots",
+      "tasks",
+      "telemetry"
+    ],
+    "archive": [
+      "backups",
+      "file-history"
+    ],
+    "dependency": [
+      "node_modules",
+      "octopus-agents",
+      "octopus-commands",
+      "octopus-references",
+      "octopus-skills",
+      "plugins",
+      "vendor"
+    ]
+  },
+  "files": {
+    "metadata": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      "JARVIS-PROTOCOL.md"
+    ],
+    "generated_truth": [
+      "gsd-file-manifest.json",
+      "mcp.json",
+      "settings.json",
+      "skills-lock.json",
+      "subagent-lock.json"
+    ],
+    "state": [
+      ".credentials.json",
+      ".env",
+      ".env.bak",
+      "HANDOFF.md",
+      "history.jsonl",
+      "settings.json.pre-gsd-bak"
+    ],
+    "support": [
+      ".env.example",
+      "GLOBAL_LESSONS.md",
+      "keybindings.json",
+      "lessons.md",
+      "package-lock.json",
+      "package.json",
+      "PHASE_1_QUICKWIN_SUMMARY.md",
+      "PHASE_2_ADAPTIVE_INTELLIGENCE_SUMMARY.md",
+      "PHASE_3_MASTERY_SUMMARY.md",
+      "requirements-openspace.txt",
+      "STRATEGY_CLAUDE_VS_ANTIGRAVITY.md",
+      "ag-phase-4-7-manifest.txt",
+      "hookify.dangerous-rm.local.md",
+      "hookify.hardcoded-api-keys.local.md",
+      "hookify.overflow-hidden.local.md",
+      "hookify.sensitive-files.local.md",
+      "hookify.shell-injection.local.md"
+    ]
+  },
+  "requiredDirectories": [
+    "commands",
+    "data",
+    "directives",
+    "execution",
+    "hooks",
+    "llm",
+    "orchestration",
+    "safety",
+    "scripts",
+    "skills",
+    "subagents",
+    "tests"
+  ],
+  "requiredFiles": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "mcp.json",
+    "settings.json",
+    "skills-lock.json",
+    "subagent-lock.json"
+  ],
+  "boundaryRules": [
+    {
+      "name": "external-runtime-isolation",
+      "scanPaths": [
+        "commands",
+        "directives",
+        "execution",
+        "hooks",
+        "llm",
+        "orchestration",
+        "safety",
+        "scripts",
+        "skills",
+        "subagents",
+        "AGENTS.md",
+        "CLAUDE.md"
+      ],
+      "forbiddenPatterns": [
+        ".gemini\\antigravity",
+        ".gemini/antigravity"
+      ],
+      "description": "Live Claude runtime surfaces must not reference Antigravity-owned paths."
+    },
+    {
+      "name": "historical-surface-isolation",
+      "scanPaths": [
+        "commands",
+        "directives",
+        "execution",
+        "hooks",
+        "llm",
+        "orchestration",
+        "safety",
+        "scripts",
+        "skills",
+        "subagents"
+      ],
+      "forbiddenRoots": [
+        "backups",
+        "file-history"
+      ],
+      "description": "Historical and recovery surfaces must not become live runtime dependencies."
+    }
+  ]
+}

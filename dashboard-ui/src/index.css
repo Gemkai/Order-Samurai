@@ -1,0 +1,419 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-heading: var(--font-sans);
+    --font-sans: 'Geist Variable', sans-serif;
+    --color-sidebar-ring: var(--sidebar-ring);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar: var(--sidebar);
+    --color-chart-5: var(--chart-5);
+    --color-chart-4: var(--chart-4);
+    --color-chart-3: var(--chart-3);
+    --color-chart-2: var(--chart-2);
+    --color-chart-1: var(--chart-1);
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+    --color-chart-label: var(----chart-label);
+    --color-chart-ring-background: var(----chart-ring-background);
+    --color-chart-marker-foreground: var(----chart-marker-foreground);
+    --color-chart-marker-border: var(----chart-marker-border);
+    --color-chart-marker-background: var(----chart-marker-background);
+    --color-chart-tooltip-muted: var(----chart-tooltip-muted);
+    --color-chart-tooltip-foreground: var(----chart-tooltip-foreground);
+    --color-chart-tooltip-background: var(----chart-tooltip-background);
+    --color-chart-grid: var(----chart-grid);
+    --color-chart-crosshair: var(----chart-crosshair);
+    --chart-line-secondary: var(----chart-line-secondary);
+    --chart-line-primary: var(----chart-line-primary);
+    --color-chart-foreground-muted: var(----chart-foreground-muted);
+    --color-chart-foreground: var(----chart-foreground);
+    --color-chart-background: var(----chart-background);
+}
+
+:root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
+    --chart-background: oklch(1 0 0);
+    --chart-foreground: oklch(0.145 0.004 285);
+    --chart-foreground-muted: oklch(0.55 0.014 260);
+    --chart-line-primary: var(--chart-1);
+    --chart-line-secondary: var(--chart-2);
+    --chart-crosshair: oklch(0.4 0.1828 274.34);
+    --chart-grid: oklch(0.9 0 0);
+    --chart-tooltip-background: oklch(0.21 0.006 285 / 0.8);
+    --chart-tooltip-foreground: oklch(0.985 0 0);
+    --chart-tooltip-muted: oklch(0.65 0.01 260);
+    --chart-marker-background: oklch(0.97 0.005 260);
+    --chart-marker-border: oklch(0.85 0.01 260);
+    --chart-marker-foreground: oklch(0.3 0.01 260);
+    --chart-ring-background: oklch(0.9 0.005 260 / 0.25);
+    --chart-label: oklch(0.45 0.01 260);
+}
+
+.dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
+    --chart-background: oklch(0.145 0 0);
+    --chart-foreground: oklch(0.45 0 0);
+    --chart-foreground-muted: oklch(0.65 0.01 260);
+    --chart-crosshair: oklch(0.45 0 0);
+    --chart-grid: oklch(0.25 0 0);
+    --chart-marker-background: oklch(0.25 0.01 260);
+    --chart-marker-border: oklch(0.4 0.01 260);
+    --chart-marker-foreground: oklch(0.9 0 0);
+    --chart-ring-background: oklch(0.35 0.01 260 / 0.25);
+    --chart-label: oklch(0.75 0.01 260);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
+  html {
+    @apply font-sans;
+    }
+}
+
+/* ===== Agentica OS — Samurai "Kinetic Command" theme (recolor of Jarvis tokens) ===== */
+:root, .dark {
+  --background: #050505;
+  --foreground: #f5f5f5;
+  --card: rgba(255, 255, 255, 0.02);
+  --card-foreground: #f5f5f5;
+  --popover: #0b0b0d;
+  --popover-foreground: #f5f5f5;
+  --muted: rgba(255, 255, 255, 0.04);
+  --muted-foreground: rgba(255, 255, 255, 0.45);
+  --border: rgba(255, 255, 255, 0.06);
+  --input: rgba(255, 255, 255, 0.08);
+  --ring: #ef4444;
+  /* samurai pillar accents */
+  --overview: #38bdf8; /* sky   — Bushido Overview */
+  --sword: #ef4444;   /* red    — Security */
+  --bow: #facc15;     /* yellow — Operational */
+  --brush: #f472b6;   /* pink   — Architecture */
+  --arts: #f5f5f5;    /* white  — UX / Docs */
+  --rose: #fb7185;
+  /* chart palette -> samurai */
+  --chart-1: #ef4444;
+  --chart-2: #facc15;
+  --chart-3: #f472b6;
+  --chart-4: #f5f5f5;
+  --chart-5: #fb7185;
+  /* bklit chart structural tokens, themed dark */
+  --chart-background: #050505;
+  --chart-foreground: rgba(255, 255, 255, 0.55);
+  --chart-grid: rgba(255, 255, 255, 0.06);
+  --chart-label: rgba(255, 255, 255, 0.6);
+  --chart-ring-background: rgba(255, 255, 255, 0.06);
+  --card-bg: rgba(255, 255, 255, 0.02);
+  --card-border: rgba(255, 255, 255, 0.06);
+}
+
+.glass { background: var(--card-bg); border: 1px solid var(--card-border); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); }
+
+/* Per-pillar colored glass panels (mirrors Jarvis glass-panel-emerald/amber/purple) */
+.glass-bow {
+  background: linear-gradient(135deg, rgba(90, 70, 5, 0.55) 0%, rgba(55, 42, 3, 0.55) 100%);
+  backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+  border: 1px solid rgba(250, 204, 21, 0.22);
+}
+.glass-sword {
+  background: linear-gradient(135deg, rgba(80, 10, 10, 0.55) 0%, rgba(50, 6, 6, 0.55) 100%);
+  backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+  border: 1px solid rgba(239, 68, 68, 0.22);
+}
+.glass-brush {
+  background: linear-gradient(135deg, rgba(75, 10, 48, 0.55) 0%, rgba(50, 6, 32, 0.55) 100%);
+  backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+  border: 1px solid rgba(244, 114, 182, 0.22);
+}
+.glass-arts {
+  background: linear-gradient(135deg, rgba(38, 38, 38, 0.55) 0%, rgba(22, 22, 22, 0.55) 100%);
+  backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+  border: 1px solid rgba(245, 245, 245, 0.14);
+}
+/* Subtle metric card tint (lighter, for individual cards) */
+.glass-bow-card   { background: rgba(90, 70, 5, 0.12);  border: 1px solid rgba(250, 204, 21, 0.12); border-radius: 14px; }
+.glass-sword-card { background: rgba(80, 10, 10, 0.12); border: 1px solid rgba(239, 68, 68, 0.12);  border-radius: 14px; }
+.glass-brush-card { background: rgba(75, 10, 48, 0.12); border: 1px solid rgba(244, 114, 182, 0.12);border-radius: 14px; }
+.glass-arts-card  { background: rgba(38, 38, 38, 0.18); border: 1px solid rgba(245, 245, 245, 0.09);border-radius: 14px; }
+.glass-bow-card, .glass-sword-card, .glass-brush-card, .glass-arts-card {
+  transition: box-shadow 0.18s ease, opacity 0.22s ease;
+}
+/* Pillar-tinted hover glow — accent RGBs mirror the .metric-graded pulse block below */
+.glass-bow-card:hover   { box-shadow: 0 0 18px 2px rgba(250, 204, 21, 0.28); }
+.glass-sword-card:hover { box-shadow: 0 0 18px 2px rgba(239,  68,  68, 0.28); }
+.glass-brush-card:hover { box-shadow: 0 0 18px 2px rgba(244, 114, 182, 0.28); }
+.glass-arts-card:hover  { box-shadow: 0 0 18px 2px rgba(245, 245, 245, 0.20); }
+
+@keyframes ascii-art-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes card-alert-pulse {
+  0%   { box-shadow: 0 0 0 0 var(--pulse-color, rgba(255,255,255,0.3)); }
+  35%  { box-shadow: 0 0 0 14px var(--pulse-color, rgba(255,255,255,0.3)); }
+  70%  { box-shadow: 0 0 0 8px var(--pulse-color, rgba(255,255,255,0.1)); }
+  100% { box-shadow: 0 0 0 0 var(--pulse-color, rgba(255,255,255,0)); }
+}
+
+/* Heartbeat pulse for graded metrics — single beat, short pause */
+@keyframes metric-heartbeat {
+  0%   { box-shadow: 0 0 0px 0px var(--pulse); }
+  20%  { box-shadow: 0 0 9px 2px var(--pulse); }
+  45%  { box-shadow: 0 0 0px 0px var(--pulse); }
+  100% { box-shadow: 0 0 0px 0px var(--pulse); }
+}
+.metric-graded {
+  animation: metric-heartbeat 2s ease-in-out infinite;
+}
+/* Pillar-specific pulse colors — resolved here as real values, not CSS var refs */
+.glass-bow-card.metric-graded   { --pulse: rgba(250, 204, 21, 0.6); }
+.glass-sword-card.metric-graded { --pulse: rgba(239,  68,  68, 0.6); }
+.glass-brush-card.metric-graded { --pulse: rgba(244, 114, 182, 0.6); }
+.glass-arts-card.metric-graded  { --pulse: rgba(245, 245, 245, 0.45); }
+.viz-portal { width: 140px; height: 80px; display: flex; align-items: center; justify-content: center; position: relative; }
+.filter-glow { filter: drop-shadow(0 0 10px currentColor); }
+.mono { font-family: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace; }
+.accent-sword { color: var(--sword); } .accent-bow { color: var(--bow); }
+.accent-brush { color: var(--brush); } .accent-arts { color: var(--arts); }
+
+@keyframes hudInit { from { opacity: 0; transform: translateY(10px) scale(0.985); } to { opacity: 1; transform: none; } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+.page-enter { animation: hudInit 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+.nav-slide { animation: slideDown 0.4s ease; }
+/* Weekly report markdown */
+.report-md h1 { font-size: 1.15rem; margin: 0 0 4px; }
+.report-md h2 { font-size: 0.95rem; margin: 20px 0 8px; letter-spacing: 1px; }
+.report-md p { font-size: 0.8rem; color: rgba(255,255,255,0.7); line-height: 1.5; margin: 6px 0; }
+.report-md blockquote { border-left: 3px solid var(--bow); margin: 10px 0; padding: 6px 12px; background: rgba(0,0,0,0.25); border-radius: 8px; font-size: 0.72rem; color: rgba(255,255,255,0.6); }
+.report-md table { border-collapse: collapse; width: 100%; margin: 8px 0 4px; font-size: 0.74rem; }
+.report-md th, .report-md td { border: 1px solid var(--card-border); padding: 5px 10px; text-align: left; }
+.report-md th { color: var(--bow); font-weight: 700; background: rgba(255,255,255,0.03); }
+.report-md td { color: rgba(255,255,255,0.8); font-family: "JetBrains Mono Variable", monospace; }
+.report-md code { font-family: "JetBrains Mono Variable", monospace; color: var(--brush); }
+
+/* ── Typographic scale — 6 stops ── */
+:root, .dark {
+  --text-caption: 0.65rem;
+  --text-label:   0.72rem;
+  --text-body:    0.82rem;
+  --text-base:    1rem;
+  --text-subhead: 1.25rem;
+  --text-hero:    1.6rem;
+}
+
+/* ── Background depth: scanlines + sword-glow + 60px crosshatch grid ── */
+body {
+  background-color: var(--background);
+  background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(255,255,255,0.006) 3px, rgba(255,255,255,0.006) 4px),
+    radial-gradient(ellipse 80% 40% at 50% -10%, rgba(239,68,68,0.055) 0%, transparent 60%),
+    linear-gradient(rgba(255,255,255,0.013) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.013) 1px, transparent 1px);
+  background-size: auto, 100% 100%, 60px 60px, 60px 60px;
+}
+
+/* ── Sidebar nav inactive hover ── */
+.nav-btn-inactive:hover {
+  background: rgba(255,255,255,0.028) !important;
+}
+
+/* ── Sidebar ambient glow — inset wash that bleeds from the top accent border downward ── */
+.sidebar-glow-overview { box-shadow: inset 0 4px 40px rgba(56,189,248,0.10); }
+.sidebar-glow-reports  { box-shadow: inset 0 4px 40px rgba(245,245,245,0.05); }
+.sidebar-glow-bow    { box-shadow: inset 0 4px 40px rgba(250,204,21,0.10); }
+.sidebar-glow-sword  { box-shadow: inset 0 4px 40px rgba(239,68,68,0.10); }
+.sidebar-glow-brush  { box-shadow: inset 0 4px 40px rgba(244,114,182,0.10); }
+.sidebar-glow-arts   { box-shadow: inset 0 4px 40px rgba(245,245,245,0.05); }
+
+/* ── Pulsing status dot ── */
+@keyframes dotPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.status-dot-live { animation: dotPulse 2.4s ease-in-out infinite; }
+
+/* ── Sidebar seasonal particle fall ──
+   --p-opacity caps steady-state opacity (max 0.55); --p-spin sets total rotation
+   so snow drifts (~80deg) while leaves/petals tumble (~360-420deg). */
+@keyframes sidebarParticleFall {
+  0%   { transform: translateY(0) translateX(0) rotate(0deg); opacity: 0; }
+  6%   { opacity: var(--p-opacity, 0.5); }
+  30%  { transform: translateY(30vh) translateX(var(--p-sway, 10px)) rotate(calc(var(--p-spin, 360deg) * 0.3)); }
+  65%  { transform: translateY(65vh) translateX(calc(var(--p-sway, 10px) * -0.6)) rotate(calc(var(--p-spin, 360deg) * 0.66)); }
+  88%  { opacity: var(--p-opacity, 0.5); }
+  100% { transform: translateY(112vh) translateX(0) rotate(var(--p-spin, 360deg)); opacity: 0; }
+}
+.sidebar-particle {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  animation: sidebarParticleFall linear infinite;
+  will-change: transform;
+  line-height: 1;
+  font-variant-emoji: text;
+}
+
+/* ── Sidebar rain particle (overview) — no rotation, vertical stretch for streak ── */
+@keyframes sidebarRainFall {
+  0%   { transform: translateY(0) translateX(0) rotate(14deg) scaleY(1); opacity: 0; }
+  4%   { transform: translateY(2vh) translateX(0) rotate(14deg) scaleY(3.5); opacity: var(--p-opacity, 0.4); }
+  92%  { opacity: var(--p-opacity, 0.4); }
+  100% { transform: translateY(112vh) translateX(var(--p-sway, 2px)) rotate(14deg) scaleY(3.5); opacity: 0; }
+}
+.sidebar-particle-rain {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  animation: sidebarRainFall linear infinite;
+  will-change: transform;
+  line-height: 1;
+  font-variant-emoji: text;
+}
+
+/* ── Universal hover tooltip — add data-tip="…" to any interactive element ── */
+[data-tip] { position: relative; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(5, 5, 5, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: var(--text-caption);
+  font-family: "JetBrains Mono Variable", monospace;
+  color: rgba(255, 255, 255, 0.88);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  letter-spacing: 0.3px;
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.75);
+}
+[data-tip]:hover::after { opacity: 1; }
+
+/* Wide variant — wraps long descriptions (metric methodology tooltips) */
+[data-tip].tip-wide::after {
+  white-space: normal;
+  width: max-content;
+  max-width: 300px;
+  line-height: 1.6;
+  text-align: left;
+}
+/* Suppress a parent tooltip while a nested tip element is hovered */
+[data-tip]:has([data-tip]:hover)::after { opacity: 0; }
+
+/* ── Scroll affordance: bottom fade on main content ── */
+.scroll-fade-bottom {
+  position: relative;
+}
+.scroll-fade-bottom::after {
+  content: "";
+  position: fixed;
+  bottom: 0;
+  left: 230px;
+  right: 0;
+  height: 64px;
+  background: linear-gradient(to bottom, transparent, #050505 90%);
+  pointer-events: none;
+  z-index: 10;
+}

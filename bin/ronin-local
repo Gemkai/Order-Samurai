@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# ronin-local — send a bulk/mechanical subtask to Ollama (OpenAI-compatible, localhost).
+set -euo pipefail
+BASE="${OLLAMA_BASE:-http://localhost:11434/v1}"
+MODEL="${RONIN_LOCAL_MODEL:-gemma4:4b}"
+TEMP="${RONIN_LOCAL_TEMP:-0.2}"; MAXTOK="${RONIN_LOCAL_MAXTOK:-2048}"
+PROMPT="${1:-}"; STDIN_CTX=""
+if [ ! -t 0 ]; then STDIN_CTX="$(cat)"; fi
+[ -z "$PROMPT$STDIN_CTX" ] && { echo "ronin-local: empty prompt" >&2; exit 1; }
+read -r -d '' SYS <<'SYSEOF' || true
+You are a fast local worker for mechanical subtasks (summarize, normalize, classify,
+reformat, draft boilerplate). Be precise and terse. Output only the requested artifact.
+SYSEOF
+PAYLOAD="$(jq -n --arg m "$MODEL" --arg s "$SYS" --arg p "$PROMPT" --arg c "$STDIN_CTX" \
+  --argjson t "$TEMP" --argjson mt "$MAXTOK" '{model:$m,temperature:$t,max_tokens:$mt,stream:false,
+    messages:[{role:"system",content:$s},{role:"user",content:($p+(if $c=="" then "" else "\n\n---\n"+$c end))}]}')"
+RESP="$(curl -sS --fail-with-body --max-time 300 -H 'Content-Type: application/json' -d "$PAYLOAD" "$BASE/chat/completions")" \
+  || { echo "ronin-local: Ollama unreachable at $BASE" >&2; exit 2; }
+echo "$RESP" | jq -r '.choices[0].message.content // empty'

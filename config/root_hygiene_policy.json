@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "name": "Order Samurai Root Hygiene Policy",
+  "directories": {
+    "live": [
+      "execution",
+      "agentica_core",
+      "scouts"
+    ],
+    "support": [
+      "backlog",
+      "bin",
+      "config",
+      "Research",
+      "reports",
+      "tests"
+    ],
+    "state": [
+      ".claude",
+      ".mex",
+      ".pytest_cache",
+      ".ruff_cache",
+      ".tmp",
+      "artifacts",
+      "state"
+    ],
+    "metadata": [
+      ".git"
+    ],
+    "archive": [
+      "archive",
+      "playground",
+      "scratch"
+    ],
+    "dependency": [
+      "node_modules"
+    ]
+  },
+  "files": {
+    "metadata": [
+      ".gitignore",
+      "CLAUDE.md",
+      "PROJECT.md",
+      "RONIN_SPEC.md"
+    ],
+    "support": [
+      "research_insights.md"
+    ]
+  },
+  "requiredDirectories": [
+    "backlog",
+    "config",
+    "execution",
+    "reports",
+    "tests"
+  ],
+  "requiredFiles": [
+    "PROJECT.md",
+    "RONIN_SPEC.md"
+  ],
+  "boundaryRules": [
+    {
+      "name": "archive-isolation",
+      "scanPaths": [
+        "execution"
+      ],
+      "forbiddenRoots": [
+        "archive",
+        "playground",
+        "scratch"
+      ],
+      "description": "Live runtime code must not depend on archive or exploratory roots."
+    }
+  ]
+}
