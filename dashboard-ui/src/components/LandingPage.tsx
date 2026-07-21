@@ -991,6 +991,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
             <a href="https://github.com/Gemkai/order-samurai/blob/main/TERMS.md" target="_blank" className="hover:text-slate-300">Terms & EULA</a>
             <a href="https://github.com/Gemkai/order-samurai/blob/main/PRIVACY.md" target="_blank" className="hover:text-slate-300">Privacy Policy</a>
             <a href="https://github.com/Gemkai/order-samurai/blob/main/SECURITY.md" target="_blank" className="hover:text-slate-300">Security</a>
+            <a href="mailto:support@agentica.biz" className="hover:text-slate-300">Report Bug (support@agentica.biz)</a>
             <span className="text-[#4ade80] font-medium flex items-center gap-1">🛡️ 14-Day Money-Back Guarantee</span>
           </div>
         </div>

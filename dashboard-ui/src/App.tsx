@@ -669,9 +669,12 @@ export default function App() {
             borderTop: `2px solid ${navItems.find(n => n.key === view)?.accent ?? "var(--sword)"}`,
             transition: "border-top-color 0.4s ease, box-shadow 0.4s ease" }}>
         <SidebarParticles key={view} pillar={view} />
-        <div className="mono" style={{ fontSize: "0.8rem", letterSpacing: 2, color: "var(--sword)", marginBottom: 20, fontWeight: 700, position: "relative", zIndex: 1,
-          paddingBottom: 14, borderBottom: "1px solid rgba(255,255,255,0.06)",
-          textShadow: "0 0 22px var(--sword)55" }}>⚔ ORDER&nbsp;SAMURAI</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, position: "relative", zIndex: 1,
+          paddingBottom: 14, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <img src="/logo.png" alt="Order Samurai Logo" style={{ height: 32, width: "auto", objectFit: "contain", borderRadius: 4 }} />
+          <span className="mono" style={{ fontSize: "0.85rem", letterSpacing: 2, color: "var(--sword)", fontWeight: 700,
+            textShadow: "0 0 22px var(--sword)55" }}>ORDER&nbsp;SAMURAI</span>
+        </div>
         {navItems.map((p) => {
           const on = p.key === view
           return (
@@ -680,8 +683,8 @@ export default function App() {
                 display: "flex", alignItems: "center", gap: 12, padding: "0.85rem 1rem", borderRadius: 16, cursor: "pointer",
                 textTransform: "uppercase", letterSpacing: 1.5, fontSize: "0.8rem", textAlign: "left", transition: "0.3s",
                 background: on ? "rgba(255,255,255,0.04)" : "transparent",
-                border: `1px solid ${on ? p.accent : "transparent"}`, color: on ? p.accent : "rgba(255,255,255,0.4)",
-                textShadow: on ? `0 0 20px ${p.accent}99` : "none",
+                color: on ? p.accent : "var(--muted-foreground)",
+                border: `1px solid ${on ? `${p.accent}55` : "transparent"}`,
                 boxShadow: on ? `0 0 18px ${p.accent}30, inset 0 0 14px ${p.accent}0c` : "none",
               }}>
               <NavIcon k={p.key as GlyphKey} size={18} /> {p.label}
@@ -703,6 +706,9 @@ export default function App() {
               ? <><span className="status-dot-live">●</span>{" DOJO ONLINE"}</>
               : "○ DOJO OFFLINE"}
           </div>
+          <a href="mailto:support@agentica.biz" className="mono" style={{ display: "block", marginTop: 10, fontSize: "0.6rem", color: "rgba(255,255,255,0.4)", textDecoration: "none" }}>
+            🐛 Bug Report: support@agentica.biz
+          </a>
         </div>
       </aside>
 
@@ -729,18 +735,7 @@ export default function App() {
           borderBottom: "1px solid rgba(255,255,255,0.055)", paddingBottom: 12 }}>
           <h1 style={{ fontSize: "1rem", letterSpacing: 1, margin: 0, whiteSpace: "nowrap",
             textShadow: `0 0 40px ${navItems.find(n => n.key === view)?.accent ?? "transparent"}22`,
-            transition: "text-shadow 0.4s ease" }}>AGENTICA OS · GOVERNANCE</h1>
-          <button
-            onClick={() => setMode("landing")}
-            className="mono"
-            style={{
-              fontSize: "0.65rem", letterSpacing: 1, padding: "3px 10px", borderRadius: 6,
-              background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)",
-              color: "#ef4444", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6
-            }}
-          >
-            ← Product Site / Landing Page
-          </button>
+            transition: "text-shadow 0.4s ease" }}>ORDER SAMURAI · GOVERNANCE</h1>
           {view !== "overview" && view !== "reports" && (
             <span className="mono" style={{
               fontSize: "0.65rem", letterSpacing: 2, padding: "2px 8px", borderRadius: 5,
