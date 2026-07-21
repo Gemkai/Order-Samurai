@@ -549,6 +549,11 @@ export default function App() {
   const [selected, setSelected] = useState<{ metric: FlatMetric; color: string } | null>(null)
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const dojoProps = useDojo()
+  const isDemo = typeof window !== "undefined" && (
+    window.location.search.toLowerCase().includes("demo") ||
+    window.location.hash.toLowerCase().includes("demo") ||
+    window.location.pathname.toLowerCase().includes("demo")
+  )
 
   useEffect(() => {
     const load = () => loadPayload().then((p) => { setPayload(p); setLoadedAt(Date.now()) }).catch((e) => setErr(String(e)))
@@ -638,23 +643,25 @@ export default function App() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "var(--background)", color: "var(--foreground)" }}>
-      {/* FREE DEMO Banner */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 16, padding: "10px 24px",
-        background: "rgba(239,68,68,0.08)", borderBottom: "1px solid rgba(239,68,68,0.3)",
-        fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: 1, zIndex: 10
-      }}>
-        <span style={{ color: "#ef4444", fontWeight: 700 }}>FREE DEMO</span>
-        <span style={{ color: "rgba(255,255,255,0.5)" }}>All data is dummy data · blurred panels ship with Pro</span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 20 }}>
-          <a href="../" style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontFamily: "inherit" }}>
-            ← Back to site
-          </a>
-          <a href="../#2a-pricing" style={{ color: "#facc15", textDecoration: "none", fontWeight: 600, fontFamily: "inherit" }}>
-            Unlock Pro Lifetime — $199 →
-          </a>
+      {/* FREE DEMO Banner — only rendered in hosted demo mode */}
+      {isDemo && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 16, padding: "10px 24px",
+          background: "rgba(239,68,68,0.08)", borderBottom: "1px solid rgba(239,68,68,0.3)",
+          fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: 1, zIndex: 10
+        }}>
+          <span style={{ color: "#ef4444", fontWeight: 700 }}>INTERACTIVE DEMO</span>
+          <span style={{ color: "rgba(255,255,255,0.5)" }}>Sample Telemetry Preview</span>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 20 }}>
+            <a href="../" style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontFamily: "inherit" }}>
+              ← Back to site
+            </a>
+            <a href="../#2a-pricing" style={{ color: "#facc15", textDecoration: "none", fontWeight: 600, fontFamily: "inherit" }}>
+              Unlock Pro Lifetime — $199 →
+            </a>
+          </div>
         </div>
-      </div>
+      )}
 
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <AsciiBackground view={view} />
