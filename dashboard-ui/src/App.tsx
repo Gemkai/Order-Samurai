@@ -160,40 +160,55 @@ function Reports({ payload }: { payload: WIDPayload }) {
       </div>
 
       {subTab === "logs" ? (
-        <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 220 }}>
-            {DEMO_REPORTS.map((r, idx) => {
-              const on = activeIdx === idx
-              return (
-                <button key={r.file} onClick={() => setActiveIdx(idx)} className="mono"
-                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, cursor: "pointer", textAlign: "left", width: "100%",
-                    background: on ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.01)",
-                    border: `1px solid ${on ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)"}`,
-                    borderLeft: `3px solid ${on ? (ACCENT[r.platform] ?? "var(--arts)") : "transparent"}`,
-                    color: on ? (ACCENT[r.platform] ?? "var(--arts)") : "rgba(255,255,255,0.6)", fontSize: "var(--text-caption)" }}>
-                  <span>{r.week}</span>
-                  {!r.isCurrent && <span style={{ marginLeft: "auto", fontSize: 10 }}>🔒</span>}
-                </button>
-              )
-            })}
-          </div>
-
-          <div style={{ flex: 1, minWidth: 360, position: "relative", borderRadius: 18, overflow: "hidden" }}>
-            <div className="glass report-md" style={{
-              borderRadius: 18, padding: "24px 30px",
-              borderLeft: `3px solid ${ACCENT[currentRep.platform] ?? "var(--arts)"}`,
-              ...(currentRep.isCurrent ? {} : { filter: "blur(6px)", opacity: 0.4, pointerEvents: "none", userSelect: "none" })
-            }} dangerouslySetInnerHTML={{ __html: currentRep.html }} />
-
-            {!currentRep.isCurrent && (
-              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.55)", backdropFilter: "blur(4px)" }}>
-                <div style={{ fontSize: 24 }}>🔒</div>
-                <div className="mono" style={{ fontSize: 12, letterSpacing: 2, color: "#facc15", fontWeight: 700 }}>PAST WEEKLY AUDIT REPORTS · PRO</div>
-                <div className="mono" style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>Current week report is included in Free. Historical archives ship with Pro.</div>
+        (() => {
+          const isDemo = typeof window !== "undefined" && (window.location.search.includes("demo") || window.location.hash.includes("demo") || window.location.pathname.includes("demo"))
+          if (!isDemo && payload?.window?.records === 0) {
+            return (
+              <div className="glass" style={{ borderRadius: 18, padding: 36, textAlign: "center", border: "1px dashed rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.01)" }}>
+                <h3 className="mono" style={{ margin: "0 0 10px", fontSize: "0.95rem", color: "var(--foreground)", letterSpacing: 1 }}>No Weekly Reports Generated Yet</h3>
+                <p className="mono" style={{ margin: "0 auto", fontSize: "0.75rem", color: "var(--muted-foreground)", lineHeight: 1.6, maxWidth: 520 }}>
+                  Weekly dispatches are generated automatically as agent sessions complete and local telemetry is aggregated.
+                </p>
               </div>
-            )}
-          </div>
-        </div>
+            )
+          }
+          return (
+            <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 220 }}>
+                {DEMO_REPORTS.map((r, idx) => {
+                  const on = activeIdx === idx
+                  return (
+                    <button key={r.file} onClick={() => setActiveIdx(idx)} className="mono"
+                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 8, cursor: "pointer", textAlign: "left", width: "100%",
+                        background: on ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.01)",
+                        border: `1px solid ${on ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)"}`,
+                        borderLeft: `3px solid ${on ? (ACCENT[r.platform] ?? "var(--arts)") : "transparent"}`,
+                        color: on ? (ACCENT[r.platform] ?? "var(--arts)") : "rgba(255,255,255,0.6)", fontSize: "var(--text-caption)" }}>
+                      <span>{r.week}</span>
+                      {!r.isCurrent && <span style={{ marginLeft: "auto", fontSize: 10 }}>🔒</span>}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div style={{ flex: 1, minWidth: 360, position: "relative", borderRadius: 18, overflow: "hidden" }}>
+                <div className="glass report-md" style={{
+                  borderRadius: 18, padding: "24px 30px",
+                  borderLeft: `3px solid ${ACCENT[currentRep.platform] ?? "var(--arts)"}`,
+                  ...(currentRep.isCurrent ? {} : { filter: "blur(6px)", opacity: 0.4, pointerEvents: "none", userSelect: "none" })
+                }} dangerouslySetInnerHTML={{ __html: currentRep.html }} />
+
+                {!currentRep.isCurrent && (
+                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.55)", backdropFilter: "blur(4px)" }}>
+                    <div style={{ fontSize: 24 }}>🔒</div>
+                    <div className="mono" style={{ fontSize: 12, letterSpacing: 2, color: "#facc15", fontWeight: 700 }}>PAST WEEKLY AUDIT REPORTS · PRO</div>
+                    <div className="mono" style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>Current week report is included in Free. Historical archives ship with Pro.</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()
       ) : (
         <div className="page-enter" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           {/* Header Explanation — mirrors insights._health() + insights.annotate() */}
