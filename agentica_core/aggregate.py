@@ -1389,9 +1389,10 @@ def build_pillars(records: list[dict], *, verifier_results: list[dict] | None = 
         pillars[pillar].setdefault(group, {})[key] = env
 
     # verifier-derived (real, AUTO) — overwrite SIMULATED placeholders where we have data
-    if verifier_results and records:
+    if verifier_results:
         vm = derive_verifier_metrics(verifier_results)
-        _set(pillars, "bow", "Governance", "Governance_Pass_Rate", _env(vm["Governance_Pass_Rate"], "AUTO", is_percent=True))
+        if records and vm["Governance_Pass_Rate"] is not None:
+            _set(pillars, "bow", "Governance", "Governance_Pass_Rate", _env(vm["Governance_Pass_Rate"], "AUTO", is_percent=True))
         _set(pillars, "bow", "Governance", "Verifier_Failures", _env(vm["Verifier_Failures"], "AUTO", is_count=True))
         failing_platforms = sorted({
             str(r.get("platform")) for r in verifier_results

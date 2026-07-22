@@ -128,8 +128,6 @@ def _reflex(pk: str, mk: str, env: dict, tier: str, trigger: str, target: str) -
 
 
 def _metric_reflexes(pillars: dict, category_scores: dict, by_project: dict) -> list[dict]:
-    if category_scores.get("window", {}).get("records", 0) == 0:
-        return []
     out: list[dict] = []
     seen: set[tuple[str, str]] = set()
     targets = {pk: (_worst_project(by_project, pk) or "this repo") for pk in pillars}
