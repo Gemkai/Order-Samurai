@@ -12,10 +12,11 @@ import urllib.parse
 import urllib.error
 
 GUMROAD_API_URL = "https://api.gumroad.com/v2/licenses/verify"
+GUMROAD_PRODUCT_ID = os.environ.get("GUMROAD_PRODUCT_ID", "AePROIWPGu9a6k-dm9W4ww==")
 GUMROAD_PERMALINK = os.environ.get("GUMROAD_PRODUCT_PERMALINK", "ordersamurai-pro")
 
 
-def validate_license_key(license_key: str, product_permalink: str = None) -> dict:
+def validate_license_key(license_key: str, product_id: str = None) -> dict:
     """Validate a Gumroad license key for Order Samurai Pro ($199)."""
     key = (license_key or "").strip()
     if not key:
@@ -32,8 +33,8 @@ def validate_license_key(license_key: str, product_permalink: str = None) -> dic
             "refunded": False,
         }
 
-    permalink = product_permalink or GUMROAD_PERMALINK
-    payload = {"product_permalink": permalink, "license_key": key}
+    pid = product_id or GUMROAD_PRODUCT_ID
+    payload = {"product_id": pid, "license_key": key}
     data = urllib.parse.urlencode(payload).encode("utf-8")
     req = urllib.request.Request(
         GUMROAD_API_URL,
