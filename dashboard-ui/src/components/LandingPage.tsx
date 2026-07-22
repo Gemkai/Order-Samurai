@@ -20,7 +20,6 @@ import {
   Users
 } from "lucide-react"
 import { IconTorii, IconKatana, IconShuriken, IconFan, IconArmor } from "./SamuraiIcons"
-import heroLogoImg from "@/assets/hero_logo.jpg"
 
 interface LandingPageProps {
   onOpenDashboard: () => void
@@ -204,11 +203,16 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
             transition={{ delay: 0.3 }}
             className="flex-shrink-0"
           >
-            <img
-              src={heroLogoImg}
-              alt="Order Samurai Crest Logo"
-              className="w-72 sm:w-80 lg:w-96 h-auto rounded-2xl border border-[#ef4444]/30 shadow-2xl shadow-[#ef4444]/20 object-contain bg-black"
-            />
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-72 sm:w-80 lg:w-[440px] h-auto rounded-2xl border border-[#ef4444]/30 shadow-2xl shadow-[#ef4444]/25 object-cover bg-black"
+            >
+              <source src="pillars_menu.webm" type="video/webm" />
+              <source src="pillars_menu.mp4" type="video/mp4" />
+            </video>
           </motion.div>
         </div>
 
