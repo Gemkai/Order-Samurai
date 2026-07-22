@@ -95,9 +95,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
       <nav className="relative z-50 border-b border-white/10 bg-[#080b10]/80 backdrop-blur-md sticky top-0">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#ef4444] to-[#991b1b] flex items-center justify-center shadow-lg shadow-[#ef4444]/20">
-              <IconTorii size={24} color="#ffffff" />
-            </div>
+            <img src="/logo.jpg" alt="Order Samurai" className="w-14 h-14 rounded-xl object-contain bg-black border border-white/10 shadow-lg shadow-[#ef4444]/20" />
             <div>
               <span className="text-xl font-bold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
                 ORDER SAMURAI
