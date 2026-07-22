@@ -257,6 +257,23 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               </div>
               <span>Time-to-first-report: &lt; 60s</span>
             </div>
+
+            <div className="mt-4 pt-3 border-t border-white/10 flex flex-wrap items-center gap-3">
+              <a
+                href="order-samurai-core.zip"
+                download
+                className="flex items-center gap-2 px-4 py-2 bg-[#ef4444] hover:bg-[#dc2626] text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-[#ef4444]/20"
+              >
+                📦 Download Core (.zip)
+              </a>
+              <a
+                href="install.sh"
+                download
+                className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-300 rounded-lg text-xs font-semibold transition-all"
+              >
+                ⚡ Download install.sh
+              </a>
+            </div>
           </motion.div>
       </section>
 
