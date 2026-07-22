@@ -35,13 +35,13 @@ Free is not a trial — it is a complete, supported product. Pro adds autonomy o
 One-command install (macOS / Linux):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/order-samurai/order-samurai/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Gemkai/order-samurai/main/install.sh | bash
 ```
 
 Or clone and install locally:
 
 ```bash
-git clone https://github.com/order-samurai/order-samurai.git
+git clone https://github.com/Gemkai/order-samurai.git
 cd order-samurai
 ./bin/samurai install
 ```

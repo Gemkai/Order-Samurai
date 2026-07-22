@@ -173,7 +173,7 @@ def _call_openrouter(
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
-            "HTTP-Referer": "https://github.com/order-samurai",
+            "HTTP-Referer": "https://github.com/Gemkai/order-samurai",
         },
         method="POST",
     )

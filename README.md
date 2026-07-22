@@ -15,13 +15,13 @@
 Install in **under 60 seconds** on macOS / Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/order-samurai/order-samurai/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Gemkai/order-samurai/main/install.sh | bash
 ```
 
 Or clone and run locally:
 
 ```bash
-git clone https://github.com/order-samurai/order-samurai.git
+git clone https://github.com/Gemkai/order-samurai.git
 cd order-samurai
 ./bin/samurai install
 ```

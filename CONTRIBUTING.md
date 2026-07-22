@@ -14,7 +14,7 @@ Security is central to Order Samurai. If you discover a security vulnerability, 
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/order-samurai/order-samurai.git
+   git clone https://github.com/Gemkai/order-samurai.git
    cd order-samurai
    ```
 

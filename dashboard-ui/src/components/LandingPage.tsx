@@ -36,9 +36,9 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
   const [activeVisualTab, setActiveVisualTab] = useState<"walkthrough" | "menu" | "particles" | "branding">("walkthrough")
 
   const quickstartCommands = {
-    curl: "curl -fsSL https://raw.githubusercontent.com/order-samurai/order-samurai/main/install.sh | bash",
+    curl: "curl -fsSL https://raw.githubusercontent.com/Gemkai/order-samurai/main/install.sh | bash",
     npm: "npx -y order-samurai@latest install",
-    clone: "git clone https://github.com/order-samurai/order-samurai.git && cd order-samurai && ./install.sh"
+    clone: "git clone https://github.com/Gemkai/order-samurai.git && cd order-samurai && ./install.sh"
   }
 
   const handleCopy = () => {
@@ -180,11 +180,12 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               className="mt-8 flex flex-col sm:flex-row items-center gap-4"
             >
               <a
-                href="#pricing"
+                href="order-samurai-core.zip"
+                download
                 className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-[#ef4444] to-[#dc2626] hover:from-[#dc2626] hover:to-[#b91c1c] text-white rounded-xl font-bold text-sm shadow-xl shadow-[#ef4444]/25 flex items-center justify-center gap-2 transition-all hover:scale-105"
               >
                 <ShieldCheck size={18} />
-                Download Core Version
+                Download Core Version (.zip)
                 <ArrowRight size={16} />
               </a>
               <button
@@ -784,13 +785,14 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               </ul>
             </div>
             {/* CTV Button */}
-            <button
-              onClick={() => setCheckoutTier("solo")}
-              className="mt-8 w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm transition-colors border border-white/10 flex items-center justify-center gap-2"
+            <a
+              href="order-samurai-core.zip"
+              download
+              className="mt-8 w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm transition-colors border border-white/10 flex items-center justify-center gap-2 text-center"
             >
               <ShieldCheck size={16} />
-              Install Free OSS Core
-            </button>
+              Download Core Version (.zip)
+            </a>
           </div>
 
           {/* Pro Lifetime Tier */}
