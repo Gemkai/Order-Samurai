@@ -790,13 +790,15 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               </ul>
             </div>
             {/* CTV Button */}
-            <button
-              onClick={() => setCheckoutTier("team")}
-              className="mt-8 w-full py-3 px-4 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-xl font-bold text-sm transition-colors shadow-lg shadow-[#3b82f6]/25 flex items-center justify-center gap-2"
+            <a
+              href="https://ordersamurai.gumroad.com/l/pro"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-8 w-full py-3 px-4 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-xl font-bold text-sm transition-colors shadow-lg shadow-[#3b82f6]/25 flex items-center justify-center gap-2 text-center"
             >
               <Sparkles size={16} />
               Get Pro Lifetime ($199)
-            </button>
+            </a>
           </div>
 
           {/* Compliance Tier */}

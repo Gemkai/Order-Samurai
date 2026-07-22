@@ -232,13 +232,21 @@ export function PillarPage({ payload, pk, reflexProps, onSelectMetric, dojoProps
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: m.env.is_simulated ? 0.45 : 1, y: 0 }}
                     transition={{ duration: 0.22, delay: j * 0.035, ease: "easeOut" }}
-                    whileHover={isProLocked ? undefined : { scale: 1.025, opacity: 1, boxShadow: `0 6px 28px ${meta.accent}1e`, transition: { duration: 0.15, delay: 0 } }}
-                    onClick={() => { if (!isProLocked) onSelectMetric({ metric: m, color: meta.accent }) }}
+                    whileHover={{ scale: 1.025, opacity: 1, boxShadow: `0 6px 28px ${meta.accent}1e`, transition: { duration: 0.15, delay: 0 } }}
+                    onClick={() => {
+                      if (isProLocked) {
+                        if (typeof window !== "undefined") {
+                          window.open("https://ordersamurai.gumroad.com/l/pro", "_blank")
+                        }
+                      } else {
+                        onSelectMetric({ metric: m, color: meta.accent })
+                      }
+                    }}
                     style={{
-                      padding: "14px 16px", cursor: isProLocked ? "default" : "pointer",
+                      padding: "14px 16px", cursor: "pointer",
                       borderLeft: m.env.flagged ? `2px solid ${meta.accent}` : "2px solid transparent",
                       transition: "border-left-color 0.2s ease",
-                      ...(isProLocked ? { filter: "blur(4px)", opacity: 0.5, pointerEvents: "none", userSelect: "none" } : {}),
+                      ...(isProLocked ? { filter: "blur(4px)", opacity: 0.5, userSelect: "none" } : {}),
                     }}
                   >
                   <div style={{ fontSize: "0.85rem", marginBottom: 6, textTransform: "capitalize", letterSpacing: 0.3 }}>{metricLabel(m.key)}</div>

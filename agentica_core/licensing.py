@@ -106,26 +106,42 @@ def activate(license_key: str, instance_name: str | None = None) -> dict[str, An
 
     instance = instance_name or socket.gethostname() or "unknown-host"
 
-    try:
-        from execution.lemonsqueezy_mcp import (  # noqa: PLC0415
-            validate_license_key, activate_license_key,
-        )
-    except ImportError:
-        return {"ok": False,
-                "message": "license backend unavailable (execution/lemonsqueezy_mcp.py "
-                           "missing) — cannot verify key"}
+    # Dual-provider verification: try Gumroad first, then Lemon Squeezy
+    val = {}
+    act = {}
+    provider = "gumroad"
 
-    val = validate_license_key(key)
+    try:
+        from execution.gumroad_mcp import (  # noqa: PLC0415
+            validate_license_key as g_val, activate_license_key as g_act,
+        )
+        val = g_val(key)
+        if val.get("valid"):
+            act = g_act(key, instance)
+    except Exception:
+        pass
+
+    if not val.get("valid"):
+        try:
+            from execution.lemonsqueezy_mcp import (  # noqa: PLC0415
+                validate_license_key as l_val, activate_license_key as l_act,
+            )
+            val = l_val(key)
+            if val.get("valid"):
+                act = l_act(key, instance)
+                provider = "lemonsqueezy"
+        except Exception:
+            pass
+
     if not val.get("valid"):
         return {"ok": False,
-                "message": f"license key invalid: {val.get('error', 'not recognized')}"}
+                "message": f"license key invalid: {val.get('error', 'not recognized by payment provider')}"}
     if val.get("refunded") or val.get("status") == "refunded":
         return {"ok": False, "message": "this license key has been refunded/revoked"}
 
-    act = activate_license_key(key, instance)
     if not act.get("activated"):
         return {"ok": False,
-                "message": f"activation failed: {act.get('error', 'unknown error')}"}
+                "message": f"activation failed: {act.get('error', 'unknown activation error')}"}
 
     entitlement = {
         "tier": "pro",
