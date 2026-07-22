@@ -662,7 +662,7 @@ export default function App() {
             <a href="../" style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontFamily: "inherit" }}>
               ← Back to site
             </a>
-            <a href="../#2a-pricing" style={{ color: "#facc15", textDecoration: "none", fontWeight: 600, fontFamily: "inherit" }}>
+            <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" style={{ color: "#facc15", textDecoration: "none", fontWeight: 600, fontFamily: "inherit" }}>
               Unlock Pro Lifetime — $199 →
             </a>
           </div>
@@ -815,13 +815,7 @@ export default function App() {
   )
 }
 
-function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
-  const handleUnlock = () => {
-    if (typeof window !== "undefined") {
-      window.open("https://jemakaib1.gumroad.com/l/sqwomh", "_blank")
-    }
-    if (onUnlock) onUnlock()
-  }
+function ProLockedPanels(_props: { onUnlock?: () => void }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, marginTop: 40 }}>
       {/* Autonomous Remediation Queue (Pro) */}
@@ -837,9 +831,9 @@ function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
           <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>AUTONOMOUS REMEDIATION · PRO</div>
-          <button onClick={handleUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, border: "none", cursor: "pointer" }}>
+          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
-          </button>
+          </a>
         </div>
       </div>
 
@@ -856,9 +850,9 @@ function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
           <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>CROSS-HARNESS FLEET VIEW · PRO</div>
-          <button onClick={handleUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, border: "none", cursor: "pointer" }}>
+          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
-          </button>
+          </a>
         </div>
       </div>
 
@@ -875,9 +869,9 @@ function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
           <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>COMPLIANCE PACKS · PRO</div>
-          <button onClick={handleUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, border: "none", cursor: "pointer" }}>
+          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
-          </button>
+          </a>
         </div>
       </div>
     </div>
@@ -1085,7 +1079,7 @@ function Overview({ payload, onSelect, reflexProps, dojoProps, onUnlock }: { pay
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
           <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>REMEDIATION EFFICACY & DOJO HISTORY · PRO</div>
-          <a href="https://ordersamurai.gumroad.com/l/pro" target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
+          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
           </a>
         </div>
