@@ -144,7 +144,7 @@ export function PillarProjects({ payload, pk, accent, selectedProject, onProject
           )
         })}
       </div>
-      {noData.length > 0 && (
+      {noData.length > 0 && (payload.window?.records ?? 0) > 0 && (
         <div style={{ marginTop: 12, fontSize: "var(--text-caption)", color: "var(--muted-foreground)" }} className="mono">
           No telemetry yet: {noData.map(([n]) => n).join(" · ")}
         </div>

@@ -638,8 +638,13 @@ export default function App() {
     { key: "reports", label: "Reports", glyph: "📜", accent: "var(--arts)" },
   ]
 
-  const STAT_LABELS: Record<string, string> = { claude: "sessions", codex: "tasks", antigravity: "runs", cursor: "sessions", local: "sessions" }
-  const STAT_COLORS: Record<string, string> = { claude: "var(--brush)", codex: "var(--arts)", antigravity: "var(--bow)", cursor: "#38bdf8", local: "#4ade80" }
+  const HARNESS_CONFIG: { key: string; label: string; unit: string; color: string }[] = [
+    { key: "claude", label: "Claude Code", unit: "sessions", color: "var(--brush)" },
+    { key: "codex", label: "Codex CLI", unit: "tasks", color: "var(--arts)" },
+    { key: "cursor", label: "Cursor", unit: "sessions", color: "#38bdf8" },
+    { key: "antigravity", label: "Antigravity", unit: "runs", color: "var(--bow)" },
+    { key: "local", label: "Local Ollama", unit: "sessions", color: "#4ade80" },
+  ]
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "var(--background)", color: "var(--foreground)" }}>
@@ -699,8 +704,17 @@ export default function App() {
               <Zap size={12} /> {reflexCrit} CRITICAL REFLEX{reflexCrit > 1 ? "ES" : ""}
             </button>
           )}
-          <div className="mono" style={{ color: "var(--bow)" }}>{live} LIVE</div>
-          <div className="mono">{sim} SIMULATED</div>
+          {(payload.window?.records ?? 0) === 0 ? (
+            <>
+              <div className="mono" style={{ color: "var(--muted-foreground)" }}>0 LIVE</div>
+              <div className="mono" style={{ color: "rgba(255,255,255,0.4)" }}>COLD START</div>
+            </>
+          ) : (
+            <>
+              <div className="mono" style={{ color: "var(--bow)" }}>{live} LIVE</div>
+              <div className="mono">{sim} SIMULATED</div>
+            </>
+          )}
           <div className="mono" style={{ marginTop: 6, color: dojoProps.connected ? "rgba(34,197,94,0.8)" : "rgba(255,255,255,0.2)" }}>
             {dojoProps.connected
               ? <><span className="status-dot-live">●</span>{" DOJO ONLINE"}</>
@@ -747,17 +761,16 @@ export default function App() {
             </span>
           )}
           <span className="mono" style={{ fontSize: "0.7rem", display: "inline-flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            {Object.entries(payload.record_counts).map(([k, v], idx, arr) => {
-              const c = STAT_COLORS[k] ?? "var(--muted-foreground)"
-              const label = STAT_LABELS[k]
-              const isLast = idx === arr.length - 1
+            {HARNESS_CONFIG.map((h, idx) => {
+              const count = payload.record_counts?.[h.key] ?? 0
+              const isLast = idx === HARNESS_CONFIG.length - 1
               return (
-                <span key={k} style={{ color: "var(--muted-foreground)" }}>
-                  <span style={{ color: c }}>{k}</span>
+                <span key={h.key} style={{ color: "var(--muted-foreground)" }}>
+                  <span style={{ color: h.color, fontWeight: 600 }}>{h.label}</span>
                   {" · "}
-                  {v}
-                  {label ? <span style={{ color: "var(--muted-foreground)" }}>{" "}{label}</span> : null}
-                  {!isLast && <span style={{ color: "rgba(255,255,255,0.2)", marginLeft: 10 }}>|</span>}
+                  <span style={{ color: count > 0 ? "var(--foreground)" : "var(--muted-foreground)" }}>{count}</span>
+                  {" "}{h.unit}
+                  {!isLast && <span style={{ color: "rgba(255,255,255,0.15)", marginLeft: 10 }}>|</span>}
                 </span>
               )
             })}

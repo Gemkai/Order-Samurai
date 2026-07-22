@@ -1529,6 +1529,14 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", s.lower())
 
 
+_INTERNAL_DIRS = {
+    ".git", ".claude", ".tmp", ".impeccable", ".mex", ".pytest_cache",
+    "node_modules", "__pycache__", "dist", "build", "venv", ".venv", "test_env",
+    "bin", "config", "src", "schema", "docs", "api", "dashboard-ui", "execution",
+    "state", "tests", "artifacts", "prompts", "scouts", "scratch", "soji",
+    "platform_surfaces", "go-to-market", "Research", "Order Samurai", "agentica_core"
+}
+
 def build_project_scores(all_records: list[dict], proj_platform: dict[str, str],
                          root: Path = _PROJECTS_ROOT) -> dict:
     """Roster the real project folders in Desktop/Projects, match each to telemetry
@@ -1539,7 +1547,10 @@ def build_project_scores(all_records: list[dict], proj_platform: dict[str, str],
         if pr:
             by_tproj.setdefault(pr, []).append(r)
 
-    folders = sorted(p.name for p in root.iterdir() if p.is_dir()) if root.exists() else []
+    folders = sorted(
+        p.name for p in root.iterdir()
+        if p.is_dir() and not p.name.startswith(".") and p.name not in _INTERNAL_DIRS
+    ) if root.exists() else []
     out: dict[str, dict] = {}
     for f in folders:
         nf = _norm(f)
