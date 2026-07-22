@@ -5,24 +5,34 @@
     "live": [
       "execution",
       "agentica_core",
-      "scouts"
+      "scouts",
+      "api",
+      "dashboard-ui"
     ],
     "support": [
-      "backlog",
       "bin",
       "config",
+      "docs",
+      "platform_surfaces",
+      "prompts",
+      "schema",
+      "soji",
+      "go-to-market",
       "Research",
-      "reports",
       "tests"
     ],
     "state": [
       ".claude",
       ".mex",
+      ".impeccable",
       ".pytest_cache",
       ".ruff_cache",
       ".tmp",
       "artifacts",
-      "state"
+      "state",
+      "test_env",
+      "Order Samurai",
+      "__pycache__"
     ],
     "metadata": [
       ".git"
@@ -39,24 +49,45 @@
   "files": {
     "metadata": [
       ".gitignore",
+      "AGENTS.md",
+      "README.md",
+      "LICENSE",
+      "CHANGELOG.md",
+      "CODE_OF_CONDUCT.md",
+      "CONTRIBUTING.md",
+      "EULA.md",
+      "PRIVACY.md",
+      "SECURITY.md",
+      "TERMS.md",
+      "HANDOFF.md",
       "CLAUDE.md",
       "PROJECT.md",
-      "RONIN_SPEC.md"
+      "RONIN_SPEC.md",
+      ".quality_register.md"
     ],
     "support": [
-      "research_insights.md"
+      "pyproject.toml",
+      "package.json",
+      "package-lock.json",
+      "install.sh",
+      "verify.sh",
+      "refresh_dashboard.py",
+      "governance_review.py",
+      "build_perfect_pillars_gifs.py",
+      "compile_dashboard_simulation_gif.py",
+      "convert_pngs_to_gifs.py",
+      "generate_perfect_gifs.js",
+      "record_dashboard_walkthrough.js"
     ]
   },
   "requiredDirectories": [
-    "backlog",
     "config",
     "execution",
-    "reports",
     "tests"
   ],
   "requiredFiles": [
-    "PROJECT.md",
-    "RONIN_SPEC.md"
+    "AGENTS.md",
+    "README.md"
   ],
   "boundaryRules": [
     {
