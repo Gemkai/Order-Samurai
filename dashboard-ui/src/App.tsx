@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import { X, Terminal, Info, Zap } from "lucide-react"
 import { PILLARS, type PillarKey, type WIDPayload, type Reflex } from "@/types"
+import logoImg from "@/assets/logo.png"
 import {
   loadPayload, liveSimCounts, METRIC_DOCS, metricLabel, type FlatMetric,
 } from "@/lib/data"
@@ -676,7 +677,7 @@ export default function App() {
         <SidebarParticles key={view} pillar={view} />
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, position: "relative", zIndex: 1,
           paddingBottom: 14, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <img src="/logo.png" alt="Order Samurai Logo" style={{ height: 52, width: "auto", objectFit: "contain", borderRadius: 6, background: "#000" }} />
+          <img src={logoImg} alt="Order Samurai Logo" style={{ height: 52, width: "auto", objectFit: "contain", borderRadius: 6, background: "#000" }} />
           <span className="mono" style={{ fontSize: "0.85rem", letterSpacing: 2, color: "var(--sword)", fontWeight: 700,
             textShadow: "0 0 22px var(--sword)55" }}>ORDER&nbsp;SAMURAI</span>
         </div>
