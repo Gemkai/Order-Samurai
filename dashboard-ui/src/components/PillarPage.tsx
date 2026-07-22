@@ -236,7 +236,7 @@ export function PillarPage({ payload, pk, reflexProps, onSelectMetric, dojoProps
                     onClick={() => {
                       if (isProLocked) {
                         if (typeof window !== "undefined") {
-                          window.open("https://ordersamurai.gumroad.com/l/pro", "_blank")
+                          window.open("https://jemakaib1.gumroad.com/l/sqwomh", "_blank")
                         }
                       } else {
                         onSelectMetric({ metric: m, color: meta.accent })

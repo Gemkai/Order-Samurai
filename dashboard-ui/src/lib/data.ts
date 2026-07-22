@@ -25,8 +25,23 @@ export const TIER_MODEL_LABELS: Record<string, string> = {
 }
 
 export async function loadPayload(): Promise<WIDPayload> {
-  const res = await fetch("/wid_payload.json", { cache: "no-store" })
-  if (!res.ok) throw new Error(`failed to load payload: ${res.status}`)
+  const isDemo = typeof window !== "undefined" && (
+    window.location.search.includes("demo") ||
+    window.location.hash.includes("demo") ||
+    window.location.pathname.includes("demo")
+  )
+  const primaryPath = isDemo ? "wid_payload.json" : "/wid_payload.json"
+  let res = await fetch(primaryPath, { cache: "no-store" }).catch(() => null)
+  if (!res || !res.ok) {
+    res = await fetch("wid_payload.json", { cache: "no-store" }).catch(() => null)
+  }
+  if (!res || !res.ok) {
+    res = await fetch("./wid_payload.json", { cache: "no-store" }).catch(() => null)
+  }
+  if (!res || !res.ok) {
+    res = await fetch("/wid_payload.json", { cache: "no-store" }).catch(() => null)
+  }
+  if (!res || !res.ok) throw new Error(`failed to load payload: ${res?.status ?? 404}`)
   return res.json()
 }
 

@@ -82,7 +82,7 @@ def activate_license_key(license_key: str, instance_name: str) -> dict:
 
 def create_checkout_link() -> dict:
     """Return the official Gumroad product link for Order Samurai Pro ($199)."""
-    url = os.environ.get("GUMROAD_PRODUCT_URL", f"https://ordersamurai.gumroad.com/l/{GUMROAD_PERMALINK}")
+    url = os.environ.get("GUMROAD_PRODUCT_URL", "https://jemakaib1.gumroad.com/l/sqwomh")
     return {
         "url": url,
         "amount": 199.00,

@@ -789,7 +789,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
             </div>
             {/* CTV Button */}
             <a
-              href="https://ordersamurai.gumroad.com/l/pro"
+              href="https://jemakaib1.gumroad.com/l/sqwomh"
               target="_blank"
               rel="noopener noreferrer"
               className="mt-8 w-full py-3 px-4 bg-[#3b82f6] hover:bg-[#2563eb] text-white rounded-xl font-bold text-sm transition-colors shadow-lg shadow-[#3b82f6]/25 flex items-center justify-center gap-2 text-center"

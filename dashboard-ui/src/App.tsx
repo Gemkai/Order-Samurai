@@ -817,7 +817,7 @@ export default function App() {
 function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
   const handleUnlock = () => {
     if (typeof window !== "undefined") {
-      window.open("https://ordersamurai.gumroad.com/l/pro", "_blank")
+      window.open("https://jemakaib1.gumroad.com/l/sqwomh", "_blank")
     }
     if (onUnlock) onUnlock()
   }
