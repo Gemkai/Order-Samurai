@@ -20,6 +20,7 @@ import {
   Users
 } from "lucide-react"
 import { IconTorii, IconKatana, IconShuriken, IconFan, IconArmor } from "./SamuraiIcons"
+import heroLogoImg from "@/assets/hero_logo.jpg"
 
 interface LandingPageProps {
   onOpenDashboard: () => void
@@ -136,63 +137,79 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
       </nav>
 
       {/* Hero Section — WHO / WHY / WHAT Framework */}
-      <section className="relative z-10 pt-20 pb-16 max-w-7xl mx-auto px-6">
-        <div className="text-center max-w-3xl mx-auto">
-          {/* WHO Target Audience Badge */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-[#ef4444]/15 to-[#3b82f6]/15 border border-[#ef4444]/30 text-xs font-semibold text-[#ef4444] mb-6"
-          >
-            <Users size={14} />
-            GOVERN THE AGENTS THAT WORK WHILE YOU SLEEP
-          </motion.div>
-
-          {/* WHAT Headline & WHY Benefit */}
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-[1.15]"
-          >
-            Local-First Security & Governance for{" "}
-            <span className="bg-gradient-to-r from-[#ef4444] via-[#f97316] to-[#eab308] bg-clip-text text-transparent">
-              Autonomous Agent Fleets
-            </span>
-          </motion.h1>
-
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="mt-6 text-lg text-slate-300 leading-relaxed max-w-2xl mx-auto"
-          >
-            Order Samurai intercepts prompt injections, scrubs leaking credentials, and kills runaway spend across your coding-agent fleet — entirely on your machine, fail-closed by default, zero cloud telemetry.
-          </motion.p>
-
-          {/* CTV Hero Button & Terminal Installer */}
-          <motion.div
-            initial={{ opacity: 0, y: 25 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
-            className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4"
-          >
-            <a
-              href="#pricing"
-              className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-[#ef4444] to-[#dc2626] hover:from-[#dc2626] hover:to-[#b91c1c] text-white rounded-xl font-bold text-sm shadow-xl shadow-[#ef4444]/25 flex items-center justify-center gap-2 transition-all hover:scale-105"
+      <section className="relative z-10 pt-16 pb-16 max-w-7xl mx-auto px-6">
+        <div className="flex flex-col lg:flex-row items-center gap-12 max-w-6xl mx-auto">
+          <div className="flex-1 text-left">
+            {/* WHO Target Audience Badge */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-[#ef4444]/15 to-[#3b82f6]/15 border border-[#ef4444]/30 text-xs font-semibold text-[#ef4444] mb-6"
             >
-              <ShieldCheck size={18} />
-              Block Vulnerabilities Free
-              <ArrowRight size={16} />
-            </a>
-            <button
-              onClick={onOpenDashboard}
-              className="w-full sm:w-auto px-8 py-3.5 bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-200 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-colors"
+              <Users size={14} />
+              GOVERN THE AGENTS THAT WORK WHILE YOU SLEEP
+            </motion.div>
+
+            {/* WHAT Headline & WHY Benefit */}
+            <motion.h1
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.15]"
             >
-              <Play size={16} className="text-[#10b981]" />
-              Launch Live Simulation
-            </button>
+              The missing <em className="italic text-[#ef4444] not-italic">discipline</em> for{" "}
+              <span className="bg-gradient-to-r from-[#ef4444] via-[#f97316] to-[#eab308] bg-clip-text text-transparent">
+                autonomous agent fleets.
+              </span>
+            </motion.h1>
+
+            <motion.p
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="mt-6 text-lg text-slate-300 leading-relaxed max-w-xl"
+            >
+              Order Samurai intercepts prompt injections, scrubs leaking credentials, and kills runaway spend across your coding-agent fleet — entirely on your machine, fail-closed by default, zero cloud telemetry.
+            </motion.p>
+
+            {/* CTV Hero Buttons */}
+            <motion.div
+              initial={{ opacity: 0, y: 25 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+              className="mt-8 flex flex-col sm:flex-row items-center gap-4"
+            >
+              <a
+                href="#pricing"
+                className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-[#ef4444] to-[#dc2626] hover:from-[#dc2626] hover:to-[#b91c1c] text-white rounded-xl font-bold text-sm shadow-xl shadow-[#ef4444]/25 flex items-center justify-center gap-2 transition-all hover:scale-105"
+              >
+                <ShieldCheck size={18} />
+                Download Core Version
+                <ArrowRight size={16} />
+              </a>
+              <button
+                onClick={onOpenDashboard}
+                className="w-full sm:w-auto px-8 py-3.5 bg-slate-900 hover:bg-slate-800 border border-white/10 text-slate-200 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-colors"
+              >
+                <Play size={16} className="text-[#10b981]" />
+                Explore Interactive Demo
+              </button>
+            </motion.div>
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.3 }}
+            className="flex-shrink-0"
+          >
+            <img
+              src={heroLogoImg}
+              alt="Order Samurai Crest Logo"
+              className="w-72 sm:w-80 lg:w-96 h-auto rounded-2xl border border-[#ef4444]/30 shadow-2xl shadow-[#ef4444]/20 object-contain bg-black"
+            />
           </motion.div>
+        </div>
 
           {/* Quickstart Terminal Widget */}
           <motion.div
@@ -241,7 +258,6 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               <span>Time-to-first-report: &lt; 60s</span>
             </div>
           </motion.div>
-        </div>
       </section>
 
       {/* PAS Copywriting Framework: Problem -> Agitation -> Solution */}
@@ -987,10 +1003,9 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           </div>
 
           <div className="flex gap-6 items-center flex-wrap">
-            <a href="https://github.com/Gemkai/order-samurai" className="hover:text-slate-300">GitHub</a>
-            <a href="https://github.com/Gemkai/order-samurai/blob/main/TERMS.md" target="_blank" className="hover:text-slate-300">Terms & EULA</a>
-            <a href="https://github.com/Gemkai/order-samurai/blob/main/PRIVACY.md" target="_blank" className="hover:text-slate-300">Privacy Policy</a>
-            <a href="https://github.com/Gemkai/order-samurai/blob/main/SECURITY.md" target="_blank" className="hover:text-slate-300">Security</a>
+            <a href="terms.html" className="hover:text-slate-300">Terms & EULA</a>
+            <a href="privacy.html" className="hover:text-slate-300">Privacy Policy</a>
+            <a href="security.html" className="hover:text-slate-300">Security</a>
             <a href="mailto:support@agentica.biz" className="hover:text-slate-300">Report Bug (support@agentica.biz)</a>
             <span className="text-[#4ade80] font-medium flex items-center gap-1">🛡️ 14-Day Money-Back Guarantee</span>
           </div>
