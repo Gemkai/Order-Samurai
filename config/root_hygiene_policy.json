@@ -7,7 +7,9 @@
       "agentica_core",
       "scouts",
       "api",
-      "dashboard-ui"
+      "dashboard-ui",
+      "backlog",
+      "reports"
     ],
     "support": [
       "bin",

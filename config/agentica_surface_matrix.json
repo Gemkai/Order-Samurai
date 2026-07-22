@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Agentica OS Surface Matrix",
-  "targetRoot": "~/Agentica-OS",
+  "targetRoot": ".",
   "description": "Declares the four Agentica OS layers as governance surfaces so Order Samurai can observe and enforce against Execution, Knowledge, Data, and Governance, not just a single runtime.",
   "surfaceRoles": [
     "knowledge_source",
@@ -13,28 +13,28 @@
   ],
   "surfaces": [
     {
-      "path": "Knowledge/vault",
+      "path": "docs",
       "role": "knowledge_source",
       "owner": "Knowledge layer",
       "discoverabilityContract": "single source of durable truth (physical)",
-      "notes": "Physically relocated Obsidian vault. Authoritative facts/wiki/prompts. Must not hold telemetry or running code."
+      "notes": "Authoritative facts/wiki/prompts. Must not hold telemetry or running code."
     },
     {
-      "path": "Execution",
+      "path": "execution",
       "role": "execution_view",
       "owner": "Execution layer",
       "discoverabilityContract": "federation of references to canonical runtime homes",
       "notes": "Symlinks/junctions only. Volatile, may sprawl. Promotion into blessed runtime gated by promotion_policy.json."
     },
     {
-      "path": "Data/telemetry",
+      "path": "state",
       "role": "data_record",
       "owner": "Data layer",
       "discoverabilityContract": "append-only operational record",
       "notes": "Receipts, audit reports, metrics. Read by Governance for drift detection and token-budget enforcement."
     },
     {
-      "path": "Governance/Order Samurai",
+      "path": "agentica_core",
       "role": "governance_control",
       "owner": "Governance layer",
       "discoverabilityContract": "control plane",
