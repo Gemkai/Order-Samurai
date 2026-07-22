@@ -427,22 +427,26 @@ body {
   aside {
     width: 100% !important;
     max-width: 100% !important;
-    padding: 0.75rem !important;
+    padding: 0.75rem 1rem !important;
     flex-direction: row !important;
     overflow-x: auto !important;
     gap: 8px !important;
     border-top: none !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
     position: sticky !important;
     top: 0 !important;
-    z-index: 40 !important;
+    z-index: 50 !important;
     align-items: center !important;
+    background: #080b10 !important;
+    backdrop-filter: blur(12px) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8) !important;
   }
 
   aside button {
     white-space: nowrap !important;
-    padding: 0.5rem 0.75rem !important;
+    padding: 0.5rem 0.85rem !important;
     font-size: 0.75rem !important;
+    flex-shrink: 0 !important;
   }
 
   main, .scroll-fade-bottom {

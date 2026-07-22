@@ -876,6 +876,56 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           </div>
         </div>
         </div>
+
+        {/* Core vs Pro Initial Audit Comparison Matrix Table */}
+        <div className="mt-16 max-w-4xl mx-auto overflow-x-auto">
+          <h3 className="text-2xl font-bold text-white text-center mb-6">
+            Core vs Pro Initial Audit Comparison
+          </h3>
+          <div className="rounded-2xl border border-white/10 bg-[#0d131f] shadow-2xl overflow-hidden">
+            <table className="w-full text-left border-collapse text-xs sm:text-sm font-mono">
+              <thead>
+                <tr className="border-b border-white/10 bg-slate-900/80 text-amber-400 font-semibold uppercase text-xs">
+                  <th className="py-3.5 px-6">Governance &amp; Audit Capability</th>
+                  <th className="py-3.5 px-6">Free Core ($0)</th>
+                  <th className="py-3.5 px-6 text-[#ef4444]">Pro Lifetime ($199)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 text-slate-300">
+                <tr className="hover:bg-white/[0.02] transition-colors">
+                  <td className="py-3.5 px-6 font-semibold text-white">Automatic First-Install Audit</td>
+                  <td className="py-3.5 px-6 text-[#10b981] font-semibold">✓ 60-Second Log Ingestion</td>
+                  <td className="py-3.5 px-6 text-[#10b981] font-semibold">✓ 60-Second Log Ingestion</td>
+                </tr>
+                <tr className="hover:bg-white/[0.02] transition-colors">
+                  <td className="py-3.5 px-6 font-semibold text-white">Historical Audit Depth</td>
+                  <td className="py-3.5 px-6 text-slate-400">7-Day History Window</td>
+                  <td className="py-3.5 px-6 text-[#38bdf8] font-semibold">Full 90-Day Trajectory Archive</td>
+                </tr>
+                <tr className="hover:bg-white/[0.02] transition-colors">
+                  <td className="py-3.5 px-6 font-semibold text-white">14-Chain ATT&amp;CK Security Hooks</td>
+                  <td className="py-3.5 px-6 text-[#10b981] font-semibold">✓ Fail-Closed Interception</td>
+                  <td className="py-3.5 px-6 text-[#10b981] font-semibold">✓ Fail-Closed Interception</td>
+                </tr>
+                <tr className="hover:bg-white/[0.02] transition-colors">
+                  <td className="py-3.5 px-6 font-semibold text-white">Initial Vulnerability Sweep</td>
+                  <td className="py-3.5 px-6 text-slate-400">Scrubbing &amp; Log Warnings</td>
+                  <td className="py-3.5 px-6 text-[#ef4444] font-semibold">Auto-Stages Fix Patches</td>
+                </tr>
+                <tr className="hover:bg-white/[0.02] transition-colors">
+                  <td className="py-3.5 px-6 font-semibold text-white">Nightly Dojo &amp; Autonomous Reflexes</td>
+                  <td className="py-3.5 px-6 text-slate-500">— Manual Only</td>
+                  <td className="py-3.5 px-6 text-[#f59e0b] font-semibold">✓ Automated Overnight Runs</td>
+                </tr>
+                <tr className="hover:bg-white/[0.02] transition-colors">
+                  <td className="py-3.5 px-6 font-semibold text-white">Spend Capping &amp; Model Routing</td>
+                  <td className="py-3.5 px-6 text-slate-400">Alert-Only Warning Caps</td>
+                  <td className="py-3.5 px-6 text-[#4ade80] font-semibold">✓ Active Runtime Kill Enforcement</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       {/* Stripe Self-Serve Checkout Modal */}
