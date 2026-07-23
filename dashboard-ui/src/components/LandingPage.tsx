@@ -111,6 +111,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
             <a href="#showcase" className="hover:text-white transition-colors">Live Simulation</a>
             <a href="#features" className="hover:text-white transition-colors">4 Pillars</a>
             <a href="#proof" className="hover:text-white transition-colors">Social Proof</a>
+            <a href="#2a-blog" className="hover:text-white transition-colors">Blog</a>
             <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
           </div>
 
