@@ -1,7 +1,7 @@
 # Plan — De-aggregate Order Samurai metrics (move off rollup scores)
 
 **Status:** DRAFT — for engineering review · **Date:** 2026-06-19
-**Owner:** Gemkai · **Author:** Claude (Opus 4.8)
+**Owner:** example-org · **Author:** Claude (Opus 4.8)
 **Motivation:** The owner is deliberately moving away from aggregate/composite metric
 scores because the software-engineering industry has moved off them. This plan turns
 that decision into a concrete, phased redesign of Order Samurai's metric surfaces.
