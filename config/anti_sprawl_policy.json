@@ -18,7 +18,7 @@
       "severity": "critical",
       "statement": "No major surface may exist without an explicit role, owner, and discoverability decision.",
       "expectedArtifacts": [
-        "config/agentica_surface_matrix.json"
+        "config/hub_surface_matrix.json"
       ],
       "verifier": "execution/verify_surface_governance.py"
     },

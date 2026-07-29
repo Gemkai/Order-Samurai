@@ -118,10 +118,15 @@ def extract_signals(session: dict) -> tuple[int, int, int]:
     Mirrors adaptive_model_selector.analyze_task_complexity's reads so a real
     session snapshot scores identically through either path.
     """
-    turns = int(session.get("turn_count", 0) or 0)
-    errors = sum(
-        1 for r in (session.get("stop_reasons") or {}).values() if "error" in str(r).lower()
-    )
+    # session_tracker.py (the live producer of the default snapshot) writes
+    # "turns"; older snapshots used "turn_count" — read both, like
+    # proactive_monitor.py does.
+    turns = int(session.get("turns", 0) or session.get("turn_count", 0) or 0)
+    # session_tracker.py writes stop_reasons as a list; older snapshots used a dict.
+    stop_reasons = session.get("stop_reasons") or []
+    if isinstance(stop_reasons, dict):
+        stop_reasons = stop_reasons.values()
+    errors = sum(1 for r in stop_reasons if "error" in str(r).lower())
     tools = len(session.get("tools_used", {}) or {})
     return turns, errors, tools
 

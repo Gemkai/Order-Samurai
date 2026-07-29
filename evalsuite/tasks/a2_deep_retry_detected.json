@@ -1,0 +1,13 @@
+{
+  "id": "a2_deep_retry_detected",
+  "group": "bounded_scan",
+  "kind": "miner",
+  "description": "An identical retry in the 75th-newest transcript \u2014 past the 60-file window \u2014 is detected.",
+  "grounded_in": "2026-07-16 live measurement: weakness-mining trace coverage 8.3% \u2014 bounded scans miss deep history (the Carbon Layer video's clamp failure, same mechanism)",
+  "sensitive_to": [
+    "scout_max_files"
+  ],
+  "fixture": "a2_deep_retry",
+  "grader": "graders.check_a2_deep_retry_detected",
+  "repeats": 1
+}

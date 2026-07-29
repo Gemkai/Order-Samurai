@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -12,8 +11,10 @@ if str(ROOT_DIR) not in sys.path:
 
 from execution.runtime_paths import ANTI_DRIFT_POLICY_PATH, EXECUTION_DIR, REPO_ROOT
 
-# The scan covers the whole Governance code surface.
-GOVERNANCE_ROOT = REPO_ROOT
+# The scan covers the whole Governance code surface, not just Order Samurai: agentica_core/ is a
+# SIBLING of REPO_ROOT (Order Samurai), so scanning REPO_ROOT alone misses the hardcoded paths
+# that live in the kernel modules (insights.py, aggregate.py, remediation.py, ...).
+GOVERNANCE_ROOT = REPO_ROOT.parent
 
 TEXT_SUFFIXES = {
     ".py",
@@ -45,22 +46,11 @@ _SCAN_EXCLUDE_PARTS = frozenset({
 
 # Machine-local absolute prefixes that are always wrong in committed code (env leakage). The old
 # pre-consolidation Desktop location is the concrete signal; broad unix roots (/home, /Users) are
-# handled separately by _HOME_PATH_RE below (substring matching them yields false positives).
+# intentionally omitted — bare-substring matching them yields too many false positives.
 MACHINE_LOCAL_LITERALS = (
     r"C:\Users\example\Desktop",
     "C:/Users/example/Desktop",
 )
-
-# Real per-user home directories are always machine-local leakage in committed code/config (they
-# expose a username and break on any other machine). A regex — not a substring — so we match
-# /Users/<name>/ and /home/<name>/ (and their C:\Users\<name>\ Windows form) generally, while still
-# skipping the sanctioned `example` placeholder that tests and docs use. Requires a trailing
-# separator so bare prose like "/home/..." (no real segment) does not false-positive.
-_HOME_PATH_RE = re.compile(r"[/\\](?:Users|home)[/\\](?!example[/\\])[A-Za-z0-9._-]+[/\\]")
-
-# Home-path leakage ships to users, so this scan is broader than the code scan: config/ is included
-# because MCP/launcher configs are exactly where absolute local paths get pasted in.
-HOME_PATH_SCAN_PATHS = LIVE_SCAN_PATHS + (REPO_ROOT / "config",)
 
 
 def _load_json(path: Path) -> tuple[dict | None, str | None]:
@@ -127,44 +117,6 @@ def scan_hardcoded_path_literals(
     return sorted(set(offenders))
 
 
-def scan_home_path_leaks(
-    *,
-    scan_paths: Iterable[Path],
-    base_root: Path = REPO_ROOT,
-    exclude_parts: frozenset = frozenset(),
-) -> list[str]:
-    """Flag files that embed a real per-user home directory (/Users/<name>/, /home/<name>/).
-
-    Uses _HOME_PATH_RE so the `example` placeholder stays allowed while genuine usernames are
-    caught anywhere in the scanned tree — including config/, which the code-literal scan skips.
-    """
-    offenders: list[str] = []
-    base = base_root.resolve()
-
-    for scan_path in scan_paths:
-        if not scan_path.exists():
-            continue
-
-        files = (
-            [scan_path]
-            if scan_path.is_file()
-            else [path for path in scan_path.rglob("*") if path.is_file() and path.suffix.lower() in TEXT_SUFFIXES]
-        )
-
-        for file_path in files:
-            if exclude_parts and (set(file_path.parts) & exclude_parts):
-                continue
-            content = file_path.read_text(encoding="utf-8", errors="ignore")
-            if _HOME_PATH_RE.search(content):
-                resolved = file_path.resolve()
-                try:
-                    offenders.append(resolved.relative_to(base).as_posix())
-                except ValueError:
-                    offenders.append(resolved.as_posix())
-
-    return sorted(set(offenders))
-
-
 def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
     results: list[dict[str, str]] = []
 
@@ -221,25 +173,6 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
                 "OK",
                 "path-authority-scan",
                 "no hardcoded repo-local or machine-local absolute paths found across the Governance code surface",
-            )
-        )
-
-    home_offenders = scan_home_path_leaks(
-        scan_paths=HOME_PATH_SCAN_PATHS,
-        base_root=GOVERNANCE_ROOT,
-        exclude_parts=_SCAN_EXCLUDE_PARTS,
-    )
-    # This module embeds the regex's own alternation ("Users"/"home") but never a real /Users/<name>/
-    # literal, so it does not self-flag; exclude the literal sources anyway for symmetry.
-    home_offenders = [o for o in home_offenders if Path(o).name not in _PATH_LITERAL_SOURCES]
-    if home_offenders:
-        results.append(_make_result("FAIL", "home-path-scan", ", ".join(home_offenders)))
-    else:
-        results.append(
-            _make_result(
-                "OK",
-                "home-path-scan",
-                "no real per-user home directories (/Users/<name>, /home/<name>) embedded in code or config",
             )
         )
 

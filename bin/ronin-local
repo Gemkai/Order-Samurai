@@ -11,9 +11,29 @@ read -r -d '' SYS <<'SYSEOF' || true
 You are a fast local worker for mechanical subtasks (summarize, normalize, classify,
 reformat, draft boilerplate). Be precise and terse. Output only the requested artifact.
 SYSEOF
+
+# Cloud fallback for when the local model is unavailable (Ollama down/not started).
+# The caller contract is "run bulk work through ronin-local" (meditation_cycle.md); this
+# keeps that contract intact by transparently routing to the CHEAPEST cloud tier instead
+# of exiting non-zero and dropping the subtask. Set RONIN_LOCAL_FALLBACK='' to disable
+# (restore hard exit 2). Bulk work stays cheap; local is still preferred when up.
+# `-` not `:-` so an explicit RONIN_LOCAL_FALLBACK='' disables (restores hard exit 2);
+# unset falls back to haiku.
+FALLBACK_MODEL="${RONIN_LOCAL_FALLBACK-haiku}"
+cloud_fallback() {
+  [ -z "$FALLBACK_MODEL" ] && { echo "ronin-local: Ollama unreachable at $BASE (no fallback)" >&2; exit 2; }
+  echo "ronin-local: Ollama unreachable at $BASE — falling back to cloud model $FALLBACK_MODEL" >&2
+  local user_msg="$PROMPT"
+  [ -n "$STDIN_CTX" ] && user_msg="$PROMPT"$'\n\n---\n'"$STDIN_CTX"
+  # Prompt goes as the -p argument (stdin is NOT read as the prompt in headless mode).
+  # Cheap tier, no tools — same "mechanical worker" contract as local.
+  claude --print --model "$FALLBACK_MODEL" -p "$SYS"$'\n\n'"$user_msg" 2>/dev/null \
+    || { echo "ronin-local: cloud fallback ($FALLBACK_MODEL) also failed" >&2; exit 2; }
+}
+
 PAYLOAD="$(jq -n --arg m "$MODEL" --arg s "$SYS" --arg p "$PROMPT" --arg c "$STDIN_CTX" \
   --argjson t "$TEMP" --argjson mt "$MAXTOK" '{model:$m,temperature:$t,max_tokens:$mt,stream:false,
     messages:[{role:"system",content:$s},{role:"user",content:($p+(if $c=="" then "" else "\n\n---\n"+$c end))}]}')"
 RESP="$(curl -sS --fail-with-body --max-time 300 -H 'Content-Type: application/json' -d "$PAYLOAD" "$BASE/chat/completions")" \
-  || { echo "ronin-local: Ollama unreachable at $BASE" >&2; exit 2; }
+  || { cloud_fallback; exit 0; }
 echo "$RESP" | jq -r '.choices[0].message.content // empty'

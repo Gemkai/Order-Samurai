@@ -1,6 +1,6 @@
 {
   "generator": "execution/sync_capability_manifest.py",
-  "surfaceCount": 15,
+  "surfaceCount": 8,
   "surfaces": [
     {
       "path": "Research",
@@ -8,13 +8,8 @@
       "discoverable": true
     },
     {
-      "path": "agentica_core",
-      "role": "runtime",
-      "discoverable": true
-    },
-    {
-      "path": "api",
-      "role": "runtime",
+      "path": "backlog",
+      "role": "support",
       "discoverable": true
     },
     {
@@ -28,48 +23,18 @@
       "discoverable": true
     },
     {
-      "path": "dashboard-ui",
-      "role": "runtime",
-      "discoverable": true
-    },
-    {
-      "path": "docs",
-      "role": "support",
-      "discoverable": true
-    },
-    {
       "path": "execution",
       "role": "runtime",
       "discoverable": true
     },
     {
-      "path": "go-to-market",
-      "role": "support",
-      "discoverable": true
-    },
-    {
-      "path": "platform_surfaces",
-      "role": "support",
-      "discoverable": true
-    },
-    {
-      "path": "prompts",
-      "role": "support",
-      "discoverable": true
-    },
-    {
-      "path": "schema",
+      "path": "reports",
       "role": "support",
       "discoverable": true
     },
     {
       "path": "scouts",
       "role": "runtime",
-      "discoverable": true
-    },
-    {
-      "path": "soji",
-      "role": "support",
       "discoverable": true
     },
     {

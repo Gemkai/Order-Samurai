@@ -1,0 +1,13 @@
+{
+  "id": "b1_judge_valid_label",
+  "group": "judge_pipeline",
+  "kind": "guard",
+  "description": "The classifier judge returns a usable (non-gap, in-vocabulary) judgment under the candidate token budget.",
+  "grounded_in": "local_guards contract: thinking models return empty content under low budgets",
+  "sensitive_to": [
+    "judge_max_tokens"
+  ],
+  "fixture": "b1_judge_fixture",
+  "grader": "graders.check_b1_judge_returns_valid_label",
+  "repeats": 3
+}

@@ -14,10 +14,10 @@ BIN_DIR="$REPO_DIR/bin"
 
 DAEMON_SCRIPT="$BIN_DIR/ronin-daemon.sh"
 PID_FILE="$STATE_DIR/daemon.pid"
-STOP_FILE="$REPO_DIR/DOJO_STOP"
+STOP_FILE="$REPO_DIR/MEDITATION_STOP"
 LEDGER_FILE="$STATE_DIR/budget_ledger.json"
 PROPOSED_FILE="$STATE_DIR/PROPOSED_BACKLOG.json"
-STATE_FILE="$STATE_DIR/DOJO_STATE.json"
+STATE_FILE="$STATE_DIR/MEDITATION_STATE.json"
 LOG_FILE="$ARTIFACTS_DIR/ronin_logs.md"
 
 # ---------------------------------------------------------------------------
@@ -77,10 +77,10 @@ cmd_arm() {
     _info "Not a git repo — skipping tree check."
   fi
 
-  # 2. Remove DOJO_STOP if present
+  # 2. Remove MEDITATION_STOP if present
   if [[ -f "$STOP_FILE" ]]; then
     rm -f "$STOP_FILE"
-    _info "Removed DOJO_STOP."
+    _info "Removed MEDITATION_STOP."
   fi
 
   # 3. Check if daemon already running
@@ -126,9 +126,9 @@ cmd_arm() {
 # disarm
 # ---------------------------------------------------------------------------
 cmd_disarm() {
-  # 1. Create DOJO_STOP
+  # 1. Create MEDITATION_STOP
   touch "$STOP_FILE"
-  _info "DOJO_STOP created — daemon will halt at next cycle check."
+  _info "MEDITATION_STOP created — daemon will halt at next cycle check."
 
   # 2. SIGTERM the daemon if running
   local pid
@@ -161,11 +161,11 @@ cmd_status() {
     echo "Daemon  : STOPPED${pid:+ (last PID $pid)}"
   fi
 
-  # DOJO_STOP
+  # MEDITATION_STOP
   if [[ -f "$STOP_FILE" ]]; then
-    echo "Stop    : DOJO_STOP present"
+    echo "Stop    : MEDITATION_STOP present"
   else
-    echo "Stop    : no DOJO_STOP"
+    echo "Stop    : no MEDITATION_STOP"
   fi
 
   # Daily spend from budget_ledger.json
@@ -187,7 +187,7 @@ PYEOF
     echo "Spend   : budget_ledger.json not found"
   fi
 
-  # Lifetime cycle from DOJO_STATE.json
+  # Lifetime cycle from MEDITATION_STATE.json
   if [[ -f "$STATE_FILE" ]]; then
     local cycle
     cycle="$(_json_get "$STATE_FILE" cycle "n/a")"
@@ -282,14 +282,14 @@ cmd_propose() {
 # ---------------------------------------------------------------------------
 cmd_promote() {
   [[ -f "$PROPOSED_FILE" ]] || _err "PROPOSED_BACKLOG.json not found: $PROPOSED_FILE"
-  [[ -f "$STATE_FILE" ]]    || _err "DOJO_STATE.json not found: $STATE_FILE"
+  [[ -f "$STATE_FILE" ]]    || _err "MEDITATION_STATE.json not found: $STATE_FILE"
 
   _python - <<PYEOF
 import json, sys, pathlib
 
 _REPO = pathlib.Path("$REPO_DIR")
 proposed_path = _REPO / "state" / "PROPOSED_BACKLOG.json"
-state_path = _REPO / "state" / "DOJO_STATE.json"
+state_path = _REPO / "state" / "MEDITATION_STATE.json"
 
 with open(proposed_path) as f:
     proposed = json.load(f)
@@ -319,7 +319,7 @@ with open(state_path, "w") as f:
 with open(proposed_path, "w") as f:
     json.dump(proposed, f, indent=2)
 
-print(f"ronin: Promoted {len(approved)} item(s) to DOJO_STATE.json backlog.")
+print(f"ronin: Promoted {len(approved)} item(s) to MEDITATION_STATE.json backlog.")
 for item in approved:
     print(f"  + [{item.get('pillar','?')}] {item.get('id','?')}: {item.get('title','?')}")
 PYEOF
@@ -417,7 +417,7 @@ target["approved_at"] = now
 data["updated_at"] = now
 write(data)
 print(f"ronin: Approved {arg} ({target.get('tier_assigned')}/{target['skill']}).")
-print("Item will execute on its next natural trigger (reflex or dojo cycle).")
+print("Item will execute on its next natural trigger (reflex or meditation cycle).")
 PYEOF
 }
 
@@ -429,11 +429,11 @@ usage() {
 Usage: bash bin/ronin <command> [args]
 
 Commands:
-  arm                          Remove DOJO_STOP, start ronin-daemon.sh in background
-  disarm                       Create DOJO_STOP, SIGTERM daemon
+  arm                          Remove MEDITATION_STOP, start ronin-daemon.sh in background
+  disarm                       Create MEDITATION_STOP, SIGTERM daemon
   status                       Show running/stopped, daily spend, cycle count, last log line
   propose                      Pretty-print state/PROPOSED_BACKLOG.json
-  promote                      Move approved==true items from PROPOSED_BACKLOG into DOJO_STATE backlog
+  promote                      Move approved==true items from PROPOSED_BACKLOG into MEDITATION_STATE backlog
   approve-hitl                 List pending items in state/hitl_queue.json
   approve-hitl <id>            Approve a single queued item (any tier)
   approve-hitl --all           Approve every pending QUEUE-tier item (HITL tier excluded)

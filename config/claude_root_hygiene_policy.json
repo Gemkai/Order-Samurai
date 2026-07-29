@@ -143,10 +143,30 @@
         "CLAUDE.md"
       ],
       "forbiddenPatterns": [
-        ".gemini\\antigravity",
-        ".gemini/antigravity"
+        "C:\\Users\\example\\.gemini\\antigravity",
+        "C:/Users/example/.gemini/antigravity",
+        "~/.gemini/antigravity",
+        "~/.gemini/antigravity"
       ],
-      "description": "Live Claude runtime surfaces must not reference Antigravity-owned paths."
+      "allowlist": [
+        {
+          "path": "scripts/retention_reaper.py",
+          "reason": "Cross-home GC is this script's documented purpose (see rules/mechanisms.md 'Retention Reaper'; first run reclaimed 604MB). It deliberately reaps ~/.claude AND ~/.gemini/antigravity in one bounded pass — the antigravity reference is the design, not drift."
+        },
+        {
+          "path": "safety/hook_policies.json",
+          "reason": "The antigravity string is a provenance _comment ('Ported from ~/.gemini/antigravity/safety/hook_policies.json, 2026-04-18'), documentary history — not a functional runtime coupling."
+        },
+        {
+          "path": "scripts/verify_claude_home.py",
+          "reason": "Enforcement self-reference: this verifier's own invariant scan declares '.gemini/antigravity' as the forbidden needle it searches for, and its allowlist comment documents retention_reaper's sanctioned cross-home reach. Same class as the pack's policy files declaring forbiddenPatterns — the string IS the check, not a coupling."
+        },
+        {
+          "path": "scripts/proposed_invariant_fixes.md",
+          "reason": "Design note (2026-07-17) that diagnosed the retention_reaper coupling as an intentional bridge and prescribed allowlisting it — the antigravity strings are quoted evidence in prose, not runtime code. Documentation of the boundary decision, not a violation of it."
+        }
+      ],
+      "description": "Live Claude runtime surfaces must not reference Antigravity-owned paths (except allowlisted intentional/documented references)."
     },
     {
       "name": "historical-surface-isolation",
@@ -166,7 +186,13 @@
         "backups",
         "file-history"
       ],
-      "description": "Historical and recovery surfaces must not become live runtime dependencies."
+      "allowlist": [
+        {
+          "path": "scripts/backup_scheduler.py",
+          "reason": "This script IS the producer of ~/.claude/backups/ — the daily backup job (com.claude.daily-backup.plist) writes and prunes claude-backup-*.zip there. Referencing its own output directory is not a stale dependency on a historical surface."
+        }
+      ],
+      "description": "Historical and recovery surfaces must not become live runtime dependencies (except the allowlisted producer of that surface)."
     }
   ]
 }

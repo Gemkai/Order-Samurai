@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "comment": "Bushido Engine tier table. Per skill: blast_radius (confined/repo/system/irreversible), reversible (bool), approval_tier (auto/queue/hitl/hard_stop). Read by agentica_core/bushido_engine.py. NOT overwritten by refresh_dashboard.py (skill_metadata.json is the readonly/code_modifying surface for the TS engine).",
+  "comment": "Bushido Engine tier table. Per skill: blast_radius (confined/repo/system/irreversible), reversible (bool), approval_tier (auto/queue/hitl/hard_stop). Read by agentica_core/bushido_engine.py. NOT overwritten by refresh_dashboard.py (skill_metadata.json is the readonly/code_modifying surface for the TS engine). approval_tier is an EXPLICIT OVERRIDE of the 2-axis matrix, honored only after the irreversible hard-stop guards. Every entry here must equal its matrix cell except the deliberate exceptions listed in tests/test_bushido_engine.py::TIER_OVERRIDE_EXCEPTIONS — adding a diverging entry fails that test on purpose, so the divergence is a decision and not a drift. Current exception: ronin-pillar (auto despite repo blast — user decision 2026-07-28, 'that is ronin mode's entire point').",
   "skills": {
     "canary-fault-diagnosis":       {"blast_radius": "confined", "reversible": true,  "approval_tier": "auto"},
     "cost-breakdown-audit":         {"blast_radius": "confined", "reversible": true,  "approval_tier": "auto"},
@@ -24,6 +24,7 @@
     "token-optimizer":              {"blast_radius": "repo",     "reversible": true,  "approval_tier": "queue"},
     "wiki":                         {"blast_radius": "repo",     "reversible": true,  "approval_tier": "queue"},
     "sensei-cycle":                 {"blast_radius": "repo",     "reversible": true,  "approval_tier": "queue"},
+    "ronin-pillar":                 {"blast_radius": "repo",     "reversible": true,  "approval_tier": "auto"},
     "behavioral-canary":            {"blast_radius": "system",   "reversible": true,  "approval_tier": "queue"},
     "mcp-setup":                    {"blast_radius": "system",   "reversible": true,  "approval_tier": "queue"},
     "self-heal":                    {"blast_radius": "system",   "reversible": true,  "approval_tier": "queue"},

@@ -1,0 +1,13 @@
+{
+  "id": "c1_counts_heavy_sessions",
+  "group": "cliff_reducer",
+  "kind": "guard",
+  "description": "Exactly the 3 sessions above 140k count as cliffs among 5 (150k/200k/300k heavy, 90k/100k healthy).",
+  "grounded_in": "Context_Cliff_Events reducer semantics (brush metric, fdf761f)",
+  "sensitive_to": [
+    "context_cliff_token_threshold"
+  ],
+  "fixture": "c1_mixed_sessions",
+  "grader": "graders.check_c1_counts_heavy_sessions",
+  "repeats": 1
+}

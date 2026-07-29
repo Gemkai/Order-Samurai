@@ -86,7 +86,12 @@ def scan_archive_boundary_violations(
 
         for file_path in files:
             content = file_path.read_text(encoding="utf-8", errors="ignore")
-            relative_path = file_path.resolve().relative_to(base_root.resolve()).as_posix()
+            try:
+                relative_path = file_path.resolve().relative_to(base_root.resolve()).as_posix()
+            except ValueError:
+                # symlink resolving outside base_root — report by its in-tree path
+                # instead of crashing the whole verifier
+                relative_path = file_path.as_posix()
             for root, matchers in patterns.items():
                 if any(matcher.search(content) for matcher in matchers):
                     offenders.append(f"{relative_path} -> {root}")

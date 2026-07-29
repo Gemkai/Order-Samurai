@@ -36,8 +36,12 @@ _HERE = Path(__file__).resolve()
 _DEFAULT_REPO = _HERE.parent.parent
 REPO_ROOT = Path(os.environ.get("ORDER_SAMURAI_ROOT", str(_DEFAULT_REPO)))
 
-# Make agentica_core importable
+# Make agentica_core importable — it lives in the canonical Governance kernel
+# (parents[2]), not in this repo. REPO_ROOT stays bound to Order Samurai for state.
 sys.path.insert(0, str(REPO_ROOT))
+_GOVERNANCE = _HERE.parents[2]
+if str(_GOVERNANCE) not in sys.path:
+    sys.path.insert(0, str(_GOVERNANCE))
 
 try:
     from agentica_core.bushido_engine import (  # noqa: E402
@@ -101,10 +105,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--pillar", default=None, help="Pillar slug (bow/sword/brush/arts) or empty.")
     p.add_argument("--metric", dest="metric_id", default=None,
                    help="Metric id (e.g. metric:arts:Simplify_Age). Optional.")
-    p.add_argument("--source", default="reflex", choices=["reflex", "dojo", "manual", "cli"],
+    p.add_argument("--source", default="reflex", choices=["reflex", "meditation", "manual", "cli"],
                    help="What triggered this decision.")
     p.add_argument("--backlog-id", dest="backlog_id", default=None,
-                   help="Dojo backlog item id (used in the approval key).")
+                   help="Meditation backlog item id (used in the approval key).")
     p.add_argument("--stuck", action="store_true",
                    help="Mark this work item as already stuck (loop-breaker fired).")
     p.add_argument("--consecutive", dest="consecutive", type=int, default=0,

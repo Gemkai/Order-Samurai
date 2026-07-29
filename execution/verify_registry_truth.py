@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -62,16 +61,7 @@ def _resolve_surface_root(*, payload: dict, repo_root: Path) -> Path:
     """A surface matrix may scope its entries to an external target root."""
     target = payload.get("targetRoot") or payload.get("targetRuntimeRoot")
     if target:
-        path_str = str(target).replace("\\", "/")
-        if "Agentica-OS" in path_str or "AgenticaOS" in path_str:
-            # External Agentica-OS root, targeted via env rather than a hardcoded path.
-            alt_env = os.environ.get("AGENTICA_OS_ROOT")
-            alt = Path(alt_env) if alt_env else None
-            if alt and alt.is_dir():
-                return alt
-        if "Order Samurai" in path_str:
-            return repo_root
-        return Path(path_str)
+        return Path(str(target))
     return repo_root
 
 

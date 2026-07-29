@@ -18,7 +18,7 @@ under `needs_review`, for a human or the /codebase-cleanup-deps-audit skill to j
 
 Allowlist note: every scanner runs via `python -m` (`python -m pip ...`,
 `python -m pip_audit ...`), so this mechanism needs NO new tool-allowlist entries
-beyond the dojo's existing `Bash(python:*)`. Licence scanning is pure importlib —
+beyond the meditation's existing `Bash(python:*)`. Licence scanning is pure importlib —
 no shell at all. The npm path is left as an injected hook (off by default); wiring
 it is the only thing that would require adding `Bash(npm audit:*)`.
 
@@ -42,7 +42,7 @@ from typing import Callable, Iterable
 DEFAULT_AUDIT_PATH = Path.home() / ".claude" / "data" / "dependency_audit.json"
 
 # Scanner subprocess timeout — remote index / advisory calls must never hang.
-SCAN_TIMEOUT_S = 300
+SCAN_TIMEOUT_S = 900  # pip list --outdated hits PyPI per package; 300s timed out weekly (launchd 2026-07-13)
 
 # Licences that clear automatically. Anything outside this set (or empty/unknown)
 # is flagged for the LLM/human judgement tail rather than auto-cleared.
@@ -221,22 +221,27 @@ def build_audit(
 # Real scanners (python -m only — no new allowlist entries)
 # ---------------------------------------------------------------------------
 
-def _real_pip_outdated() -> str:
+def _real_pip_outdated() -> str | None:
+    """pip's outdated JSON, or None when pip itself failed — a dead pip would
+    otherwise parse as "0 outdated" indefinitely with no failure marker."""
     proc = subprocess.run(
         [sys.executable, "-m", "pip", "list", "--outdated", "--format", "json"],
         capture_output=True,
         text=True,
         timeout=SCAN_TIMEOUT_S,
     )
+    if proc.returncode != 0:
+        return None
     return proc.stdout
 
 
-def _real_pip_audit() -> str:
-    """Run pip-audit as a module. Returns its JSON stdout, or '[]' if unavailable.
+def _real_pip_audit() -> str | None:
+    """Run pip-audit as a module. Returns its JSON stdout, or None when the
+    scanner is dead (absent module, crash with no output).
 
     pip-audit exits non-zero when it finds vulnerabilities (that's success, not
-    failure) and may be absent; either way we hand the raw stdout to the parser,
-    which tolerates empty input. Never raises on a missing scanner.
+    failure) — so a nonzero exit WITH stdout is a real result; nonzero with
+    EMPTY stdout means the scanner never produced a verdict.
     """
     try:
         proc = subprocess.run(
@@ -246,7 +251,9 @@ def _real_pip_audit() -> str:
             timeout=SCAN_TIMEOUT_S,
         )
     except (OSError, subprocess.SubprocessError):
-        return "[]"
+        return None
+    if not proc.stdout and proc.returncode != 0:
+        return None
     return proc.stdout or "[]"
 
 
@@ -294,18 +301,28 @@ def run_audit(
     never shells out. Read-only: it scans and reports, never mutating any
     dependency, which is what makes re-running it inherently safe (idempotent).
     """
-    pip_outdated = parse_pip_outdated(pip_outdated_fn())
-    pip_cves = parse_pip_audit(pip_audit_fn())
+    pip_outdated_raw = pip_outdated_fn()
+    pip_cves_raw = pip_audit_fn()
+    pip_outdated = parse_pip_outdated(pip_outdated_raw or "")
+    pip_cves = parse_pip_audit(pip_cves_raw or "")
     licence_flags = scan_licences(licence_fn()) if include_licences else []
     npm_audits = npm_audit_fn() if npm_audit_fn is not None else []
 
-    return build_audit(
+    audit = build_audit(
         pip_outdated=pip_outdated,
         pip_cves=pip_cves,
         licence_flags=licence_flags,
         npm_audits=npm_audits,
         generated_at=now_fn(),
     )
+    # Scanner health: lets consumers of dependency_audit.json distinguish a
+    # genuinely clean scan from a dead scanner whose empty output zeroed the
+    # counts (Deprecated_Deps would otherwise read healthy forever).
+    audit["scanner_ok"] = {
+        "pip": pip_outdated_raw is not None,
+        "pip_audit": pip_cves_raw is not None,
+    }
+    return audit
 
 
 def write_audit(audit: dict, path: Path) -> None:

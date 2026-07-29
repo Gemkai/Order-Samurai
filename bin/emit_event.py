@@ -15,12 +15,13 @@ from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Resolve agentica_core on the import path without requiring an install.
-# agentica_core/ lives at the repo root; this script lives at <root>/bin/,
-# so the repo root is parents[1] (mirrors bin/agentica_emit.py).
+# This script lives at:   <repo>/Governance/Order Samurai/bin/emit_event.py
+# telemetry.py lives at:  <repo>/Governance/agentica_core/telemetry.py
+# so the Governance dir is exactly three parents up.
 # ---------------------------------------------------------------------------
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+_GOVERNANCE = Path(__file__).resolve().parents[2]
+if str(_GOVERNANCE) not in sys.path:
+    sys.path.insert(0, str(_GOVERNANCE))
 
 try:
     from agentica_core.telemetry import (
@@ -40,10 +41,8 @@ except ImportError:
     }
 
     def default_events_path() -> Path:
-        # Mirror agentica_core.telemetry.default_events_path: the Data layer sits beside
-        # the repo root (repo_root.parent / Data / telemetry), derived from THIS file's
-        # location — never a hardcoded per-machine Desktop path.
-        return _REPO_ROOT.parent / "Data" / "telemetry" / "autonomic_events.jsonl"
+        desktop = Path.home() / "Desktop"
+        return desktop / "Agentica OS" / "Data" / "telemetry" / "autonomic_events.jsonl"
 
     def append_event(event: dict, path: Path | None = None) -> Path:
         target = path or default_events_path()
