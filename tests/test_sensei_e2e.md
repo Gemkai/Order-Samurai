@@ -4,7 +4,7 @@ Manual verification playbook for the full Ronin→Rival→Sensei loop. Run these
 
 **Prerequisites:**
 - Order Samurai API running: `cd Governance && npm run dev` (port 3001)
-- `ORDER_SAMURAI_ROOT` set to `~/Desktop\Projects\Order Samurai`
+- `ORDER_SAMURAI_ROOT` set to `C:\Users\example\Desktop\Projects\Order Samurai`
 - SENSEI_LEDGER.jsonl exists (may be empty): `state\SENSEI_LEDGER.jsonl`
 
 ---
@@ -17,7 +17,7 @@ Manual verification playbook for the full Ronin→Rival→Sensei loop. Run these
    ```python
    # seed_sword_reflex.py
    import json, datetime, pathlib
-   ROOT = pathlib.Path(r"~/Desktop\Projects\Order Samurai")
+   ROOT = pathlib.Path(r"C:\Users\example\Desktop\Projects\Order Samurai")
    payload = json.loads((ROOT / "Governance\state\wid_payload.json").read_text())
    # Inject a CRITICAL Rule_Violations reflex
    payload.setdefault("reflexes", []).append({
@@ -51,7 +51,7 @@ Manual verification playbook for the full Ronin→Rival→Sensei loop. Run these
 4. **Verify ledger row written:**
    ```python
    import json, pathlib
-   rows = [json.loads(l) for l in (pathlib.Path(r"~/Desktop\Projects\Order Samurai\state\SENSEI_LEDGER.jsonl")).read_text().splitlines() if l.strip()]
+   rows = [json.loads(l) for l in (pathlib.Path(r"C:\Users\example\Desktop\Projects\Order Samurai\state\SENSEI_LEDGER.jsonl")).read_text().splitlines() if l.strip()]
    assert any(r["reflex_id"] == "metric:sword:Rule_Violations" and r["rival_verdict"] == "CONFIRMED" for r in rows), "FAIL: no CONFIRMED ledger row"
    print("PASS: CONFIRMED ledger row found")
    ```
@@ -77,7 +77,7 @@ Manual verification playbook for the full Ronin→Rival→Sensei loop. Run these
 4. **Verify exec_log entry:**
    ```python
    import json, pathlib
-   rows = [json.loads(l) for l in (pathlib.Path(r"~/Desktop\Projects\Order Samurai\state\exec_log.jsonl")).read_text().splitlines() if l.strip()]
+   rows = [json.loads(l) for l in (pathlib.Path(r"C:\Users\example\Desktop\Projects\Order Samurai\state\exec_log.jsonl")).read_text().splitlines() if l.strip()]
    seed_rows = [r for r in rows if r.get("reflex_id") == "metric:sword:Rule_Violations"]
    assert seed_rows, "FAIL: no exec_log entry for seeded reflex"
    print(f"PASS: exec_log entry found — improved={seed_rows[-1].get('improved')}")
@@ -86,7 +86,7 @@ Manual verification playbook for the full Ronin→Rival→Sensei loop. Run these
 5. **Verify reflex_verdicts.json updated:**
    ```python
    import json, pathlib
-   verdicts = json.loads((pathlib.Path(r"~/Desktop\Projects\Order Samurai\state\reflex_verdicts.json")).read_text())
+   verdicts = json.loads((pathlib.Path(r"C:\Users\example\Desktop\Projects\Order Samurai\state\reflex_verdicts.json")).read_text())
    assert "metric:sword:Rule_Violations" in verdicts, "FAIL: verdict not persisted"
    print(f"PASS: verdict={verdicts['metric:sword:Rule_Violations']['verdict']}")
    ```
@@ -121,7 +121,7 @@ Manual verification playbook for the full Ronin→Rival→Sensei loop. Run these
 
 4. **Verify suppressed row:**
    ```python
-   rows = [json.loads(l) for l in (pathlib.Path(r"~/Desktop\Projects\Order Samurai\state\SENSEI_LEDGER.jsonl")).read_text().splitlines() if l.strip()]
+   rows = [json.loads(l) for l in (pathlib.Path(r"C:\Users\example\Desktop\Projects\Order Samurai\state\SENSEI_LEDGER.jsonl")).read_text().splitlines() if l.strip()]
    phantom = [r for r in rows if r.get("reflex_id") == "metric:sword:Rule_Violations_phantom_test"]
    assert phantom and phantom[-1]["action_taken"] == "suppressed", f"FAIL: expected suppressed, got {phantom}"
    print("PASS: phantom reflex suppressed")
@@ -144,7 +144,7 @@ Manual verification playbook for the full Ronin→Rival→Sensei loop. Run these
 
 4. **Verify post-audit row:**
    ```python
-   rows = [json.loads(l) for l in (pathlib.Path(r"~/Desktop\Projects\Order Samurai\state\SENSEI_LEDGER.jsonl")).read_text().splitlines() if l.strip()]
+   rows = [json.loads(l) for l in (pathlib.Path(r"C:\Users\example\Desktop\Projects\Order Samurai\state\SENSEI_LEDGER.jsonl")).read_text().splitlines() if l.strip()]
    post_rows = [r for r in rows if r.get("action_taken") == "post_audit"]
    assert post_rows, "FAIL: no post_audit ledger rows"
    print(f"PASS: {len(post_rows)} post_audit rows found")

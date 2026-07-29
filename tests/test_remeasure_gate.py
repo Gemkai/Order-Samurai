@@ -16,10 +16,11 @@ import sys
 import unittest
 from pathlib import Path
 
-# Pack root holds both bin/ and agentica_core/ (flattened layout).
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+REPO_ROOT = Path(__file__).resolve().parents[1]      # Order Samurai
+GOV_ROOT = Path(__file__).resolve().parents[2]       # Governance (for agentica_core)
+for _p in (REPO_ROOT, GOV_ROOT):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 from bin import remeasure_gate  # type: ignore[import-not-found]
 from bin.remeasure_gate import (  # type: ignore[import-not-found]

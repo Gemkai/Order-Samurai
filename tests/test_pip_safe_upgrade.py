@@ -9,12 +9,15 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from bin import pip_safe_upgrade  # type: ignore[import-not-found]
 from bin.pip_safe_upgrade import (  # type: ignore[import-not-found]
     Candidate,
     decide,
@@ -281,6 +284,50 @@ class IdempotencyTests(unittest.TestCase):
         self.assertEqual(report["counts"]["applied"], 0)
         self.assertEqual(report["counts"]["skipped"], 2)
         self.assertEqual(calls, [])  # already-upgraded packages trigger no pip calls
+
+
+# ---------------------------------------------------------------------------
+# _real_apply — post-upgrade audit guard
+# ---------------------------------------------------------------------------
+
+class RealApplyAuditGuardTests(unittest.TestCase):
+    """pip-audit exits non-zero both for 'vulnerabilities found' AND for 'cannot
+    run at all' (module not installed). Only a real audit verdict may trigger
+    the rollback — an unavailable auditor must fail open, or every clean --apply
+    upgrade on a machine without pip-audit is applied, reverted, and reported
+    failed while the vulnerable version stays installed."""
+
+    def _fake_run(self, calls, audit_rc, audit_err):
+        def run(cmd, **kwargs):
+            calls.append([str(c) for c in cmd])
+            if "pip_audit" in cmd:
+                return SimpleNamespace(returncode=audit_rc, stdout="", stderr=audit_err)
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return run
+
+    def test_missing_pip_audit_does_not_roll_back_clean_upgrade(self) -> None:
+        calls: list[list[str]] = []
+        with mock.patch.object(pip_safe_upgrade.subprocess, "run",
+                               self._fake_run(calls, 1, "No module named pip_audit")), \
+             mock.patch("importlib.metadata.version", return_value="1.0"), \
+             mock.patch("importlib.util.find_spec", return_value=None):
+            result = pip_safe_upgrade._real_apply("certifi")
+
+        self.assertTrue(result)
+        rollback = [c for c in calls if any("certifi==1.0" in part for part in c)]
+        self.assertEqual(rollback, [])
+
+    def test_vulnerability_verdict_still_rolls_back(self) -> None:
+        calls: list[list[str]] = []
+        with mock.patch.object(pip_safe_upgrade.subprocess, "run",
+                               self._fake_run(calls, 1, "Found 1 known vulnerability")), \
+             mock.patch("importlib.metadata.version", return_value="1.0"), \
+             mock.patch("importlib.util.find_spec", return_value=object()):
+            result = pip_safe_upgrade._real_apply("certifi")
+
+        self.assertFalse(result)
+        rollback = [c for c in calls if any("certifi==1.0" in part for part in c)]
+        self.assertEqual(len(rollback), 1)
 
 
 if __name__ == "__main__":
