@@ -92,6 +92,8 @@ def _classify_class(state: dict | None, now: datetime, default_max_age_days: int
     """
     if state is None:
         return "missing"
+    if not isinstance(state, dict):
+        return "corrupt"
     if not state.get("gate_working", False):
         return "gate-not-working"
     last_run = state.get("last_run")
@@ -111,7 +113,7 @@ def _classify_class(state: dict | None, now: datetime, default_max_age_days: int
 
 def _age_days(state: dict | None, now: datetime) -> int | None:
     """Age of the canary in whole days, or None when there is no usable timestamp."""
-    if not state:
+    if not state or not isinstance(state, dict):
         return None
     parsed = _parse_timestamp(state.get("last_run", ""))
     return (now - parsed).days if parsed is not None else None
@@ -125,7 +127,12 @@ def _load_state(path: Path) -> dict | None:
     """Read the canary file; None if it is missing (the 'missing' fault class)."""
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+    parsed = json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+    if not isinstance(parsed, dict):
+        # Valid JSON of the wrong shape (list/string/number) is a corrupt write,
+        # same as unparseable bytes — surface it via the caller's ValueError path.
+        raise ValueError(f"canary state is {type(parsed).__name__}, expected a JSON object")
+    return parsed
 
 
 def _format_report(report: dict) -> str:

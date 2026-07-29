@@ -5,7 +5,7 @@ need is in this prompt. Work end-to-end without stopping to ask anything.
 ## Absolute rules (violating any is a failure)
 - **Do NOT use AskUserQuestion under any circumstances. Proceed autonomously.**
 - **NEVER edit anything under `~/.claude/`** (control-plane; protected + off-limits).
-- **NEVER commit to or push `main`.** Every fix lands on its own branch off `main` and is proposed via a PR.
+- **NEVER commit to or push `work`.** Every fix lands on its own branch off `work` and is proposed via a PR.
 - **Test-gate every fix.** A fix is allowed ONLY if you first write a test that FAILS on the bug and
   PASSES after the fix. No failing-then-passing test → do NOT edit code; record it in the triage
   report instead. This is the single most important rule: it prevents speculative, regression-prone edits.
@@ -26,7 +26,7 @@ high-confidence, clearly-reproducible bugs over many speculative ones.
 ## Procedure for EACH candidate bug
 1. Confirm it's real: read the code, trace the failure. If you can't state concrete inputs → wrong
    output/crash, drop it (or triage-note it) — do not "fix" uncertain code.
-2. `git -C <REPO_ROOT> checkout main` then create a branch:
+2. `git -C <REPO_ROOT> checkout work` then create a branch:
    `git checkout -b fix/bug-<short-slug>`.
 3. Write a test that reproduces the bug and currently FAILS (pytest, in the nearest `tests/` dir).
    Run it; capture the failure.
@@ -34,10 +34,10 @@ high-confidence, clearly-reproducible bugs over many speculative ones.
    confirm no regressions.
 5. Commit test+fix together (imperative subject; end with
    `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`).
-6. Push the branch and open a PR against `main` with `gh pr create` (title = the fix; body = bug,
+6. Push the branch and open a PR against `work` with `gh pr create` (title = the fix; body = bug,
    root cause, the failing→passing test, risk). End the PR body with
    `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
-7. Return to `main` for the next candidate.
+7. Return to `work` for the next candidate.
 
 Cap this run at the **5 highest-confidence bugs**. Stop earlier if you run out of high-confidence
 candidates — do NOT pad with low-value changes.

@@ -7,7 +7,11 @@ The clock is injected so the eval never depends on wall-time.
 """
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 import sys
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -17,7 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from bin.canary_fault_detect import classify  # type: ignore[import-not-found]
+from bin.canary_fault_detect import classify, main  # type: ignore[import-not-found]
 
 
 # Fixed reference clock for every fixture — deterministic, no wall-time.
@@ -160,6 +164,35 @@ class VerdictShapeTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Wrong-shape canary file (valid JSON that is not an object)
+# ---------------------------------------------------------------------------
+
+class NonDictCanaryFileTests(unittest.TestCase):
+    """A canary file holding valid JSON of the wrong shape (list/string/number)
+    is a corrupt write: it must land on the same corrupt fallback as unparseable
+    bytes, not crash with an uncaught AttributeError before the verdict."""
+
+    def _verdict_for(self, payload: str) -> tuple[int, dict]:
+        with tempfile.TemporaryDirectory() as td:
+            canary = Path(td) / "security_gate_canary.json"
+            canary.write_text(payload, encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                exit_code = main(["--canary", str(canary), "--json"])
+        return exit_code, json.loads(out.getvalue())
+
+    def test_json_list_canary_is_graded_corrupt(self) -> None:
+        exit_code, report = self._verdict_for("[]")
+        self.assertEqual(report["fault_class"], "corrupt")
+        self.assertEqual(exit_code, 1)
+
+    def test_json_string_canary_is_graded_corrupt(self) -> None:
+        exit_code, report = self._verdict_for('"gate ok"')
+        self.assertEqual(report["fault_class"], "corrupt")
+        self.assertEqual(exit_code, 1)
+
+
+# ---------------------------------------------------------------------------
 # Idempotency
 # ---------------------------------------------------------------------------
 
@@ -168,6 +201,26 @@ class IdempotencyTests(unittest.TestCase):
     def test_same_state_yields_identical_verdict(self) -> None:
         state = _canary(days_ago=10, max_age_days=7)
         self.assertEqual(classify(state, NOW), classify(state, NOW))
+
+
+
+# ---------------------------------------------------------------------------
+# Malformed state shape — the parsed JSON is valid JSON but not an object
+# ---------------------------------------------------------------------------
+
+class MalformedStateShapeTests(unittest.TestCase):
+
+    def test_list_state_classified_as_corrupt_not_a_crash(self) -> None:
+        verdict = classify([], NOW)
+        self.assertEqual(verdict["fault_class"], "corrupt")
+
+    def test_string_state_classified_as_corrupt_not_a_crash(self) -> None:
+        verdict = classify("not-an-object", NOW)
+        self.assertEqual(verdict["fault_class"], "corrupt")
+
+    def test_list_state_reports_no_age(self) -> None:
+        verdict = classify([1, 2, 3], NOW)
+        self.assertIsNone(verdict["age_days"])
 
 
 if __name__ == "__main__":

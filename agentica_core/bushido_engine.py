@@ -318,6 +318,16 @@ def _load_queue(repo_root: Path) -> dict:
         data.setdefault("items", [])
         return data
     except (OSError, ValueError):
+        # An absent queue is a first run — a fresh one is correct. A queue that
+        # EXISTS but won't parse means the read failed, not that there were no
+        # approvals; enqueue_hitl rewrites this file in full, so handing it a
+        # fresh queue here silently destroys every pending/approved item. Move
+        # the unreadable bytes aside first so the approvals stay recoverable.
+        if path.exists():
+            try:
+                path.replace(path.with_name("hitl_queue.corrupt.json"))
+            except OSError:
+                pass
         now = datetime.now(timezone.utc).isoformat()
         return {
             "schema_version": 1,

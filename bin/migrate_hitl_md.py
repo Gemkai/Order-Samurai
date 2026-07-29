@@ -94,7 +94,12 @@ def migrate(repo_root: Path, dry_run: bool = False) -> tuple[int, int]:
                  .lstrip("/").split()[0])
         metric_id = fields.get("Metric ID", "")
         pillar = fields.get("Pillar") or None
-        consecutive = int(fields.get("Consecutive Failed Runs", "0") or 0)
+        try:
+            consecutive = int(fields.get("Consecutive Failed Runs", "0") or 0)
+        except ValueError as e:
+            print(f"  SKIP {md.name}: bad Consecutive Failed Runs value: {e}")
+            skipped += 1
+            continue
         context = fields.get("_recommendation") or fields.get("Failure Mode", "")
 
         meta = metadata.get(skill, {})

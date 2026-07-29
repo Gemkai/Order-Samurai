@@ -92,3 +92,18 @@ def test_truncated_multibyte_line_does_not_mask_fresh_records(tmp_path):
     src.write_bytes(good + truncated)
     r = _one(_run_claude_telemetry_checks(source=src, now=_NOW))
     assert r["status"] == "OK", r["detail"]
+
+
+def test_mixed_naive_and_aware_timestamps_do_not_mask_fresh_records(tmp_path):
+    """A file holding both tz-aware and naive (offset-less) timestamps must not
+    raise TypeError on the newest-record comparison and false-FAIL the gate as
+    "telemetry file unreadable" — naive stamps are graded as UTC, matching the
+    fix-up the gate already applies to `newest` after the loop.
+    """
+    src = tmp_path / "telemetry.jsonl"
+    naive = json.dumps({"timestamp": (_NOW - timedelta(hours=2)).replace(tzinfo=None).isoformat(),
+                        "task_name": "session"})
+    src.write_text(_record(3) + "\n" + naive + "\n", encoding="utf-8")
+    r = _one(_run_claude_telemetry_checks(source=src, now=_NOW))
+    assert r["status"] == "OK", r["detail"]
+    assert "2.0h" in r["detail"]  # the naive record is the newest and graded as UTC

@@ -253,7 +253,14 @@ def _run_claude_telemetry_checks(max_age_hours: float = 48.0,
                     dt = parse_ts(json.loads(line).get("timestamp"))
                 except Exception:
                     continue
-                if dt is not None and (newest is None or dt > newest):
+                if dt is None:
+                    continue
+                # Grade naive stamps as UTC before comparing: a file mixing naive
+                # and tz-aware timestamps must not TypeError into the outer except
+                # and false-FAIL the gate as "unreadable".
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if newest is None or dt > newest:
                     newest = dt
     except Exception as exc:
         return [{"status": "FAIL", "label": "claude-telemetry",

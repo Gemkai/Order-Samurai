@@ -36,8 +36,14 @@ PILLAR_KEYWORDS = {
              "simplify", "review", "lesson", "nudge", "visual", "acceptance"},
 }
 
-# Regex for table rows: | Metric | Measures | ... | Status |
+# Regex for 4-column table rows: | Metric | Measures | Source | Status |
 ROW_RE = re.compile(r"^\|\s*\*{0,2}([^|*][^|]+?)\*{0,2}\s*\|([^|]+)\|([^|]+)\|([^|]+)\|")
+
+# Fallback for 3-column table rows: | Metric | Signal source | Status |
+# (used by the "Harness-derived expansion" section of METRICS.md). Only tried
+# when ROW_RE fails to match, since ROW_RE's stricter 4-column shape would
+# otherwise be shadowed by this looser one for ordinary rows.
+ROW_RE_3COL = re.compile(r"^\|\s*\*{0,2}([^|*][^|]+?)\*{0,2}\s*\|([^|]+)\|([^|]+)\|\s*$")
 
 
 def infer_pillar(text: str) -> str:
@@ -68,16 +74,18 @@ def score_row(title: str, measures: str) -> int:
     return sum(1 for kw in SCORE_KEYWORDS if kw in text)
 
 
+def load_backlog_items() -> list:
+    """Items already promoted into the MEDITATION_STATE backlog (titles + used ids)."""
+    try:
+        items = json.loads(MEDITATION_STATE.read_text(encoding="utf-8")).get("backlog", [])
+        return [i for i in items if isinstance(i, dict)]
+    except Exception:
+        return []
+
+
 def load_existing_titles() -> set:
     """Return lowercased title substrings already in MEDITATION_STATE backlog."""
-    titles = set()
-    try:
-        data = json.loads(MEDITATION_STATE.read_text(encoding="utf-8"))
-        for item in data.get("backlog", []):
-            titles.add(item.get("title", "").lower())
-    except Exception:
-        pass
-    return titles
+    return {item.get("title", "").lower() for item in load_backlog_items()}
 
 
 def load_proposed() -> dict:
@@ -118,12 +126,17 @@ def parse_candidates(existing_titles: set) -> list:
                     break
 
         m = ROW_RE.match(line)
-        if not m:
-            continue
-
-        raw_title = m.group(1).strip()
-        measures = m.group(2).strip()
-        status = m.group(4).strip()
+        if m:
+            raw_title = m.group(1).strip()
+            measures = m.group(2).strip()
+            status = m.group(4).strip()
+        else:
+            m3 = ROW_RE_3COL.match(line)
+            if not m3:
+                continue
+            raw_title = m3.group(1).strip()
+            measures = m3.group(2).strip()
+            status = m3.group(3).strip()
 
         # Skip rows that are already LIVE — they don't need backlog work.
         # Normalize markdown/whitespace so "**LIVE**", "LIVE (approx)", and
@@ -170,16 +183,24 @@ def parse_candidates(existing_titles: set) -> list:
     return unique
 
 
-def build_items(candidates: list, proposed_items: list, auto_approve: bool) -> list:
+def build_items(candidates: list, proposed_items: list, auto_approve: bool,
+                promoted_items: list | None = None) -> list:
     # Filter out already-proposed
     fresh = [c for c in candidates if not already_proposed(c["title"], proposed_items)]
 
     # Sort: higher value first, then alphabetical for stability
     fresh.sort(key=lambda c: (-c["value"], c["title"]))
 
+    # `ronin promote` MOVES approved items out of PROPOSED_BACKLOG into
+    # MEDITATION_STATE, so numbering from the proposals alone restarts the counter
+    # after every promote and re-issues an id the backlog already holds (the live
+    # state carries a duplicate AUTO-041 from exactly this path). Reserve both sets.
+    reserved = list(proposed_items) + list(
+        load_backlog_items() if promoted_items is None else promoted_items)
+
     new_items = []
     for c in fresh[:5]:
-        item_id = next_auto_id(proposed_items + new_items)
+        item_id = next_auto_id(reserved + new_items)
         item = {
             "id": item_id,
             "pillar": c["pillar"],

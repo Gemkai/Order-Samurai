@@ -1525,7 +1525,11 @@ def _estimated_human_time_saved(records: list[dict], repo_root: Path | None = No
                 if item.get("status") == "done" and item.get("pillar") == "arts":
                     comp_dt = _parse_iso(item.get("completed_at"))
                     if comp_dt and comp_dt.strftime("%G-W%V") == week_str:
-                        total += float(item.get("effort") or 1)
+                        # default a missing/null effort to 1 point, but honor an
+                        # explicit 0 — `effort or 1` would coerce a real 0 to 1
+                        # and inflate the hero metric with a phantom point.
+                        eff = item.get("effort")
+                        total += float(eff if eff is not None else 1)
             return total
 
         this_promos = _get_weekly_promotions_count(now)
@@ -2215,10 +2219,13 @@ def build_project_scores(all_records: list[dict], proj_platform: dict[str, str],
         for tp, rs in by_tproj.items():
             ntp = _norm(tp)
             # Exact normalized match or alias-only. Substring was too broad:
-            # "api" matched "apify", "hub" matched "github". Require at least 6
-            # chars for substring fallback to reduce false-alias merging.
+            # "api" matched "apify", "hub" matched "github". Require the SHORTER
+            # (substring/needle) name to be at least 6 chars in each direction —
+            # guarding only ntp let a short folder like "api" still absorb a long
+            # telemetry project like "apifyscraper" via `nf in ntp`.
             match = (tp in aliases or ntp == nf
-                     or (len(ntp) >= 6 and (ntp in nf or nf in ntp)))
+                     or (len(ntp) >= 6 and ntp in nf)
+                     or (len(nf) >= 6 and nf in ntp))
             if match:
                 recs.extend(rs)
                 plats[proj_platform.get(tp, "")] += len(rs)
