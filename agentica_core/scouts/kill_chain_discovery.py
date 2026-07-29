@@ -68,13 +68,6 @@ def _check_scrubber_realtime(days: int = 7) -> bool:
     return bool(_recent_events(_RUNTIME_DATA / "secret_scrubber_realtime.jsonl", days=days))
 
 
-def _check_security_gate(days: int = 7) -> bool:
-    for obj in _recent_events(_RUNTIME_DATA / "security_gate_log.jsonl", days=days):
-        if obj.get("findings") or obj.get("finding_count") or obj.get("exit_code"):
-            return True
-    return False
-
-
 def _check_prompt_injection(days: int = 7) -> bool:
     # High-confidence unmatched prompt injection events (confidence >= 0.5)
     unmatched = _recent_events(_OS_ROOT / "state" / "kill_chain_unmatched.jsonl", days=days)
@@ -82,14 +75,77 @@ def _check_prompt_injection(days: int = 7) -> bool:
                if e.get("event_type") == "prompt_injection")
 
 
-# Map each taxonomy detection_point to a check function
+# --- per-gate block readers (2026-07-12) ---
+# The four PreToolUse gates used to share one reader over security_gate_log.jsonl,
+# a file NOTHING writes on this host: every gate silently reported False (33 real
+# shell-gate blocks/7d invisible), and had the file existed, one gate's finding
+# would have fired all four (inflating taxonomy-chain confidence). The canonical
+# per-gate source is hook_timings.jsonl, whose `hook` field names the gate.
+
+_HOOK_TIMINGS_NAME = "hook_timings.jsonl"
+# Single-entry cache keyed by (resolved path, mtime_ns, size, days): the file is
+# ~22 MB and four gate checks per run() would otherwise parse it four times. Not
+# @lru_cache — other processes append this file continuously (Anti-Pattern #6).
+# The path is IN the key: without it, two different _RUNTIME_DATA roots whose
+# files happen to share (mtime_ns, size) would collide and serve stale data
+# (the exact leak the test suite triggers by patching _RUNTIME_DATA per test).
+_gate_blocks_cache: dict[tuple, set] = {}
+
+
+def _is_block_row(o: dict) -> bool:
+    """A deliberate gate block — NOT a crash. status=='error' with a nonzero exit
+    is a hook that threw (507 such rows exist for unrelated hooks), and must not
+    be miscounted as a security decision. A block is an explicit 'blocked' status,
+    or a bare nonzero exit with no status field (older rows predate the status
+    key). 'ok'/'error'/'timeout' statuses never count."""
+    status = o.get("status")
+    if status == "blocked":
+        return True
+    if status is None:
+        return o.get("exit_code") not in (0, None)
+    return False
+
+
+def _blocked_hook_names(days: int = 7) -> set:
+    path = _RUNTIME_DATA / _HOOK_TIMINGS_NAME
+    try:
+        st = path.stat()
+    except OSError:
+        return set()
+    key = (str(path), st.st_mtime_ns, st.st_size, days)
+    if key not in _gate_blocks_cache:
+        _gate_blocks_cache.clear()
+        _gate_blocks_cache[key] = {
+            o.get("hook") for o in _recent_events(path, days=days) if _is_block_row(o)
+        }
+    return _gate_blocks_cache[key]
+
+
+def _make_gate_check(hook_name: str):
+    """A zero-arg-callable reader: did THIS gate block anything in the window?"""
+    def check(days: int = 7) -> bool:
+        return hook_name in _blocked_hook_names(days)
+    return check
+
+
+# Map each taxonomy detection_point to a check function.
+# Note: security-gate is a non-blocking commit nudge (never exits 2), so its
+# reader honestly reports False. Chains 1/2/6 keep it as a KNOWN-UNIMPLEMENTED
+# detection point: it caps their confidence at partial coverage, which is the
+# honest signal ("we don't yet have a blocking control for this technique").
+# A 2026-07-12 remap onto `guardrails` was REVERTED — guardrails only matches
+# local dev-command safety (rm -rf, force-push, .ssh reads); it has no
+# cron/launchctl or phishing patterns, so firing it for those chains would
+# manufacture false-positive confidence (adversarial-verify finding). Building
+# a real spearphishing/cron detector, or redesigning security_gate into a
+# blocking gate, stays HUMAN-LANE.
 _SIGNAL_CHECKS: dict[str, object] = {
     "secret_scrubber":        _check_secret_scrubber,
     "secret_scrubber_realtime": _check_scrubber_realtime,
-    "security_gate":          _check_security_gate,
-    "protected_shell_gate":   _check_security_gate,
-    "protected_asset_gate":   _check_security_gate,
-    "python_script_gate":     _check_security_gate,
+    "security_gate":          _make_gate_check("security-gate"),
+    "protected_shell_gate":   _make_gate_check("protected-shell-gate"),
+    "protected_asset_gate":   _make_gate_check("protected-asset-gate"),
+    "python_script_gate":     _make_gate_check("python-script-gate"),
     "prompt_injection_guard": _check_prompt_injection,
 }
 

@@ -8,75 +8,159 @@ import os
 from pathlib import Path
 
 _THIS = Path(__file__).resolve()
-_local_root = _THIS.parents[1]
-if (_local_root / "config").exists() and not (_local_root / "Order Samurai").exists():
-    _default_root = _local_root
-else:
-    _default_root = _local_root / "Order Samurai"
-_ORDER_SAMURAI_ROOT = Path(os.environ.get("ORDER_SAMURAI_ROOT", str(_default_root)))
+_ORDER_SAMURAI_ROOT = Path(os.environ.get(
+    "ORDER_SAMURAI_ROOT", str(_THIS.parents[1] / "Order Samurai")))
 
 # Single source: skill/command (all metrics) + dir/warn/fail (graded only) + per (rate metrics).
-# Gate_Fires is protective-activity: shown but NOT graded (no dir key).
+# Guardrail_Blocks is protective-activity: shown but NOT graded (no dir key).
 METRIC_CONFIG: dict[str, dict] = {
     # Bow — operational
     "Error_Rate":               {"skill": "investigate",                  "command": "/investigate",                         "dir": "lower",  "warn": 2,     "fail": 5,   "readonly": True, "weight": 3.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "error_triage.py", "args": [], "read_only": True, "timeout_s": 120}},
-    "Latency_P50":              {"skill": "investigate",                  "command": "/investigate",                         "dir": "lower",  "warn": 30000, "fail": 60000,  "readonly": True, "weight": 1.0},
-    "Latency_P95":              {"skill": "investigate",                  "command": "/investigate",                         "dir": "lower",  "warn": 90000, "fail": 180000, "readonly": True, "weight": 1.0},
+    # Latency_P50 consolidated into Latency_P95 (2026-07-08 audit) — the median was
+    # claude's constant zeros, not speed. Re-add with the emitter fix.
+    # RETUNE 2026-07-08 audit: an audit skill can't move infra latency — advisory only.
+    "Latency_P95":              {"skill": "investigate",                  "command": "/investigate",                         "dir": "lower",  "warn": 90000, "fail": 180000, "readonly": True, "auto_remediable": False, "weight": 1.0},
     "Complexity_Weighted_Throughput": {"skill": "insights",               "command": "/insights",                                                                          "readonly": True},
     "Tool_Calls":               {"skill": "tool-diversity-audit",         "command": "/tool-diversity-audit",                                                              "readonly": True},
-    "Fallback_Recovery_Rate":   {"skill": "model-selector",               "command": "/model-selector",                      "dir": "higher", "warn": 90,    "fail": 80,  "auto_remediable": False, "weight": 2.0},
+    # Fallback_Recovery_Rate / Agent_Autonomy_Ratio / Processes_Reaped RETIRED
+    # 2026-07-08 audit (dead source / structural 100 / no Mac reaper) — removal,
+    # never faking. Re-add only with a live emitter.
     "Session_Count":            {},  # informational — no remediation action makes sense
     "Avg_Session_Turns":        {"skill": "insights",                     "command": "/insights",                            "dir": "lower",  "warn": 8,     "fail": 15,  "readonly": True, "auto_remediable": False, "calibrate": False, "weight": 1.0},  # SENSEI-1: /insights 8x no_change -> advisory; bimodal history (autonomous vs interactive) -> never percentile-calibrate
-    "Processes_Reaped":         {},  # protective activity — high count means guard is working correctly
-    "Agent_Autonomy_Ratio":     {"skill": "sensei-cycle",                 "command": "/sensei-cycle",                        "dir": "higher", "warn": 70,    "fail": 50, "auto_remediable": False, "weight": 2.0},  # mis-route (DO-NOT-USE): sensei-cycle is circular (its own runs are the numerator) — advisory only, never auto-fire
-    "Agent_Process_Count":      {"skill": "self-heal",                    "command": "/self-heal", "auto_remediable": False},  # mis-route (DO-NOT-USE): self-heal kills procs by age (no allowlist/dry-run) — would target the governance stack; never auto-fire
-    "Mechanism_Orphans":        {"skill": "audit-mechanisms",             "command": "/audit-mechanisms",                    "dir": "lower",  "warn": 1,     "fail": 3, "weight": 1.0},
+    "Agent_Process_Count":      {"skill": "self-heal",                    "command": "/self-heal", "auto_remediable": False, "kind": "mis_route"},  # mis-route (DO-NOT-USE): self-heal kills procs by age (no allowlist/dry-run) — would target the governance stack; never auto-fire
+    # REMAP 2026-07-08 audit: audit-mechanisms REPORTS orphans; removing one is human
+    # work (0/8 improved, audit_only failure_mode) — advisory, never auto-fire.
+    "Mechanism_Orphans":        {"skill": "audit-mechanisms",             "command": "/audit-mechanisms",                    "dir": "lower",  "warn": 1,     "fail": 3, "auto_remediable": False, "weight": 1.0},
+    # Verifier_Failures consolidated into Governance_Pass_Rate (2026-07-08 audit):
+    # same verifier source, two rows. The failing-platform drill-down rides on this
+    # envelope (failure_platforms + doctor mitigation, set in build_pillars).
     "Governance_Pass_Rate":     {"skill": "runtime-refactor-hardening",   "command": "/runtime-refactor-hardening",          "dir": "higher", "warn": 85,    "fail": 70, "weight": 2.0},
-    "Verifier_Failures":        {"skill": "runtime-refactor-hardening",   "command": "/runtime-refactor-hardening"},
+    # Skill_Routing_Adherence: % of critical-work prompts routed through their
+    # governing skill (skill_routing_adherence.py reducer, sword pillar). Target
+    # >= 80% — a documented one-line-fix skip is legitimate, so the bar is 80 not
+    # 100. Advisory/read-only: past-prompt routing can't be auto-remediated; low
+    # adherence surfaces via /insights (session friction + routing analysis).
+    "Skill_Routing_Adherence":  {"skill": "insights",                     "command": "/insights",                            "dir": "higher", "warn": 80,    "fail": 65, "readonly": True, "auto_remediable": False, "weight": 2.0},
     # Sword — security
-    "Vulnerability_MTTR":       {"skill": "pip-safe-upgrade",             "command": "/pip-safe-upgrade",                    "dir": "lower",  "warn": 2.0,   "fail": 5.0, "weight": 2.0},
-    "Boundary_Violations":      {"skill": "guard",                        "command": "/guard",                               "dir": "lower",  "warn": 1,     "fail": 3, "auto_remediable": False, "weight": 3.0},  # mis-route (DO-NOT-USE): guard is a preventive session toggle, not a remediator — can't fix existing violations; advisory only (real fix = a quarantine bin, not yet built)
-    "Secrets_Detected":         {"skill": "security-audit",               "command": "/security-audit",                      "dir": "lower",  "warn": 1,     "fail": 1, "weight": 3.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "secret_scrub.py", "args": [], "read_only": True, "timeout_s": 120}},
+    # SWAP 2026-07-11 (C/D/F remediation plan step 3): Vulnerability_MTTR retired —
+    # its name promised CVE mean-time-to-resolution but the reducer read kill-chain
+    # events, and after the 2026-07-08 default-removal it was permanently SIMULATED
+    # (no chains most weeks = no measurement). Open_CVEs is the honest replacement:
+    # dependency_audit.json is live again (codebase_deps_audit.py, scheduled weekly)
+    # and pip-safe-upgrade causally closes CVEs. Re-add a real MTTR only when a
+    # first-seen→resolved CVE ledger exists.
+    "Open_CVEs":                {"skill": "pip-safe-upgrade",             "command": "/pip-safe-upgrade",                    "dir": "lower",  "warn": 1,     "fail": 5, "weight": 2.0},
+    "Boundary_Violations":      {"skill": "guard",                        "command": "/guard",                               "dir": "lower",  "warn": 1,     "fail": 3, "auto_remediable": False, "kind": "mis_route", "weight": 3.0},  # mis-route (DO-NOT-USE): guard is a preventive session toggle, not a remediator — can't fix existing violations; advisory only (real fix = a quarantine bin, not yet built)
+    # warn:0 (main #59, 2026-07-26): a single detected secret must not grade a
+    # perfect PASS — 1 was the "clean" floor, so exactly one secret scored the
+    # same as zero.
+    "Secrets_Detected":         {"skill": "security-audit",               "command": "/security-audit",                      "dir": "lower",  "warn": 0,     "fail": 1, "weight": 3.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "secret_scrub.py", "args": [], "read_only": True, "timeout_s": 120}},
     # Guardrail_Blocks RETIRED 2026-07-19 (dead emitter — no security_gate_log.jsonl writer on this host).
-    "Rule_Violations":          {"skill": "policy-enforcement-audit",     "command": "/policy-enforcement-audit",            "dir": "lower",  "warn": 1,     "fail": 5,  "per": "session", "readonly": True, "weight": 2.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "policy_enforcement_audit.py", "args": [], "read_only": True, "timeout_s": 120}},
-    # Canary_Failures reads canary_status.json (behavioral_canary.py), NOT security_gate_canary.json.
-    # /canary-fault-diagnosis + canary_fault_detect.py only inspect the security-gate canary, so they
-    # could never move this metric — that misrouting caused a permanent stuck loop -> false needs_human
-    # escalation. A behavioral skill regression has no cheap deterministic auto-fix; re-run the canary to
-    # re-measure, then investigate the regressed skill. Non-remediable, like other detect-only metrics.
-    "Canary_Failures":          {"skill": "behavioral-canary",            "command": "python ~/.claude/scripts/behavioral_canary.py", "dir": "lower", "warn": 0, "fail": 1, "auto_remediable": False, "weight": 3.0},
+    # RETUNE 2026-07-08 audit: policy-enforcement-audit finds unenforced policy, it
+    # doesn't stop violations (stuck 0/2) — advisory only. Window mismatch (S6) fixed
+    # in aggregate.py: numerator now shares the payload window with Session_Count.
+    "Rule_Violations":          {"skill": "policy-enforcement-audit",     "command": "/policy-enforcement-audit",            "dir": "lower",  "warn": 1,     "fail": 5,  "per": "session", "readonly": True, "auto_remediable": False, "weight": 2.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "policy_enforcement_audit.py", "args": [], "read_only": True, "timeout_s": 120}},
+    # Canary_Failures RETIRED 2026-07-11 (C/D/F plan step 5): behavioral_canary.py
+    # was never scheduled on this host — a permanently dark weight-3 metric is
+    # registry noise, and the old mapping was a documented misroute. Re-add only
+    # together with a scheduled canary run. (Gate_Canary_Fault is unaffected —
+    # different source, still live.)
     "Gate_Canary_Fault":        {"skill": "canary-fault-diagnosis",       "command": "/canary-fault-diagnosis",              "readonly": True, "mechanism": {"script": "canary_fault_detect.py", "args": [], "read_only": True, "timeout_s": 120}},
     # Loop_Breaker_Fires RETIRED 2026-07-19 (metric-surface review Part E item 3):
     # ~/.claude/data/loop_breaker_state.json is never written on this host, so the
     # graded weight-2 metric was permanently dark (no envelope ever built) —
     # removal, never faking. Re-add only together with a live emitter.
-    "Security_Scorecard":       {"skill": "security-audit",               "command": "/security-audit",                      "dir": "higher", "warn": 85,    "fail": 70, "weight": 2.0},
-    "Skill_Safety_Findings":    {"skill": "supply-chain-risk-auditor",    "command": "/supply-chain-risk-auditor",            "dir": "lower",  "warn": 1,     "fail": 5,   "readonly": True, "auto_remediable": False, "weight": 2.0},  # mis-route (DO-NOT-USE): supply-chain-risk-auditor audits dep packages, not installed skills — can't move this metric; advisory only (real fix = a skill-quarantine bin, not yet built)
-    "Deprecated_Deps":          {"skill": "pip-safe-upgrade",             "command": "/pip-safe-upgrade",                    "dir": "lower",  "warn": 20,    "fail": 120, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "codebase_deps_audit.py", "args": [], "read_only": True, "timeout_s": 120}},
+    # Security_Scorecard RETIRED 2026-07-11: the Windows scripts-tier emitter is
+    # gone and its content overlaps Guardrail_Blocks + Secrets_Detected +
+    # Gate_Canary_Fault (audit already deprioritized it) — removal, never faking.
+    # Skill_Safety_Findings RETIRED 2026-07-08 audit: no scanner exists on this
+    # host and the mapped skill audited dep packages, not installed skills.
+    # Re-introduce only together with a real skill scanner + quarantine bin.
+    # REMAP 2026-07-08 audit: single remediation = pip-safe-upgrade (it causally
+    # shrinks pip_outdated); the codebase-cleanup mechanism reflex was audit_only
+    # and stuck 0/8 — killed. When dependency_audit.json returns (S3), grade the
+    # CVE subset (Open_CVEs) rather than this raw outdated count.
+    "Deprecated_Deps":          {"skill": "pip-safe-upgrade",             "command": "/pip-safe-upgrade",                    "dir": "lower",  "warn": 20,    "fail": 120, "weight": 1.0},
     "Governance_Review_Findings": {"skill": "governance-review",          "command": "/governance-review",                   "dir": "lower",  "warn": 3,     "fail": 8, "weight": 2.0},
+    # Graded successor of Kill_Chains_Detected (2026-07-08 audit consolidation):
+    # open exposure = detected − disrupted this week. Advisory — /guard reviews
+    # chains; auto-firing it cannot disrupt one (same reasoning as Boundary_Violations).
+    "Kill_Chains_Open":         {"skill": "guard",                        "command": "/guard",                               "dir": "lower",  "warn": 1,     "fail": 3, "auto_remediable": False, "kind": "mis_route", "weight": 2.0},
+    # Governance_Work_Volume (backlog P1): critical-work detections this window,
+    # routed or not — direction-neutral activity paired with Skill_Routing_Adherence
+    # (high volume + low adherence = busy hand-rolled session, not a dead one).
+    "Governance_Work_Volume":   {},
     # Secret_Scrubs RETIRED 2026-07-19 (metric-surface review Part E item 3):
     # ~/.claude/data/secret_scrubber.jsonl is absent on this host — the protective
     # counter never fired. Secrets_Detected (secret_scrub.py mechanism) is the live
     # secrets metric. Re-add only together with a real scrubber emitter.
     # Brush — architecture & efficiency
     "Total_Cost":               {"skill": "cost-breakdown-audit",         "command": "/cost-breakdown-audit",                                                              "readonly": True},
-    "Token_Spend":              {"skill": "token-optimizer",              "command": "/token-optimizer"},
+    # DEMOTE 2026-07-19 (metric-surface review Part C): token-optimizer is 0/4
+    # lifetime (skill_efficacy.json) — an auto-fire that never moves the metric
+    # only burns spawns. Advisory until the skill demonstrates efficacy.
+    "Token_Spend":              {"skill": "token-optimizer",              "command": "/token-optimizer",                     "auto_remediable": False},
     "Cost_Per_Task":            {"skill": "cost-breakdown-audit",         "command": "/cost-breakdown-audit",                                                              "readonly": True},
-    "Token_Execution_Density":  {"skill": "token-optimizer",              "command": "/token-optimizer",                     "dir": "lower",  "warn": 40000, "fail": 80000, "weight": 1.0},
-    "Local_Routing_Share":      {"skill": "model-selector",               "command": "/model-selector",                      "dir": "higher", "warn": 25,    "fail": 10,  "auto_remediable": False, "weight": 2.0},
+    # RETUNE 2026-07-08 audit: the old 40k/80k ceiling sat 5-18x below the observed
+    # distribution (206k-741k, median ~286k) — permanently CRITICAL, unreachable by
+    # any remediation, and the source of 5 stuck reflex runs. Honest policy ceiling
+    # from the real distribution; the causal lever is routing policy (llm_router
+    # task-type routing), not a session-compaction skill run — advisory only.
+    "Token_Execution_Density":  {"skill": "token-optimizer",              "command": "/token-optimizer",                     "dir": "lower",  "warn": 300000, "fail": 550000, "auto_remediable": False, "weight": 1.0},
+    # REMAP 2026-07-08 audit: model-selector REGRESSED this metric in both recorded
+    # attempts (8.5 → 0.0 x2). The causal lever is the router config
+    # (~/.claude/scripts/llm_router.py task-type routing), not a skill invocation.
+    "Local_Routing_Share":      {"skill": "model-selector",               "command": "/model-selector",                      "dir": "higher", "warn": 25,    "fail": 10,  "auto_remediable": False, "kind": "mis_route", "weight": 2.0},
+    "Context_Cliff_Events":     {"skill": "token-optimizer",              "command": "/token-optimizer",                     "dir": "lower",  "warn": 25,    "fail": 50, "readonly": True, "auto_remediable": False, "calibrate": False, "weight": 1.0},  # PERCENT of scanned sessions since 2026-07-19 (was absolute count)
     "Revision_Ratio":           {"skill": "simplify",                     "command": "/simplify"},
-    "Subagent_Efficiency_Index": {"skill": "subagent-audit",              "command": "/subagent-audit",                      "dir": "higher", "warn": 80,    "fail": 60, "weight": 2.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "subagent_audit.py", "args": [], "read_only": True, "timeout_s": 120}},
-    "Chain_Depth_Avg":          {"skill": "subagent-audit",               "command": "/subagent-audit",                      "dir": "lower",  "warn": 3,     "fail": 5, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "chain_depth_audit.py", "args": [], "read_only": True, "timeout_s": 120}},
-    "Hardcoded_Path_Incidents": {"skill": "arch-hygiene",                 "command": "/arch-hygiene",                        "dir": "lower",  "warn": 1,     "fail": 5, "weight": 1.0},
-    "Root_Hygiene_Issues":      {"skill": "arch-hygiene",                 "command": "/arch-hygiene",                        "dir": "lower",  "warn": 1,     "fail": 4, "weight": 1.0},
+    # DEMOTED 2026-07-11 (metric grading pass, grade D): the benchmark design bug —
+    # whole-session cost vs 3x solo median — makes an orchestrator session look
+    # inefficient by construction, while the spawn grader shows 98.6% of spawn cost
+    # justified. subagent-audit diagnoses but cannot causally move a cost ratio
+    # (stuck 0/2). Advisory until the benchmark measures MARGINAL spawn cost
+    # (per-spawn cost vs a per-task benchmark, or orchestrator-session tokens
+    # excluded). The dry-run mechanism stays — it is the manual drill-down.
+    # UNGRADED 2026-07-19 (metric-surface review Part B): the benchmark compares
+    # whole-session cost to 3x a solo median, so an orchestrator session reads
+    # FAIL by construction (5.0 at review time) while the spawn grader shows
+    # 98.6% of spawn cost justified — a permanently-red metric nobody believes
+    # trains alarm blindness. Value still shown + dry-run mechanism stays as the
+    # manual drill-down; re-grade only with a MARGINAL-spawn-cost benchmark.
+    "Subagent_Efficiency_Index": {"skill": "subagent-audit",              "command": "/subagent-audit",                      "auto_remediable": False, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "subagent_audit.py", "args": [], "read_only": True, "timeout_s": 120}},
+    # RETUNE 2026-07-08 audit: warn 3 / fail 5 read as "don't orchestrate" for an
+    # agent OS whose own sensei-cycle spawns 4 scouts (live median 4 = perpetual
+    # WARN). Early-warning trend line, not an anti-orchestration gate.
+    "Chain_Depth_Avg":          {"skill": "subagent-audit",               "command": "/subagent-audit",                      "dir": "lower",  "warn": 5,     "fail": 10, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "chain_depth_audit.py", "args": [], "read_only": True, "timeout_s": 120}},
+    # REMAP 2026-07-08 audit: "arch-hygiene" does not exist in the skill library —
+    # dead reference. Both metrics derive from doctor verifier FAILs, so /doctor is
+    # the surface that shows and re-checks them (METRIC_DOCS already said so).
+    "Hardcoded_Path_Incidents": {"skill": "doctor",                       "command": "/doctor",                              "dir": "lower",  "warn": 1,     "fail": 5, "weight": 1.0},
+    "Root_Hygiene_Issues":      {"skill": "doctor",                       "command": "/doctor",                              "dir": "lower",  "warn": 1,     "fail": 4, "weight": 1.0},
     "Architecture_Scorecard_Grade": {"skill": "runtime-refactor-hardening", "command": "/runtime-refactor-hardening",        "dir": "higher", "warn": 85,    "fail": 70, "weight": 3.0},
     # Arts — craft & UX
+    # Output-quality tool-use triad (llm-judged; values from bin/tool_quality_scout.py via
+    # state/tool_quality.json). Advisory — a quality score isn't auto-remediated (you fix the
+    # underlying behavior, not the number). dir higher = better; SIMULATED until the scout runs.
+    "Tool_Selection_Accuracy":  {"skill": "insights", "command": "/insights", "dir": "higher", "warn": 70, "fail": 50, "readonly": True, "auto_remediable": False, "weight": 2.0},
+    "Tool_Arg_Correctness":     {"skill": "insights", "command": "/insights", "dir": "higher", "warn": 70, "fail": 50, "readonly": True, "auto_remediable": False, "weight": 2.0},
+    "Tool_Response_Utilization":{"skill": "insights", "command": "/insights", "dir": "higher", "warn": 70, "fail": 50, "readonly": True, "auto_remediable": False, "weight": 2.0},
+    "Faithfulness_Score":       {"skill": "insights", "command": "/insights", "dir": "higher", "warn": 80, "fail": 60, "readonly": True, "auto_remediable": False, "weight": 3.0},
+    "Refusal_Appropriateness":  {"skill": "insights", "command": "/insights", "dir": "higher", "warn": 70, "fail": 50, "readonly": True, "auto_remediable": False, "weight": 1.0},
+    "Retrieval_Relevance":      {"skill": "wiki", "command": "/wiki", "dir": "higher", "warn": 70, "fail": 50, "readonly": True, "auto_remediable": False, "weight": 2.0},
     "Slop_Density":             {"skill": "humanizer",                    "command": "/humanizer",                           "dir": "lower",  "warn": 15,    "fail": 30, "weight": 3.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "slop_strip.py", "args": [], "read_only": True, "timeout_s": 120}},
     "Frustration_Signals":      {"skill": "insights",                     "command": "/insights",                            "dir": "lower",  "warn": 0.5,   "fail": 2,  "per": "session", "readonly": True, "auto_remediable": False, "weight": 2.0},
     "Rework_Loops":             {"skill": "insights",                     "command": "/insights",                            "dir": "lower",  "warn": 1,     "fail": 3,  "per": "session", "auto_remediable": False, "weight": 2.0},
-    "Simplify_Runs":            {"skill": "simplify",                     "command": "/simplify",                            "dir": "higher", "warn": 1,     "fail": 0, "weight": 1.0},
+    "Stop_Hook_Loops":          {"skill": "insights",                     "command": "/insights",                            "dir": "lower",  "warn": 1,     "fail": 2,  "per": "session", "readonly": True, "auto_remediable": False, "weight": 2.0},
+    # Simplify_Runs consolidated into Simplify_Age (2026-07-08 audit): it counted
+    # its own remediation's invocations and passed on a single run.
     "Simplify_Age":             {"skill": "simplify",                     "command": "/simplify",                            "dir": "lower",  "warn": 7,     "fail": 21, "weight": 1.0},
-    "Doc_Parity_Issues":        {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 1,     "fail": 5, "weight": 2.0},
+    # RATCHET 2026-07-11: the 2026-07-08 baseline ratchet was set at warn 634 (the
+    # then-live backlog); the parity backlog has since drained to 1, so 634/697 was
+    # absurdly loose — any regression up to 633 would still read PASS. Tightened to
+    # warn 5 / fail 25 and auto-remediation re-enabled: /wiki demonstrably clears
+    # small drifts at this scale (11/13 efficacy on vault work). Ratchet rule stays:
+    # tighten (never loosen) as clean weeks accumulate.
+    "Doc_Parity_Issues":        {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 5,     "fail": 25, "weight": 2.0},
     # Skills_Optimized + Skill_Promotions RETIRED 2026-07-19 (metric-surface review
     # Part E item 3): their sources (skill_improve_after_use_log.jsonl /
     # skill_promotion_log.jsonl) are never written on this host — both counters were
@@ -86,8 +170,20 @@ METRIC_CONFIG: dict[str, dict] = {
     # Knowledge vault health (arts/Knowledge group — cross-component integration)
     "Wiki_Health_Score":        {"skill": "wiki",                         "command": "/wiki"},
     "Wiki_Article_Count":       {},  # informational — volume, not a failure signal
-    "Raw_Pending":              {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 1,     "fail": 5,  "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "wiki_compile.py", "args": [], "read_only": True, "timeout_s": 120}},
+    # warn 1->5 / fail 5->15 ratified 2026-07-12 (Wargame 01 Move 6 row 8): the librarian
+    # nightly (01:30) FEEDS Knowledge/vault/raw/ by design, so warn=1 guaranteed a nightly
+    # re-breach the morning after every distillation run.
+    "Raw_Pending":              {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 5,     "fail": 15, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "wiki_compile.py", "args": [], "read_only": True, "timeout_s": 120}},
     "Wiki_Orphans":             {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 2,     "fail": 10, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "wiki_link.py", "args": [], "read_only": True, "timeout_s": 120}},
+    # OKF / <BRAND>³ knowledge health (scouts.knowledge_signals -> arts/Knowledge group).
+    # Thresholds mirror verify_knowledge.py constants — change both together.
+    "OKF_Conformance":          {"skill": "wiki",                         "command": "python3 Knowledge/okf/okf_tools.py validate Knowledge/vault --list 20", "dir": "higher", "warn": 95, "fail": 80, "auto_remediable": False, "weight": 1.0},  # validate lists offenders; fixing frontmatter is editorial
+    "Orphan_Concepts":          {},  # informational until a baseline exists — threshold once history accumulates
+    # DEMOTE 2026-07-19 (Part C): consolidate-memory is 0/12 lifetime — advisory
+    # for both metrics it maps to until it demonstrates efficacy.
+    "Archive_Ratio":            {"skill": "consolidate-memory",           "command": "/consolidate-memory",                  "dir": "lower",  "warn": 75,    "fail": 90, "weight": 0.5, "auto_remediable": False},
+    "Index_Drift":              {"skill": "wiki",                         "command": "python3 Knowledge/okf/okf_tools.py index Knowledge/vault/me --root", "dir": "lower", "warn": 1, "fail": 10, "weight": 1.0},  # command regenerates the index -> actually fixes drift
+    "Knowledge_Staleness_Days": {"skill": "consolidate-memory",           "command": "/consolidate-memory",                  "dir": "lower",  "warn": 60,    "fail": 180, "weight": 1.0, "auto_remediable": False},  # DEMOTE 2026-07-19: see Archive_Ratio
     # Meta — informational, not scored (no dir). Shows pillar instrumentation depth.
     "Instrumentation_Coverage": {"skill": "audit-mechanisms",             "command": "/audit-mechanisms"},
 }
@@ -97,11 +193,34 @@ METRIC_CONFIG: dict[str, dict] = {
 # counters) so they cannot go in METRIC_CONFIG.dir without breaking scoring. Separate lookup.
 _24H_DIRECTION: dict[str, str] = {
     "Complexity_Weighted_Throughput": "higher",   # more throughput = more work done = good
-    "Processes_Reaped":               "higher",   # more reaped = reaper is healthy = good
     "Total_Cost":                     "lower",    # lower spend is better
     "Token_Spend":                    "lower",    # lower is better
     "Cost_Per_Task":                  "lower",    # lower is better
 }
+
+# Cumulative volume totals: their 24h rise is driven by how much work happened, not
+# by quality — so the 24h clause reports their movement WITHOUT an improved/worsened
+# verdict (calling a Total_Cost rise "worsened" reads as a regression when it's just
+# more work). Efficiency judgments stay on the per-task / rate metrics.
+_CUMULATIVE_24H_METRICS: set[str] = {
+    "Total_Cost", "Token_Spend", "Tool_Calls", "Session_Count",
+    "Complexity_Weighted_Throughput",
+}
+
+# Metrics whose 24h delta reads as dollars.
+_MONEY_24H_METRICS: set[str] = {"Total_Cost", "Cost_Per_Task", "Estimated_Cost_Savings"}
+
+
+def _fmt_24h_magnitude(metric: str, mag: float) -> str:
+    """Human-readable unsigned magnitude for the 24h clause: dollars for cost metrics,
+    M/K for large counts, plain otherwise."""
+    if metric in _MONEY_24H_METRICS:
+        return f"${mag:,.2f}"
+    if mag >= 1_000_000:
+        return f"{mag / 1e6:,.1f}M"
+    if mag >= 10_000:
+        return f"{mag / 1e3:,.1f}K"
+    return f"{mag:,.0f}" if float(mag) == int(mag) else f"{mag:,.1f}"
 
 
 def _clamp_threshold(direction: str, manual_warn, manual_fail, cal_warn, cal_fail) -> tuple:
@@ -150,6 +269,38 @@ REMEDIATION: dict[str, dict] = {
     for k, v in METRIC_CONFIG.items() if "skill" in v
 }
 
+# Skills that operate on the *live* session's context — meaningless headless (there is
+# nothing to compact/optimize). A reflex whose command maps to one of these is routed
+# as session_hygiene: never spawned by the engine, the dashboard shows a "run it in your
+# active session" hint instead of a headless button.
+SESSION_HYGIENE_SKILLS = {"context-optimization", "compact"}
+
+
+def remediation_kind(command, *, readonly, auto_remediable, explicit_kind=None):
+    """Single source of truth: classify a reflex's manual remediation into one of four kinds.
+
+      auto_fix        — a code-modifying skill that can move the metric; runs through the
+                        staging → maker-checker → pytest pipeline (today's behavior).
+      advisory        — a diagnostic/read-only skill; it runs but its value is the report it
+                        prints, not a code change (finalStatus stays no_change).
+      session_hygiene — a live-session skill (SESSION_HYGIENE_SKILLS); headless is a no-op.
+      mis_route       — the configured skill structurally can't move the metric (the four
+                        DO-NOT-USE METRIC_CONFIG entries); express this AT the metric via an
+                        explicit ``kind`` so it stays DRY.
+
+    ``explicit_kind`` (METRIC_CONFIG's ``kind`` field) always wins — that is how mis_route is
+    declared. Otherwise: session_hygiene by skill, then advisory for readonly / non-auto-
+    remediable, then auto_fix. Pure function; no I/O, no caller yet (Step 2 wires it in).
+    """
+    if explicit_kind:
+        return explicit_kind
+    skill = (command or "").lstrip("/").split()[0] if command else ""
+    if skill in SESSION_HYGIENE_SKILLS:
+        return "session_hygiene"
+    if readonly or auto_remediable is False:
+        return "advisory"
+    return "auto_fix"
+
 
 def batch_deferred_metrics(metric_config: dict[str, dict] | None = None) -> list[str]:
     """Metrics whose real-time remediation is an EXPENSIVE, code-modifying LLM skill with
@@ -178,6 +329,59 @@ def batch_deferred_metrics(metric_config: dict[str, dict] | None = None) -> list
         and "mechanism" not in cfg
         and not cfg.get("urgent")
     )
+
+# Pillar placement of every graded metric — mirrors aggregate.py's REGISTRY rows
+# and build_pillars injection sites (a metric injected into two pillars lists
+# both). Instrumentation_Coverage's denominator is the FULL graded registry
+# (audit S4 retune): an absent-source metric never gets an envelope, so the old
+# envelopes-present denominator reported 100% coverage on every pillar while a
+# third of the graded registry was dark — the one metric designed to catch data
+# gaps could not see this gap class. A drift test asserts this map stays equal
+# to METRIC_RULES' key set.
+_GRADED_METRIC_PILLARS: dict[str, tuple[str, ...]] = {
+    "Error_Rate": ("bow",),
+    "Latency_P95": ("bow",),
+    "Avg_Session_Turns": ("bow",),
+    "Mechanism_Orphans": ("bow",),
+    "Governance_Pass_Rate": ("bow",),
+    "MCP_Smoke_Fails": ("bow",),
+    "Open_CVEs": ("sword",),
+    "Boundary_Violations": ("sword",),
+    "Secrets_Detected": ("sword",),
+    "Rule_Violations": ("sword",),
+    "Skill_Routing_Adherence": ("sword",),
+    "Deprecated_Deps": ("sword",),
+    "Governance_Review_Findings": ("sword",),
+    "Kill_Chains_Open": ("sword",),
+    "Token_Execution_Density": ("brush",),
+    "Local_Routing_Share": ("brush",),
+    "Context_Cliff_Events": ("brush",),
+    # Subagent_Efficiency_Index ungraded 2026-07-19 — removed from the graded map
+    # with its dir rule (drift test asserts map == METRIC_RULES keys).
+    "Chain_Depth_Avg": ("brush",),
+    "Hardcoded_Path_Incidents": ("brush",),
+    "Root_Hygiene_Issues": ("brush",),
+    "Architecture_Scorecard_Grade": ("brush",),
+    "Slop_Density": ("arts",),
+    "Tool_Selection_Accuracy": ("arts",),
+    "Tool_Arg_Correctness": ("arts",),
+    "Tool_Response_Utilization": ("arts",),
+    "Faithfulness_Score": ("arts",),
+    "Refusal_Appropriateness": ("arts",),
+    "Retrieval_Relevance": ("arts",),
+    "Frustration_Signals": ("arts",),
+    "Rework_Loops": ("arts",),
+    "Stop_Hook_Loops": ("arts",),
+    "Simplify_Age": ("arts",),
+    "Doc_Parity_Issues": ("arts",),
+    "Skill_Conflicts": ("arts",),
+    "Raw_Pending": ("arts",),
+    "Wiki_Orphans": ("arts",),
+    "OKF_Conformance": ("arts",),
+    "Archive_Ratio": ("arts",),
+    "Index_Drift": ("arts",),
+    "Knowledge_Staleness_Days": ("arts",),
+}
 
 
 def _num(s) -> float | None:
@@ -294,6 +498,15 @@ def annotate(pillars: dict) -> dict:
                 if "skill" in cfg and "mitigation_command" not in env and not env.get("is_simulated"):
                     env["mitigation_skill"] = cfg["skill"]
                     env["mitigation_command"] = cfg["command"]
+                    # Remediation routing kind (same source of truth as the reflex cards) so the
+                    # metric detail views (PillarPage, MetricModal) gate their run button the same
+                    # way the reflex cards do — mis_route/session_hygiene get no headless button.
+                    env["mitigation_kind"] = remediation_kind(
+                        cfg["command"],
+                        readonly=cfg.get("readonly", False),
+                        auto_remediable=cfg.get("auto_remediable"),
+                        explicit_kind=cfg.get("kind"),
+                    )
                 if "mechanism" in cfg and not env.get("is_simulated"):
                     env["mitigation_mechanism"] = cfg["mechanism"]
                 if "dir" not in cfg:
@@ -302,7 +515,13 @@ def annotate(pillars: dict) -> dict:
                 if env.get("is_simulated"):
                     continue
                 v = _num(env.get("val"))
-                if cfg.get("per") == "session" and v is not None:
+                if v is None:
+                    # Unparseable/absent val on a graded, non-simulated metric:
+                    # _health(None) returns 100.0, which would grade a broken
+                    # value as a perfect PASS. Skip it like a simulated metric
+                    # instead — no status, no contribution to the rollup.
+                    continue
+                if cfg.get("per") == "session":
                     v = v / sessions
                 h = _health(v, cfg)
                 healths.append(h)
@@ -334,6 +553,13 @@ def annotate(pillars: dict) -> dict:
         flags.sort(key=lambda f: {"F": 0, "D": 1, "C": 2}.get(f["grade"], 3))
 
         graded_count = len(healths)
+        # Audit S4: the coverage denominator is the FULL graded registry for this
+        # pillar, so an absent-source metric (no envelope at all) counts as
+        # not-live instead of silently shrinking the denominator. max() keeps any
+        # graded envelope not (yet) in the pillar map counted, so coverage can
+        # never exceed 100%.
+        registry_gradeable = sum(1 for pks in _GRADED_METRIC_PILLARS.values() if pk in pks)
+        total_gradeable = max(registry_gradeable, total_gradeable)
         coverage_pct: float | None = (
             round(100 * graded_count / total_gradeable, 1) if total_gradeable else None
         )
@@ -399,6 +625,17 @@ def _val(pillars: dict, pk: str, key: str):
         if key in g:
             return g[key].get("val")
     return "—"
+
+
+def _env_of(pillars: dict, pk: str, key: str) -> dict:
+    """Full envelope for a metric (empty dict when absent) — lets summaries honor
+    the calibrated/data_gap honesty flags instead of asserting raw values as fact
+    (the hero card already gates on these; prose must not leak what the card refuses
+    to headline)."""
+    for g in pillars.get(pk, {}).values():
+        if key in g:
+            return g[key]
+    return {}
 
 
 def _movers(pillars: dict, pk: str, top: int = 2) -> list[dict]:
@@ -471,8 +708,9 @@ def _24h_clause(pk: str, store: Path) -> str:
         rule = METRIC_CONFIG.get(mk, {})
         prev = baseline_vals.get(key)
         if prev is None:
-            # First time this metric was ever snapshotted — note it as newly tracked
-            new_metrics.append(mk.replace("_", " ").lower())
+            # First time this metric was ever snapshotted — note it as newly tracked.
+            # Keep the config-cased key; display casing is applied at render below.
+            new_metrics.append(mk)
             continue
         delta = round(float(cur) - float(prev), 2)
         if delta == 0:
@@ -490,19 +728,35 @@ def _24h_clause(pk: str, store: Path) -> str:
     for m in top:
         label = m["name"].replace("_", " ").lower()
         direction = "up" if m["delta"] > 0 else "down"
-        sign = "+" if m["delta"] > 0 else ""
-        outcome = ("improved" if m["good"] else "worsened") if m["good"] is not None else None
+        # "moved up/down by" already carries the sign, so show the unsigned magnitude
+        # formatted (was raw: "+100359411.0" instead of "100.4M" / "$10,499.31").
+        mag = _fmt_24h_magnitude(m["name"], abs(m["delta"]))
+        # Two classes get NO improved/worsened verdict on their raw 24h delta:
+        #  - cumulative volume totals (spend, tokens, counts) rise as work happens;
+        #  - per-session-judged metrics (cfg "per":"session"), whose RAW-total delta
+        #    is confounded by session volume (more sessions -> higher total even when
+        #    the judged per-session rate is flat). Calling either "worsened" misleads;
+        #    efficiency verdicts stay on true rate metrics (Cost_Per_Task, density).
+        per_session_metric = METRIC_CONFIG.get(m["name"], {}).get("per") == "session"
+        outcome = None
+        if (m["good"] is not None and m["name"] not in _CUMULATIVE_24H_METRICS
+                and not per_session_metric):
+            outcome = "improved" if m["good"] else "worsened"
         suffix = f" ({outcome})" if outcome is not None else ""
-        parts.append(f"{label} moved {direction} by {sign}{m['delta']}{suffix}")
+        parts.append(f"{label} moved {direction} by {mag}{suffix}")
 
     # Newly tracked metrics (no pre-24h baseline): surface the most important ones.
     # Priority: graded metrics (have a rule) first, then alphabetical. Cap at 2 to avoid noise.
     if new_metrics:
-        graded_new = [mk for mk in new_metrics
-                      if METRIC_CONFIG.get(mk.replace(" ", "_"), {}).get("dir")]
+        # mk is the config-cased key as stored above ("Keep the config-cased key");
+        # a prior version here lower-cased graded_keys but compared mk unchanged,
+        # so the membership test always failed the case check and graded metrics
+        # were silently dropped from the "now tracking" summary (2026 sweep, PR #79).
+        graded_new = [mk for mk in new_metrics if METRIC_CONFIG.get(mk, {}).get("dir")]
         notable = (graded_new or new_metrics)[:2]
         if notable:
-            parts.append(f"now tracking (no prior baseline): {', '.join(notable)}")
+            labels = ", ".join(mk.replace("_", " ").lower() for mk in notable)
+            parts.append(f"now tracking (no prior baseline): {labels}")
 
     if not parts:
         return ""
@@ -550,44 +804,177 @@ def _recommendations(pk: str, scores: dict) -> str:
 
 
 def build_summaries(pillars: dict, scores: dict, store: Path | None = None) -> dict:
+    """Plain-language pillar narratives. Sentences whose metrics are missing ("—")
+    are dropped instead of interpolating the placeholder into prose
+    ("recovering via fallbacks —% of the time"); dollar figures are rounded."""
     store = store or default_history_path()
-    v = lambda pk, k: _val(pillars, pk, k)
+
+    def v(pk: str, k: str):
+        raw = _val(pillars, pk, k)
+        return None if raw in ("—", "", None) else raw
+
+    def money(x) -> str | None:
+        n = _num(x)
+        return f"{n:,.2f}" if n is not None else None
+
+    def count(x) -> str | None:
+        if x is None:
+            return None
+        n = _num(x)
+        if n is None:
+            return str(x)
+        if abs(n) >= 1_000_000:  # 185,146,296 tokens reads as noise; 185.1M doesn't
+            return f"{n / 1e6:,.1f}M"
+        return f"{n:,.0f}" if float(n) == int(n) else f"{n:,.1f}"
+
+    def is_zero(x) -> bool:
+        n = _num(x)
+        return n is not None and n == 0
+
+    def plur(x, singular: str) -> str:
+        """Regular +s plural agreeing with a count: '1 vector' / '3 vectors'."""
+        n = _num(x)
+        return singular if n == 1 else singular + "s"
+
+    def sent(template: str, *vals) -> str | None:
+        return None if any(x is None for x in vals) else template.format(*vals)
+
+    def join(parts: list) -> str:
+        return " ".join(p for p in parts if p).strip()
+
+    # Per-session-graded metrics (cfg "per": "session") are JUDGED as val/sessions
+    # against their warn/fail bar (annotate() line ~406). The narrative must report
+    # that same per-session RATE, not the raw cumulative total — "938 rule violations"
+    # across 1026 sessions is <1/session and passing, but the bare total reads alarming.
+    sessions = _session_count(pillars)
+
+    def psr(pk: str, k: str) -> tuple:
+        """(per-session rate str, total str) for a per-session metric, else (None, None)."""
+        tot = _num(v(pk, k))
+        if tot is None or sessions <= 0:
+            return None, None
+        return f"{tot / sessions:.1f}", count(tot)
+
     t = lambda pk: _trend_clause(pillars, pk, scores)
     rec = lambda pk: _recommendations(pk, scores)
     def h24(pk: str) -> str:
         c = _24h_clause(pk, store)
         return (c + " ") if c else ""
-    sc = lambda pk: scores[pk]["score"] if scores[pk]["score"] is not None else "—"
-    cost_savings = v('brush', 'Estimated_Cost_Savings')
-    cost_savings_str = f"${cost_savings}" if cost_savings != "—" else "—"
+
+    # bow ──────────────────────────────────────────────────────────────────────
+    ts_saved = v("bow", "Estimated_Agent_Time_Saved")
+    ts_env = _env_of(pillars, "bow", "Estimated_Agent_Time_Saved")
+    if ts_saved is not None and is_zero(ts_saved):
+        # a 0.0-hours lead reads as failure; the truth is the estimate isn't calibrated yet
+        bow_lead = ("This pillar has no automated time savings recorded yet — "
+                    "meditation calibration samples are still accruing.")
+    elif ts_saved is not None and ts_env.get("calibrated", True) is False:
+        # Honesty parity with the hero card, which shows the INTERIM fallback for
+        # exactly this state: an uncalibrated estimate is labeled, never asserted
+        # as measurement. detail carries the reducer's sample-progress receipt.
+        note = ts_env.get("detail") or "estimate — calibration samples still accruing"
+        bow_lead = (f"This pillar tracked an estimated {ts_saved} hours of agent "
+                    f"execution time saved by automated task runs ({note}).")
+    else:
+        bow_lead = sent("This pillar tracked {} hours of agent execution time saved by automated task runs.",
+                        ts_saved) \
+            or "This pillar tracked agent operations across this window."
+    bow_tasks = sent("The agent completed work scoring {} complexity-weighted points across {} work sessions, passing verification {}% of the time with a {}% error rate.",
+                     count(v("bow", "Complexity_Weighted_Throughput")), v("bow", "Session_Count"),
+                     v("bow", "Governance_Pass_Rate"), v("bow", "Error_Rate")) \
+        or sent("The agent completed work scoring {} complexity-weighted points across {} work sessions.",
+                count(v("bow", "Complexity_Weighted_Throughput")), v("bow", "Session_Count"))
+    bow_tools = sent("It reached for its tools {} times.", count(v("bow", "Tool_Calls")))
+    bow_turns = sent("Most sessions took about {} back-and-forth turns.", v("bow", "Avg_Session_Turns"))
+
+    # sword ────────────────────────────────────────────────────────────────────
+    kcd = v("sword", "Kill_Chains_Disrupted")
+    vec = plur(kcd, "vector")
+    sword_lead = sent(f"This pillar tracked {{}} distinct threat {vec} intercepted and disrupted (with {{}} pending proposals).",
+                      kcd, v("sword", "Pending_Chain_Proposals")) \
+        or sent(f"This pillar tracked {{}} distinct threat {vec} intercepted and disrupted.", kcd) \
+        or "This pillar tracked the security posture of the agent across this window."
+    sword_vuln = sent("Right now, there are {} open CVEs in the dependency tree and {} leaked passwords or keys.",
+                      v("sword", "Open_CVEs"), v("sword", "Secrets_Detected")) \
+        or sent("Right now, there are {} open CVEs in the dependency tree.", v("sword", "Open_CVEs")) \
+        or sent("There are {} leaked passwords or keys.", v("sword", "Secrets_Detected"))
+    rv_rate, rv_tot = psr("sword", "Rule_Violations")  # judged per session, not by the raw total
+    conduct = [c for c in (
+        sent("stepped out of bounds {} times", v("sword", "Boundary_Violations")),
+        sent("averaged {} house-rule violations per session ({} total)", rv_rate, rv_tot),
+        # blocks are the guard WORKING, not the agent misbehaving — phrase accordingly
+    ) if c]
+    sword_conduct = ("The agent " + (", ".join(conduct[:-1]) + ", and " + conduct[-1]
+                                     if len(conduct) > 1 else conduct[0]) + ".") if conduct else None
+
+    # brush ────────────────────────────────────────────────────────────────────
+    raw_savings = v("brush", "Estimated_Cost_Savings")
+    sv_env = _env_of(pillars, "brush", "Estimated_Cost_Savings")
+    grade = v("brush", "Architecture_Scorecard_Grade")
+    local_share = v("brush", "Local_Routing_Share")
+    if raw_savings is not None and is_zero(raw_savings):
+        # $0 here = no ADDITIONAL week-over-week efficiency gain, NOT "saved nothing".
+        # Ongoing savings from local routing are real and steady, so a flat delta
+        # reads as a broken metric unless we surface the local-routing share (the
+        # actual cost-avoidance lever, e.g. caveman/quota-driven local models).
+        if local_share is not None and not is_zero(local_share):
+            brush_lead = sent("Cost-per-task held about flat vs last week, so there's no additional week-over-week saving to bank — but {}% of work already runs on local models, avoiding cloud spend every week (code-tidiness grade {}).",
+                              local_share, grade) \
+                or sent("Cost-per-task held about flat vs last week; {}% of work already runs on local models, avoiding cloud spend.", local_share)
+        else:
+            brush_lead = sent("Cost-per-task held about flat vs last week — no additional efficiency gain to bank (code-tidiness grade {}).", grade) \
+                or "This pillar tracked no additional cost-per-task efficiency gain vs last week."
+    elif raw_savings is not None and (sv_env.get("calibrated", True) is False or sv_env.get("data_gap")):
+        # same honesty rule as bow_lead: no calibrated baseline -> labeled estimate
+        brush_lead = sent("This pillar tracked an estimated ${} saved vs last week — no calibrated cost baseline yet (code-tidiness grade {}).",
+                          money(raw_savings), grade) \
+            or "This pillar tracked spend efficiency across this window."
+    else:
+        brush_lead = sent("This pillar tracked ${} saved from cost-per-task improvement vs last week at this week's task volume (with a code-tidiness grade of {}).",
+                          money(raw_savings), grade) \
+            or sent("This pillar tracked a code-tidiness grade of {}.", grade) \
+            or "This pillar tracked spend efficiency across this window."
+    brush_spend = sent("The agent spent ${} in total, about ${} per task, using {} tokens.",
+                       money(v("brush", "Total_Cost")), money(v("brush", "Cost_Per_Task")),
+                       count(v("brush", "Token_Spend")))
+    brush_hygiene = sent("It left {} hard-coded paths and {} messy-folder issues to clean up.",
+                         v("brush", "Hardcoded_Path_Incidents"), v("brush", "Root_Hygiene_Issues"))
+
+    # arts ─────────────────────────────────────────────────────────────────────
+    craft = v("arts", "Craft_Improvements")
+    cr_env = _env_of(pillars, "arts", "Craft_Improvements")
+    if craft is not None and is_zero(craft):
+        arts_lead = ("This pillar logged no craft improvements yet this week "
+                     "(skill promotions and completed arts deliverables count here"
+                     + ("; the skill-promotions source is currently dark" if cr_env.get("data_gap") else "")
+                     + ").")
+    elif craft is not None and cr_env.get("data_gap"):
+        # promotions numerator is dark (data_gap) -> the count is a floor, not a total
+        arts_lead = sent("This pillar logged at least {} craft improvement(s) this week "
+                         "(completed arts deliverables; the skill-promotions source is currently dark).",
+                         craft) \
+            or "This pillar logged the craft quality of the agent's output across this window."
+    else:
+        arts_lead = sent("This pillar logged {} craft improvements this week (skill promotions plus completed arts deliverables).",
+                         craft) \
+            or "This pillar logged the craft quality of the agent's output across this window."
+    arts_slop = sent("The agent's writing carried {} bits of filler per 1,000 words.", v("arts", "Slop_Density"))
+    fs_rate, fs_tot = psr("arts", "Frustration_Signals")  # both judged per session, not by raw totals
+    rl_rate, rl_tot = psr("arts", "Rework_Loops")
+    arts_friction = join([
+        sent("The user showed frustration about {} times per session ({} total) and asked for redos about {} times per session ({} total).",
+             fs_rate, fs_tot, rl_rate, rl_tot),
+        sent("The cleanup pass last ran {} days ago and {} docs are out of date.",
+             v("arts", "Simplify_Age"), v("arts", "Doc_Parity_Issues")),
+    ]) or None
+    arts_vault = sent("The knowledge vault holds {} curated articles at a health score of {}/100.",
+                      v("arts", "Wiki_Article_Count"), v("arts", "Wiki_Health_Score"))
 
     return {
-        "bow": (
-            f"This pillar tracked {v('bow','Estimated_Agent_Time_Saved')} hours of agent execution time saved by automated task runs. The agent ran {v('bow','Complexity_Weighted_Throughput')} complexity-weighted tasks across "
-            f"{v('bow','Session_Count')} work sessions and got them right {v('bow','Governance_Pass_Rate')}% of the time, "
-            f"with errors on only {v('bow','Error_Rate')}%. It reached for its tools {v('bow','Tool_Calls')} times (recovering via fallbacks {v('bow','Fallback_Recovery_Rate')}% of the time), and most sessions took about {v('bow','Avg_Session_Turns')} back-and-forth turns. "
-            f"{h24('bow')}{t('bow')} {rec('bow')}"
-        ),
-        "sword": (
-            f"This pillar tracked {v('sword','Kill_Chains_Disrupted')} distinct threat vectors intercepted and disrupted (with {v('sword','Pending_Chain_Proposals')} pending proposals). Right now, the vulnerability mean time to resolution is {v('sword','Vulnerability_MTTR')} days and there are "
-            f"{v('sword','Secrets_Detected')} leaked passwords or keys. The agent stepped out of bounds "
-            f"{v('sword','Boundary_Violations')} times and broke a house rule {v('sword','Rule_Violations')} times. "
-            f"{h24('sword')}{t('sword')} {rec('sword')}"
-        ),
-        "brush": (
-            f"This pillar tracked {cost_savings_str} saved from cost-per-task improvement vs last week at this week's task volume (with a code-tidiness grade of {v('brush','Architecture_Scorecard_Grade')}). The agent spent ${v('brush','Total_Cost')} in total, about ${v('brush','Cost_Per_Task')} per task, using "
-            f"{v('brush','Token_Spend')} tokens. It left {v('brush','Hardcoded_Path_Incidents')} hard-coded paths and "
-            f"{v('brush','Root_Hygiene_Issues')} messy-folder issues to clean up. "
-            f"{h24('brush')}{t('brush')} {rec('brush')}"
-        ),
-        "arts": (
-            f"This pillar logged {v('arts','Craft_Improvements')} craft improvements this week (skill promotions plus completed arts deliverables). The agent's writing carried {v('arts','Slop_Density')} bits of "
-            f"filler per 1,000 words. The user sounded frustrated {v('arts','Frustration_Signals')} times and asked for redos "
-            f"{v('arts','Rework_Loops')} times, while the cleanup pass ran {v('arts','Simplify_Runs')} times and "
-            f"{v('arts','Doc_Parity_Issues')} docs are out of date. "
-            f"The knowledge vault holds {v('arts','Wiki_Article_Count')} curated articles at a health score of {v('arts','Wiki_Health_Score')}/100. "
-            f"{h24('arts')}{t('arts')} {rec('arts')}"
-        ),
+        "bow": join([bow_lead, bow_tasks, bow_tools, bow_turns, h24("bow") + t("bow"), rec("bow")]),
+        "sword": join([sword_lead, sword_vuln, sword_conduct, h24("sword") + t("sword"), rec("sword")]),
+        "brush": join([brush_lead, brush_spend, brush_hygiene, h24("brush") + t("brush"), rec("brush")]),
+        "arts": join([arts_lead, arts_slop, arts_friction, arts_vault, h24("arts") + t("arts"), rec("arts")]),
     }
 
 
@@ -676,6 +1063,52 @@ def populate_history(pillars: dict, store: Path | None = None, max_points: int =
 
 
 def append_snapshot(store: Path, timestamp: str, current: dict) -> None:
+    """Append one live history row — locked and deduped.
+
+    The old bare `open(.., "a")` let concurrent refreshers write byte-identical
+    duplicate rows, which biased calibrate() percentiles toward whatever was
+    happening at refresh time (2026-07-26 audit). Rows now carry the same
+    `week` key backfill_history writes, so the file has one schema, not two."""
+    from datetime import datetime as _dt
+
     store.parent.mkdir(parents=True, exist_ok=True)
-    with store.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"ts": timestamp, "values": current}) + "\n")
+    try:
+        week = _dt.fromisoformat(timestamp.replace("Z", "+00:00")).strftime("%G-W%V")
+    except (ValueError, AttributeError):
+        week = None
+    # kind:"live" distinguishes this 30-day-window snapshot row from backfill's
+    # single-ISO-week rows — same key set, different population; consumers that
+    # need a weekly baseline (e.g. _get_prior_week_val) must skip live rows.
+    row: dict = {"ts": timestamp, "week": week, "kind": "live", "values": current}
+    try:
+        import fcntl
+    except ImportError:  # non-POSIX host: fall back to unlocked append
+        fcntl = None
+    with store.open("a+", encoding="utf-8") as fh:
+        locked = False
+        if fcntl is not None:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX)
+                locked = True
+            except OSError:  # filesystem without POSIX locks (SMB/network mount)
+                pass
+        try:
+            fh.seek(0)
+            lines = [ln for ln in fh.read().splitlines() if ln.strip()]
+            if lines:
+                try:
+                    last = json.loads(lines[-1])
+                    if last.get("ts") == timestamp and last.get("values") == current:
+                        return  # identical concurrent write — drop the duplicate
+                except json.JSONDecodeError:
+                    pass
+            fh.seek(0, os.SEEK_END)
+            fh.write(json.dumps(row) + "\n")
+            # Flush + fsync BEFORE releasing the lock — the TextIOWrapper buffer
+            # otherwise lands after LOCK_UN and the lock protects nothing
+            # (pre-push adversarial review 2026-07-26).
+            fh.flush()
+            os.fsync(fh.fileno())
+        finally:
+            if locked and fcntl is not None:
+                fcntl.flock(fh, fcntl.LOCK_UN)

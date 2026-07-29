@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentica-os/governance/schema/remediation_result.schema.json",
+  "title": "Remediation Result (one append to exec_log.jsonl)",
+  "description": "Versioned contract for a single exec_log.jsonl line — the implementer envelope: what ran, against which base commit, which files moved, and whether the metric improved. Written by api/src/reflex-engine.ts _appendExecLog (TypeScript) and read by bin/sensei_prep.py post-audit selection, the rival agent's causal check, remediation.py efficacy events, and skill_efficacy.py. Draft-07 is mandatory, not stylistic: ajv 6.15.0 (api/package.json) rejects 2020-12 outright while Python jsonschema 4.26 accepts it, so a 2020-12 schema passes the Python tests and silently fails on the TS side.\n\nOnly the four keys every real row carries are required. _appendExecLog writes two row FLAVOURS from one function — a manual (dashboard-clicked) row that deliberately omits `improved` so it never counts as a failure in skill_efficacy, and a full autonomous row — so anything absent from either flavour stays optional. Consumers already treat absence as 'not measured'; making those required would reclassify healthy historical rows as violations.",
+  "type": "object",
+  "required": ["timestamp", "command", "skill", "status"],
+  "properties": {
+    "timestamp": {
+      "description": "ISO-8601 UTC time the run settled.",
+      "type": "string",
+      "minLength": 1
+    },
+    "command": {
+      "description": "The canonical reflex command, e.g. /simplify. Kept verbatim (never with runtime args folded in) so dedup keys and this log agree.",
+      "type": "string",
+      "minLength": 1
+    },
+    "skill": {
+      "description": "Bare skill word of the command ('/simplify --write x' -> 'simplify'). skill_efficacy.json keys on this.",
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "description": "Graded outcome. no_change = clean run, zero repo diff; timeout = the skill was working and didn't finish. Both are distinct from error for loop-breaker accounting.",
+      "type": "string",
+      "enum": ["done", "error", "timeout", "no_change"]
+    },
+    "source": {
+      "description": "Actor channel. Consumers attribute human-vs-autonomous via source !== 'reflex_engine' (remediation.py).",
+      "type": "string",
+      "minLength": 1
+    },
+    "reflex_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "improved": {
+      "description": "True = the reflex resolved (metric moved past threshold). OMITTED on manual rows by contract — an explicit false there would wrongly lengthen the autonomous channel's cooldowns.",
+      "type": "boolean"
+    },
+    "code_modifying": {
+      "description": "True when the skill has edit capabilities. This is the field the rival post-auditor selects on; legacy rows lacking it fall back to a files_changed-outside-state/ test.",
+      "type": "boolean"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["skill", "mechanism"]
+    },
+    "read_only": {
+      "description": "Mechanism rows only — mirrors the mechanism's own read_only declaration.",
+      "type": "boolean"
+    },
+    "fallback_from": {
+      "description": "Set when a mechanism attempt preceded (and lost to) this skill run. These rows also seed eval_corpus.jsonl.",
+      "type": "string",
+      "enum": ["mechanism"]
+    },
+    "harness_fingerprint": {
+      "description": "ATDP execution envelope: which harness version produced the trace. Absent on rows written before the field existed.",
+      "type": "string",
+      "minLength": 1
+    },
+    "worker": {
+      "description": "package@version of the agent package that executed the run (A4). Identifies the worker, not just the harness surface — 'critic@1'. Absent on rows written before the field existed.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*@[0-9]+$"
+    },
+    "predicted_impact": {
+      "description": "Decision observability: the falsifiable prediction stated BEFORE the outcome was known. stated:false is the honest default and IS recorded — 'predicted nothing' is a measurement about the harness, not a missing field.",
+      "type": "object",
+      "required": ["stated", "expected_fixes", "at_risk"],
+      "properties": {
+        "stated": { "type": "boolean" },
+        "expected_fixes": { "type": "array", "items": { "type": "string" } },
+        "at_risk": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "metric_before": {
+      "description": "Fire-time metric value. Omitted when unmeasurable (non-metric reflex, unreadable payload) — consumers treat absence as 'no measurement', so null is NOT a valid stand-in.",
+      "type": "number"
+    },
+    "metric_after": {
+      "type": "number"
+    },
+    "detail": {
+      "type": "string"
+    },
+    "git_before_commit": {
+      "description": "Base commit the diff below is taken against. The rival post-auditor REFUSES to confirm an improved:true claim without it.",
+      "type": "string",
+      "minLength": 1
+    },
+    "git_diff_summary": {
+      "description": "git diff --shortstat output, or null when git was unavailable at write time.",
+      "type": ["string", "null"]
+    },
+    "files_changed": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

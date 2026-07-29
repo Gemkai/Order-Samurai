@@ -1,7 +1,7 @@
 """Bushido Engine — unified tier-decision module for Order Samurai.
 
 Single source of truth that the TS Reflex Engine (via bin/bushido_check.py
-subprocess) and the SENSEI dojo cycle both route through. Decides whether a
+subprocess) and the SENSEI meditation cycle both route through. Decides whether a
 work item fires automatically, gets enqueued for review, requires explicit
 human approval, or is blocked outright.
 
@@ -16,6 +16,12 @@ Decision matrix (compute_tier):
 ronin_mode collapses AUTO + QUEUE + HITL -> AUTO. HARD_STOP is permanent.
 blast_radius=IRREVERSIBLE is HARD_STOP regardless of reversible (encodes
 git push, unreplicated delete, budget overrun, etc.).
+
+A tabled skill may name its tier explicitly via skill_tiers.json
+`approval_tier`, overriding the matrix cell but never the hard-stop guards
+above. This is an allowlist for the cases the 2-axis matrix cannot express —
+today only `ronin-pillar`, whose repo-blast writes are the entire point of
+ronin mode. Untabled skills carry no override.
 
 Stdlib only; no external dependencies.
 """
@@ -51,9 +57,9 @@ class BlastRadius(str, Enum):
 
 @dataclass
 class WorkItem:
-    """Unified type that both a Reflex breach and a Dojo backlog item map to."""
+    """Unified type that both a Reflex breach and a Meditation backlog item map to."""
     skill: str = ""
-    source: str = ""              # "reflex" | "dojo" | other
+    source: str = ""              # "reflex" | "meditation" | other
     command: str = ""
     blast_radius: BlastRadius = BlastRadius.REPO
     reversible: bool = True
@@ -65,16 +71,33 @@ class WorkItem:
     stuck: bool = False
     context: str = ""
     pillar_ronin_mode: str | None = None
+    approval_tier: str | None = None   # explicit skill_tiers.json override; see compute_tier
     extra: dict[str, Any] = field(default_factory=dict)
 
 
 # ── Core tier computation (pure, no I/O) ──────────────────────────────────────
 
-def compute_tier(work_item: WorkItem, ronin_mode: bool = False) -> Tier:
-    """Pure 2-axis matrix. No file I/O, no env reads — easy to test.
+def _parse_tier(value: Any) -> Tier | None:
+    """Coerce a skill_tiers.json `approval_tier` string to a Tier, else None."""
+    try:
+        return Tier(str(value).strip().lower())
+    except (ValueError, AttributeError):
+        return None
 
-    Hard limits encoded into blast_radius/reversible take precedence over
-    ronin_mode: an IRREVERSIBLE op never collapses to AUTO.
+
+def compute_tier(work_item: WorkItem, ronin_mode: bool = False) -> Tier:
+    """Pure 2-axis matrix, with an explicit per-skill override. No I/O.
+
+    Hard limits encoded into blast_radius/reversible take precedence over both
+    ronin_mode and the override: an IRREVERSIBLE op never collapses to AUTO.
+
+    `work_item.approval_tier` (from skill_tiers.json) is an ALLOWLIST: it names
+    the tier for one tabled skill explicitly instead of deriving it from the
+    2-axis matrix. It is honored only *after* the two hard-stop guards below, so
+    it can never buy an irreversible or system-irreversible op an auto-fire; and
+    `decide()` re-checks runtime hard limits (budget) before ever calling here.
+    Untabled skills carry no override and keep the matrix default (QUEUE) — the
+    override widens nothing on its own, it only records a deliberate exception.
     """
     blast = work_item.blast_radius
     reversible = bool(work_item.reversible)
@@ -87,7 +110,10 @@ def compute_tier(work_item: WorkItem, ronin_mode: bool = False) -> Tier:
     if not reversible and blast in (BlastRadius.REPO, BlastRadius.SYSTEM):
         return Tier.HARD_STOP
 
-    if reversible:
+    override = _parse_tier(work_item.approval_tier)
+    if override is not None:
+        tier = override
+    elif reversible:
         tier = Tier.AUTO if blast == BlastRadius.CONFINED else Tier.QUEUE
     else:
         # Irreversible + confined (e.g. delete a state file in the queue) → HITL
@@ -113,7 +139,9 @@ def _over_daily_budget(repo_root: Path) -> bool:
         if d.get("date") != today:
             return False
         spent = float(d.get("spent_usd", 0) or 0)
-        limit = float(d.get("daily_limit_usd", 5.0) or 5.0)
+        # `or` must not collapse an explicit 0 (a budget freeze) into the default.
+        raw_limit = d.get("daily_limit_usd")
+        limit = 5.0 if raw_limit in (None, "") else float(raw_limit)
         return spent >= limit
     except Exception:
         return False
@@ -160,7 +188,9 @@ def skill_to_work_item(
 ) -> WorkItem:
     """Build a WorkItem for `skill_name`, looking up tier metadata.
 
-    Unknown skill → blast_radius=REPO, reversible=True → QUEUE (safe).
+    Unknown skill → blast_radius=REPO, reversible=True, no override → QUEUE
+    (safe). A tabled skill's `approval_tier` rides along as an explicit
+    override; see compute_tier for the bound on what it can do.
     """
     metadata = load_skill_metadata(Path(repo_root))
     meta = metadata.get(skill_name, {})
@@ -173,6 +203,7 @@ def skill_to_work_item(
         blast = BlastRadius.REPO
 
     command = kwargs.pop("command", f"/{skill_name}")
+    kwargs.setdefault("approval_tier", meta.get("approval_tier"))
     return WorkItem(
         skill=skill_name,
         source=source,
@@ -202,8 +233,8 @@ def resolve_ronin_mode(
     Priority (first match wins):
       1. global_override parameter (callers may force a value for testing)
       2. env BUSHIDO_RONIN_GLOBAL ("true"/"1"/"ronin"/"on" -> True, else False)
-      3. DOJO_STATE.json top-level "ronin_mode" ("ronin" -> True, else False)
-      4. DOJO_STATE.json pillars[pillar].ronin_mode
+      3. MEDITATION_STATE.json top-level "ronin_mode" ("ronin" -> True, else False)
+      4. MEDITATION_STATE.json pillars[pillar].ronin_mode
       5. False
     """
     if global_override is not None:
@@ -214,7 +245,7 @@ def resolve_ronin_mode(
         return _is_ronin(env_val)
 
     try:
-        state_path = Path(repo_root) / "state" / "DOJO_STATE.json"
+        state_path = Path(repo_root) / "state" / "MEDITATION_STATE.json"
         state = json.loads(state_path.read_text(encoding="utf-8"))
     except Exception:
         return False

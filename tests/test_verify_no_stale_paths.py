@@ -28,7 +28,7 @@ class VerifyNoStalePathsTests(unittest.TestCase):
         # the scan must catch the doubled form, not just the single-backslash literal.
         sandbox = self._sandbox()
         (sandbox / "surface.json").write_text(
-            '{"targetRoot": "C:\\\\Users\\\\exampleuser\\\\Desktop\\\\Agentica OS"}\n',
+            '{"targetRoot": "C:\\\\Users\\\\example\\\\Desktop\\\\Agentica OS"}\n',
             encoding="utf-8",
         )
 
@@ -53,7 +53,7 @@ class VerifyNoStalePathsTests(unittest.TestCase):
     def test_ignores_current_root(self) -> None:
         sandbox = self._sandbox()
         (sandbox / "surface.json").write_text(
-            '{"targetRoot": "C:\\\\Users\\\\exampleuser\\\\Agentica-OS"}\n', encoding="utf-8"
+            '{"targetRoot": "C:\\\\Users\\\\example\\\\Agentica-OS"}\n', encoding="utf-8"
         )
 
         offenders = scan_stale_literals(

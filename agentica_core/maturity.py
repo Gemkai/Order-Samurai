@@ -45,19 +45,24 @@ from .reflex_eureka import (
 #       "success_rate":        float | None,
 #       "cooldown_multiplier": float,
 #     }, ... }
-_THIS = Path(__file__).resolve()
-_local_root = _THIS.parents[1]
-if (_local_root / "config").exists() and not (_local_root / "Order Samurai").exists():
-    _default_root = _local_root
-else:
-    _default_root = _local_root / "Order Samurai"
-_ORDER_SAMURAI_ROOT = Path(os.environ.get("ORDER_SAMURAI_ROOT", str(_default_root)))
+_ORDER_SAMURAI_ROOT = Path(os.environ.get(
+    "ORDER_SAMURAI_ROOT", str(Path(__file__).resolve().parents[1] / "Order Samurai")))
 _SKILL_EFFICACY_PATH = _ORDER_SAMURAI_ROOT / "state" / "skill_efficacy.json"
 
 # Maturity tiers.
 APPLY = "APPLY"
 DRY_RUN_GRADED = "DRY-RUN-GRADED"
 OBSERVE = "OBSERVE"
+
+# A skill-routed metric (no mechanism) with this many graded fires and ZERO
+# genuine improvements demotes to OBSERVE: the remediation is proven unable to
+# move the metric, so auto-firing it only burns ~20-min agent spawns (simplify
+# was 0/20, consolidate-memory 0/12, humanizer 0/6 — 2026-07-26 audit W3).
+# Counts come from skill_efficacy.json, which now grades on explicit `improved`
+# verdicts only, so a demotion here is earned on real evidence. Recovery is
+# automatic: land one genuine improvement (e.g. via a manual run after fixing
+# the skill) and success_count > 0 restores the seed on the next refresh.
+_SKILL_INEFFECTIVE_MIN_RUNS = 6
 
 # Mechanism status — orthogonal to maturity. Surfaces *why* a mechanism is or isn't
 # contributing to the grant decision. H2: "error" must never collapse into "ungraded".
@@ -145,6 +150,7 @@ def resolve_maturity(metric: str, *, metric_config: dict | None = None,
     stats = _stats_for(metric, cfg, efficacy)
     mech_status = _classify_mechanism(cfg, stats)
 
+    skill_ineffective = False
     if mech_status == MECH_GOTCHA:
         maturity = OBSERVE                     # demote: broken-in-practice mechanism
     elif mech_status == MECH_RULE:
@@ -155,9 +161,24 @@ def resolve_maturity(metric: str, *, metric_config: dict | None = None,
         maturity = DRY_RUN_GRADED              # mechanism present, not yet proven
     else:
         maturity = seed                        # legacy + Phase-1 default path
+        # Skill-only metrics (no mechanism) previously NEVER demoted on evidence —
+        # a 0/20 skill kept auto-firing forever because only mechanism grades
+        # could move the ladder. Zero genuine improvements over enough graded
+        # fires now parks the metric at OBSERVE until the skill earns one.
+        if mech_status == MECH_NONE and isinstance(stats, dict):
+            total = int(stats.get("total_runs", 0) or 0)
+            success = int(stats.get("success_count", stats.get("effective", 0)) or 0)
+            if total >= _SKILL_INEFFECTIVE_MIN_RUNS and success == 0:
+                maturity = OBSERVE
+                skill_ineffective = True
 
-    return {
+    out = {
         "maturity": maturity,
         "reflex_ready": maturity == APPLY,
         "mechanism_status": mech_status,
     }
+    if skill_ineffective:
+        # Additive key: operator-facing reason for the demotion (why is this
+        # OBSERVE when its seed says APPLY and it has no mechanism grade?).
+        out["demoted_by"] = "skill_ineffective"
+    return out

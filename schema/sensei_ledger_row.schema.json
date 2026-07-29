@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentica-os/governance/schema/sensei_ledger_row.schema.json",
+  "title": "Sensei Ledger Row (one append to SENSEI_LEDGER.jsonl)",
+  "description": "Versioned contract for a single SENSEI_LEDGER.jsonl line, written by bin/sensei_writeback.py (Python) and tail-read by api/src/server.ts GET /api/sensei/ledger plus bin/sensei_prep.py's REFUTED-in-24h skip. The row is FLAT: rival_verdict is a field here, not a nested verdict object — the rival agent's own {verdict, confidence, reasoning, evidence, mode} envelope crosses the wire to POST /api/reflex/verdicts and is not what lands in this file. Draft-07 is mandatory, not stylistic: ajv 6.15.0 (api/package.json) rejects 2020-12 outright while Python jsonschema 4.26 accepts it, so a 2020-12 schema passes the Python tests and silently fails on the TS side.",
+  "type": "object",
+  "required": [
+    "ts",
+    "cycle_id",
+    "reflex_id",
+    "pillar",
+    "scout_verdict",
+    "rival_verdict",
+    "action_taken",
+    "human_flag"
+  ],
+  "properties": {
+    "ts": {
+      "description": "ISO-8601 UTC append time. sensei_writeback stamps this itself, overriding any caller value.",
+      "type": "string",
+      "minLength": 1
+    },
+    "cycle_id": {
+      "description": "UUID of the sensei cycle that produced the row. Groups every row of one cycle and is the watermark sensei_prep reads to bound the post-audit scan.",
+      "type": "string",
+      "minLength": 1
+    },
+    "reflex_id": {
+      "description": "Reflex the row is about, e.g. metric:bow:Error_Rate. Post-audit rows carry the reflex_id of the audited exec_log entry.",
+      "type": "string",
+      "minLength": 1
+    },
+    "pillar": {
+      "description": "The pillar the row is about. NULL only on `heartbeat` rows: a heartbeat is about the CYCLE, not any pillar, and inventing one would make an empty cycle look like pillar work.",
+      "type": ["string", "null"],
+      "enum": ["bow", "sword", "brush", "arts", null]
+    },
+    "scout_verdict": {
+      "description": "Free-text summary of the ronin finding (real: true/false + fixability). Prose by contract — the structured form lives in scout_finding.schema.json. NULL on post_audit rows: SKILL.md Step 2 spawns rival directly against exec_log entries, so no scout ever ran (1 of the 10 real rows).",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "rival_verdict": {
+      "description": "The adversarial verifier's call. REFUTED here is what suppresses the reflex for 24h in sensei_prep, so the vocabulary is closed. NULL when no rival ran — Step 4 only spawns rival for findings with real:true, so suppressed/escalated phantom and structural findings legitimately have no verdict (6 of the 10 real rows). Null is 'not verified', never 'verified inconclusive' — that is SUSPECT.",
+      "type": ["string", "null"],
+      "enum": ["CONFIRMED", "REFUTED", "SUSPECT", null]
+    },
+    "action_taken": {
+      "description": "What the cycle actually did. verdict_post_failed is written by sensei_writeback when the POST fails after the row was planned as verdict_posted — the ledger never claims a post that didn't happen. `heartbeat` is the explicit no-op: one row appended by a cycle that produced no verdicts and no post-audit rows, so ledger freshness measures LIVENESS (did the loop run) and cannot be satisfied by silence. It carries rival_verdict:null, so the rival-verdicts-flowing check still measures verdicts only.",
+      "type": "string",
+      "enum": [
+        "verdict_posted",
+        "verdict_post_failed",
+        "suppressed",
+        "escalated_backlog",
+        "post_audit",
+        "phantom",
+        "heartbeat"
+      ]
+    },
+    "human_flag": {
+      "description": "True when the row needs human review: SUSPECT verdicts, and any reflex whose rival could not run even on the fallback model.",
+      "type": "boolean"
+    },
+    "detail": {
+      "description": "Optional operator note. Present on 2 of the 10 real rows.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": true,
+  "if": { "properties": { "action_taken": { "const": "verdict_posted" } } },
+  "then": {
+    "description": "The one cross-field invariant the seam actually needs: a row cannot claim it posted a verdict it never had. SKILL.md Step 6 posts only CONFIRMED and REFUTED (SUSPECT is skipped, human_flag only), so a verdict_posted row with a null or SUSPECT rival_verdict means the POST and the ledger disagree — the exact silent divergence sensei_writeback's post-then-record ordering exists to prevent.",
+    "properties": { "rival_verdict": { "enum": ["CONFIRMED", "REFUTED"] } }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentica-os/governance/schema/verdict_record.schema.json",
+  "title": "Verdict Record (one element of the POST /api/reflex/verdicts body)",
+  "description": "Versioned contract for the rival verifier's verdict AS IT CROSSES THE WIRE — the VerdictRecord type in api/src/types.ts, posted by bin/sensei_writeback.py and consumed by ReflexEngine.setVerdicts. Draft-07 is mandatory, not stylistic: ajv 6.15.0 (api/package.json) rejects 2020-12 outright while Python jsonschema 4.26 accepts it, so a 2020-12 schema passes the Python tests and silently fails on the TS side.\n\nNAMED FOR THE TYPE IT VALIDATES, not for the ledger's `rival_verdict` field — they are different objects and conflating them is the mistake this naming avoids. This carries cycle_id and ts (wire routing) and omits confidence and mode (the rival agent's own envelope); the ledger row carries rival_verdict as a bare string alongside pillar and action_taken. See sensei_ledger_row.schema.json.\n\nENFORCEMENT IS SPLIT, deliberately. server.ts keeps its hand-rolled 400 gate on the structural fields (reflex_id, verdict, cycle_id, ts, reflex_ready) — that is a network boundary and downgrading it to warn-only to satisfy A2's 'reject nothing' would be a regression. This schema adds WARN-ONLY observability on top, so the fields the 400 gate never checked (reasoning, evidence) are measured before A3 decides what to enforce. The two agree by construction: everything required here that the gate also checks is rejected there first.",
+  "type": "object",
+  "required": ["reflex_id", "verdict", "reasoning", "evidence", "cycle_id", "ts"],
+  "properties": {
+    "reflex_id": {
+      "description": "Reflex the verdict is about. Also checked by the 400 gate.",
+      "type": "string",
+      "minLength": 1
+    },
+    "verdict": {
+      "description": "SUSPECT never reaches this endpoint in practice — SKILL.md Step 6 posts only CONFIRMED and REFUTED — but the type permits it, so the vocabulary matches VALID_VERDICTS rather than narrowing behind the gate's back.",
+      "type": "string",
+      "enum": ["CONFIRMED", "REFUTED", "SUSPECT"]
+    },
+    "reasoning": {
+      "description": "NOT checked by the 400 gate. A verdict with no reasoning suppresses a reflex for 24h with nothing a human can review — the exact failure this warn-only window exists to measure.",
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence": {
+      "description": "NOT checked by the 400 gate. On a CONFIRMED verdict the rival's own contract requires this to state the refutation attempt that failed, not merely what was checked.",
+      "type": "string",
+      "minLength": 1
+    },
+    "cycle_id": {
+      "description": "Groups the verdict with its cycle's ledger rows. Also checked by the 400 gate.",
+      "type": "string",
+      "minLength": 1
+    },
+    "ts": {
+      "description": "ISO-8601 UTC. sensei_writeback stamps this at POST time. Also checked by the 400 gate.",
+      "type": "string",
+      "minLength": 1
+    },
+    "command": {
+      "description": "Optional mitigation command echoed back from the reflex.",
+      "type": "string"
+    },
+    "reflex_ready": {
+      "description": "Governance opt-in grant — set true on a CONFIRMED verdict for a mechanism-backed metric. Optional so pre-grant and legacy posters are unchanged; the 400 gate already rejects a non-boolean when present.",
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": true
+}

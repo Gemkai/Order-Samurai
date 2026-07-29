@@ -19,12 +19,20 @@ from .adapter import resolve_platform
 from .telemetry import append_entry, normalize_entry, validate_entry
 
 
-def build_record(platform: str, task_name: str, *, status: str = "success", latency_ms: float = 0.0,
+def build_record(platform: str, task_name: str, *, status: str | None = None,
+                 exit_code: int | None = None, latency_ms: float = 0.0,
                  tokens_prompt: int = 0, tokens_completion: int = 0, total_cost: float = 0.0,
                  project: str = "unknown", model_tier: str = "unknown",
                  timestamp: str | None = None, **optional) -> dict:
     """Build a canonical record. `optional` carries agent-operation fields
-    (orchestrator, model, mcp_or_cli, phase, chain_depth, subagent_spawns, knowledge_refs, ...)."""
+    (orchestrator, model, mcp_or_cli, phase, chain_depth, subagent_spawns, knowledge_refs, ...).
+
+    Error-channel contract (Error_Rate REPLACE, 2026-07-08 audit): callers that know
+    the harness exit code pass `exit_code` — a non-zero code becomes status="error"
+    unless status is given explicitly, and the code rides in the record so Error_Rate
+    can tell a real measured 0% from an unwired always-"success" emitter."""
+    if status is None:
+        status = "error" if (exit_code is not None and int(exit_code) != 0) else "success"
     rec = {
         "timestamp": timestamp or datetime.now(timezone.utc).isoformat(),
         "project": project, "task_name": task_name, "model_tier": str(model_tier),
@@ -32,6 +40,8 @@ def build_record(platform: str, task_name: str, *, status: str = "success", late
         "tokens_completion": int(tokens_completion), "total_cost": float(total_cost),
         "status": status,
     }
+    if exit_code is not None:
+        rec["exit_code"] = int(exit_code)
     rec.update({k: v for k, v in optional.items() if v is not None})
     return normalize_entry(rec, platform=platform)
 

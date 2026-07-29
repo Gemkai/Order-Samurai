@@ -12,27 +12,12 @@ from pathlib import Path
 from . import insights
 from .maturity import resolve_maturity
 
-SAMURAI_ROOT_ENV = os.environ.get("SAMURAI_ROOT")
-if SAMURAI_ROOT_ENV:
-    SAMURAI_ROOT_DIR = Path(SAMURAI_ROOT_ENV).expanduser()
-else:
-    samurai_default = Path.home() / ".samurai"
-    claude_default = Path.home() / ".claude"
-    if samurai_default.exists() or not claude_default.exists():
-        SAMURAI_ROOT_DIR = samurai_default
-    else:
-        SAMURAI_ROOT_DIR = claude_default
-
-_NUDGES_JSON = Path(os.environ.get("NUDGE_JSON_PATH", str(SAMURAI_ROOT_DIR / "nudges.json")))
-_NUDGE_STATE = SAMURAI_ROOT_DIR / "nudge-state.json"
-
-_THIS = Path(__file__).resolve()
-_local_root = _THIS.parents[1]
-if (_local_root / "config").exists() and not (_local_root / "Order Samurai").exists():
-    _default_root = _local_root
-else:
-    _default_root = _local_root / "Order Samurai"
-_REFLEX_ENGINE_STATE = Path(os.environ.get("ORDER_SAMURAI_ROOT", str(_default_root))) / "state" / "reflex_engine_state.json"
+# Nudge catalog + fired-state (the real Give-a-Nudge install). Graceful if absent.
+# Post-move canonical location is ~/.claude/nudges.json; override with NUDGE_JSON_PATH.
+_NUDGES_JSON = Path(os.environ.get("NUDGE_JSON_PATH", str(Path.home() / ".claude" / "nudges.json")))
+_NUDGE_STATE = Path.home() / ".claude" / "nudge-state.json"
+_REFLEX_ENGINE_STATE = Path(os.environ.get("ORDER_SAMURAI_ROOT",
+    str(Path(__file__).resolve().parents[1] / "Order Samurai"))) / "state" / "reflex_engine_state.json"
 
 _TIER_BY_GRADE = {"F": "CRITICAL", "D": "HIGH", "C": "MEDIUM"}
 _PILLAR_LABEL = {"bow": "Bow", "sword": "Sword", "brush": "Brush", "arts": "Arts"}
@@ -89,10 +74,26 @@ def _worst_project(by_project: dict, pk: str) -> str | None:
 # posture) are deliberately NOT here — their remediation is control-plane-wide, so a per-project
 # scope would mislead. Drives the `scope` field threaded into the manual-run exec prompt.
 _PROJECT_SCOPABLE = frozenset({
-    "Error_Rate", "Latency_P50", "Latency_P95", "Avg_Session_Turns",
+    "Error_Rate", "Latency_P95", "Avg_Session_Turns",
     "Chain_Depth_Avg", "Token_Execution_Density", "Slop_Density",
 })
 
+
+
+def _kind_for_metric(mk: str, cmd: str | None) -> str:
+    """Route a metric-backed card through insights.remediation_kind (single source of truth).
+
+    ``kind`` (``auto_fix`` | ``advisory`` | ``session_hygiene`` | ``mis_route``) drives the
+    engine's runManual routing and the dashboard's button gating. An explicit ``kind`` in
+    METRIC_CONFIG (the four DO-NOT-USE entries) always wins — that is how mis_route is declared.
+    """
+    cfg = insights.METRIC_CONFIG.get(mk, {})
+    return insights.remediation_kind(
+        cmd,
+        readonly=cfg.get("readonly", False),
+        auto_remediable=cfg.get("auto_remediable"),
+        explicit_kind=cfg.get("kind"),
+    )
 
 
 def _reflex(pk: str, mk: str, env: dict, tier: str, trigger: str, target: str) -> dict:
@@ -114,6 +115,7 @@ def _reflex(pk: str, mk: str, env: dict, tier: str, trigger: str, target: str) -
         "maturity": grant["maturity"],
         "reflex_ready": grant["reflex_ready"],
         "mechanism_status": grant["mechanism_status"],
+        "kind": _kind_for_metric(mk, cmd),
         # Per-project scope for the MANUAL run: only behavioural metrics with a real worst project.
         # Threaded into the exec prompt so a click targets the noisiest project, not the whole tree
         # (the card message already reads "Run <cmd> on <target>"). Global metrics carry no scope.
@@ -127,8 +129,21 @@ def _reflex(pk: str, mk: str, env: dict, tier: str, trigger: str, target: str) -
     }
 
 
-def _metric_reflexes(pillars: dict, category_scores: dict, by_project: dict) -> list[dict]:
+def _metric_reflexes(pillars: dict, category_scores: dict,
+                     by_project: dict) -> tuple[list[dict], list[dict]]:
+    """Return ``(reflexes, advisory_reflexes)``.
+
+    A non-auto-remediable metric is ROUTED, never dropped. It leaves on the advisory
+    channel instead of the dispatch channel (SENSEI-3/4 stands: a CRITICAL card whose
+    only routed action can't move the metric is a misrouted channel, so it must not
+    reach the dashboard's run button or the engine's auto-fire). But sensei is an
+    adversarial INVESTIGATION loop that ends in a verdict, not a remediation loop —
+    metrics no skill can auto-fix are its highest-value targets. Suppressing them at
+    the producer starved sensei of exactly the class of work it exists to do (silent
+    stall 2026-07-19 -> 2026-07-29). Two lists, one pass, no consumer confusion.
+    """
     out: list[dict] = []
+    advisory: list[dict] = []
     seen: set[tuple[str, str]] = set()
     targets = {pk: (_worst_project(by_project, pk) or "this repo") for pk in pillars}
 
@@ -138,21 +153,16 @@ def _metric_reflexes(pillars: dict, category_scores: dict, by_project: dict) -> 
             for mk, env in group.items():
                 if env.get("is_simulated"):
                     continue
-                # Non-auto-remediable metrics never generate metric reflexes (SENSEI-3/4:
-                # a CRITICAL card whose only routed action can't move the metric is a
-                # misrouted channel). The breach still surfaces via Needs Attention,
-                # the pillar rollup, and the flagged metric card — channels without a
-                # remediation call-to-action. Config is the source of truth; the
-                # engine's non_remediable_metrics.json skip list is regenerated from it.
-                if insights.METRIC_CONFIG.get(mk, {}).get("auto_remediable") is False:
-                    continue
                 rule = insights.METRIC_RULES.get(mk)
                 if not rule:
                     continue
                 tier, trig = _sigma_tier(env, rule)
                 if tier:
                     target = ", ".join(env.get("failure_platforms", [])) or targets[pk]
-                    out.append(_reflex(pk, mk, env, tier, trig, target))
+                    sink = (advisory
+                            if insights.METRIC_CONFIG.get(mk, {}).get("auto_remediable") is False
+                            else out)
+                    sink.append(_reflex(pk, mk, env, tier, trig, target))
                     seen.add((pk, mk))
 
     # 2) fixed-threshold fallback for flagged metrics that lack enough history for σ
@@ -160,15 +170,16 @@ def _metric_reflexes(pillars: dict, category_scores: dict, by_project: dict) -> 
         for f in sc.get("flags", []):
             if (pk, f["name"]) in seen:
                 continue
-            if insights.METRIC_CONFIG.get(f["name"], {}).get("auto_remediable") is False:
-                continue  # same SENSEI-3/4 filter as the σ path
             env = _find_env(pillars, pk, f["name"])
             rule = insights.METRIC_RULES.get(f["name"], {})
             limit = rule.get("warn", "threshold")
             target = ", ".join(env.get("failure_platforms", [])) or targets[pk]
-            out.append(_reflex(pk, f["name"], env, _TIER_BY_GRADE.get(f["grade"], "MEDIUM"),
-                               f"past the {limit} limit (needs {_MIN_HISTORY}+ runs for σ)", target))
-    return out
+            sink = (advisory
+                    if insights.METRIC_CONFIG.get(f["name"], {}).get("auto_remediable") is False
+                    else out)  # same SENSEI-3/4 routing as the σ path
+            sink.append(_reflex(pk, f["name"], env, _TIER_BY_GRADE.get(f["grade"], "MEDIUM"),
+                                f"past the {limit} limit (needs {_MIN_HISTORY}+ runs for σ)", target))
+    return out, advisory
 
 
 def _nudge_command(category: str, message: str) -> str:
@@ -225,6 +236,7 @@ def _nudge_reflexes(nudges_path: Path, state_path: Path) -> list[dict]:
         cat = str(n.get("category", "")).replace("_", " ")
         # Nudge catalog copy is external; strip its chatbot tells (em dashes) for the UI.
         msg = str(n.get("message", "")).replace("nudge: ", "").replace(" — ", ", ").replace("—", ", ").strip()
+        cmd = _nudge_command(cat, msg)
         out.append({
             "id": f"nudge:{n['id']}",
             "tier": n.get("tier", "MEDIUM"),
@@ -232,7 +244,10 @@ def _nudge_reflexes(nudges_path: Path, state_path: Path) -> list[dict]:
             "source": "nudge",
             "trigger": trig.get("condition") or trig.get("event", ""),
             "message": msg,
-            "command": _nudge_command(cat, msg),
+            "command": cmd,
+            # Nudges are catalog-driven (no METRIC_CONFIG entry): classify by the mapped skill
+            # only — a /context-optimization nudge is session_hygiene, everything else auto_fix.
+            "kind": insights.remediation_kind(cmd, readonly=False, auto_remediable=None),
             "last_fired": lf,
             "status": "fired" if lf else "armed",
             # Nudges are catalog-driven (not METRIC_CONFIG-backed) — preserve legacy
@@ -284,6 +299,7 @@ def _trajectory_reflexes(pillars: dict) -> list[dict]:
                     "maturity": grant["maturity"],
                     "reflex_ready": grant["reflex_ready"],
                     "mechanism_status": grant["mechanism_status"],
+                    "kind": _kind_for_metric(mk, cmd),
                 })
     return out
 
@@ -306,17 +322,28 @@ def _load_stuck_reflexes() -> set[str]:
         return set()
 
 
-def build_reflexes(pillars: dict, category_scores: dict, by_project: dict | None = None,
-                   nudges_path: Path = _NUDGES_JSON, state_path: Path = _NUDGE_STATE) -> list[dict]:
-    """Combine live metric reflexes (danger now), trajectory early-warnings, and Nudge catalog."""
+def build_reflexes(
+    pillars: dict, category_scores: dict, by_project: dict | None = None,
+    nudges_path: Path = _NUDGES_JSON, state_path: Path = _NUDGE_STATE,
+) -> tuple[list[dict], list[dict]]:
+    """Combine live metric reflexes (danger now), trajectory early-warnings, and Nudge catalog.
+
+    Returns ``(reflexes, advisory_reflexes)``. The first list is the DISPATCH channel —
+    what the dashboard renders with a run button and what ReflexEngine may auto-fire. The
+    second is the ADVISORY channel: real breaches with no auto-remediation, carried for
+    investigation-only consumers (sensei). They are separate keys in the payload on
+    purpose; merging them would put a mis-routed run button back on the dashboard.
+    """
+    metric_out, advisory = _metric_reflexes(pillars, category_scores, by_project or {})
     out = (
-        _metric_reflexes(pillars, category_scores, by_project or {})
+        metric_out
         + _trajectory_reflexes(pillars)
         + _nudge_reflexes(nudges_path, state_path)
     )
-    out.sort(key=lambda r: (_TIER_ORDER.get(r["tier"], 4), r["source"] != "metric"))
     stuck = _load_stuck_reflexes()
-    for r in out:
-        if r["id"] in stuck:
-            r["stuck"] = True
-    return out
+    for lst in (out, advisory):
+        lst.sort(key=lambda r: (_TIER_ORDER.get(r["tier"], 4), r["source"] != "metric"))
+        for r in lst:
+            if r["id"] in stuck:
+                r["stuck"] = True
+    return out, advisory

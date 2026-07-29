@@ -14,7 +14,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .types import VerifierResult
+from .core_types import VerifierResult
 
 _THIS = Path(__file__).resolve()
 
@@ -39,6 +39,9 @@ TEXT_EXTENSIONS = {
 EXCLUDE_DIRS = {
     ".git", "node_modules", "__pycache__", ".obsidian", ".mex",
     "brain", "artifacts", ".tmp", "backups", "file-history", ".pytest_cache",
+    # gitignored personal-comms/idea PII archives (email/SMS bodies) — never in
+    # git, but they contain token-shaped strings that aren't real leaked secrets.
+    "comms", "ideabrowser",
 }
 _MAX_BYTES = 2_000_000
 _PLACEHOLDER = re.compile(r"\$\{|\$\(|os\.environ|process\.env|<[^>]+>|your[_-]|example|xxxx|placeholder", re.I)
@@ -90,7 +93,19 @@ def _default_roots() -> list[Path]:
     governance = _THIS.parents[1]            # Governance
     agentica = governance.parent             # Agentica OS
     os_repo = governance / "Order Samurai"
-    return [os_repo / "config", os_repo / "execution", agentica / "Data"]
+    # Data is scoped to telemetry + reports — the surfaces OUR pipelines write,
+    # where a leaked secret would be ours. Ingest categories (Data/<cat>/raw/)
+    # hold scraped third-party content whose embedded token-shaped strings are
+    # not leaked secrets: 10 JWT-pattern hits in Data/tech-news/raw kept
+    # Secrets_Detected breached and burned 5 no-op /security-* fires
+    # (SENSEI-7, 2026-07-26). This also matches the module docstring, which
+    # always said "Data telemetry" — the implementation over-scanned.
+    return [
+        os_repo / "config",
+        os_repo / "execution",
+        agentica / "Data" / "telemetry",
+        agentica / "Data" / "reports",
+    ]
 
 
 def run_checks(roots: list[Path] | None = None) -> list[VerifierResult]:

@@ -52,7 +52,7 @@ class VerifyClaudePathAuthorityTests(unittest.TestCase):
     def test_scan_flags_windows_doubled_backslash_form_in_json(self) -> None:
         sandbox = self._sandbox()
         (sandbox / "safety" / "drifted.json").write_text(
-            '{"root": "C:\\\\Users\\\\exampleuser\\\\.claude\\\\hooks"}\n', encoding="utf-8"
+            '{"root": "C:\\\\Users\\\\example\\\\.claude\\\\hooks"}\n', encoding="utf-8"
         )
 
         offenders, _ = vpa.scan_path_literals(root=sandbox, literals=LITERALS)

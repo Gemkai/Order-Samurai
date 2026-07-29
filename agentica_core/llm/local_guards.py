@@ -13,7 +13,15 @@ stdlib-only script; keep its logic in sync with this module.
 """
 from __future__ import annotations
 
+import os
+
 MIN_LOCAL_TOKENS = 512
+
+# 5s guaranteed a ReadTimeout on any model not already resident (12b/35b
+# cold-load alone exceeds it), silently failing every heavier local call into
+# the fallback chain. 180s covers a qwen3.6:35b cold load + generation on this
+# Mac. One home for the rule — gateway.py and model_router.py both import it.
+LOCAL_TIMEOUT_SEC = float(os.getenv("OLLAMA_TIMEOUT_SEC", "180"))
 
 
 def floor_max_tokens(requested: object) -> int:

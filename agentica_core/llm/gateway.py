@@ -1,3 +1,17 @@
+"""Multi-provider LLM gateway (Gemini / Anthropic / OpenAI / OpenRouter / local Ollama).
+
+Privacy model (2026-07-26, audit W2): the enforced control for sensitive data is
+fail-closed routing — `local_only=True` (or a pinned single-model `model_chain`
+plus the caller-side silent-fallback guard on `return_metadata`), which keeps the
+prompt on this machine. This file previously carried an Antigravity-heritage
+safety stack (PII scrubber, AIGuardrails, NuclearOption, telemetry) behind
+`except ImportError` stubs; with ROOT_DIR pointing inside agentica_core/ every
+import silently resolved to a no-op on every call. Those stubs were removed
+rather than wired: their real implementations live with the Antigravity gateway
+copy (sub-bundles/antigravity/llm/gateway.py, a separate update surface), and
+every Governance consumer routes local-pinned, where output scrubbing adds
+nothing. Do not reintroduce silent-fallback safety imports here.
+"""
 import json
 import os
 import random
@@ -5,11 +19,15 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import requests
 
-from agentica_core.llm.local_guards import extract_message_text, floor_max_tokens
+from agentica_core.llm.local_guards import (
+    LOCAL_TIMEOUT_SEC,
+    extract_message_text,
+    floor_max_tokens,
+)
 
 try:
     from dotenv import load_dotenv
@@ -27,10 +45,6 @@ except ImportError:
                 os.environ[key.strip()] = value.strip()
         return True
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
-
 try:
     from langfuse import Langfuse
 
@@ -38,56 +52,14 @@ try:
 except ImportError:
     _LANGFUSE_AVAILABLE = False
 
-try:
-    from safety.PII_scrubber import scrub_text
-except ImportError:
-    def scrub_text(text):
-        return text
-
-try:
-    from execution.guardrails import AIGuardrails, GuardrailException
-except ImportError:
-    class GuardrailException(Exception):
-        pass
-
-    class AIGuardrails:
-        @staticmethod
-        def validate_input(user_prompt: str, max_length: int = 100000) -> str:
-            if len(user_prompt) > max_length:
-                raise GuardrailException(
-                    f"Prompt exceeds maximum length of {max_length} characters."
-                )
-            return user_prompt
-
-        @staticmethod
-        def validate_output_json(llm_response: str, required_keys: Optional[list] = None) -> dict:
-            data = json.loads(llm_response)
-            missing = [key for key in (required_keys or []) if key not in data]
-            if missing:
-                raise GuardrailException(f"Missing required keys: {missing}")
-            return data
-
-try:
-    from execution.nuclear_option_hook import NuclearOption
-except ImportError:
-    class NuclearOption:
-        @staticmethod
-        def inspect(content: str, context: str = "general") -> Tuple[bool, str]:
-            return False, ""
-
-try:
-    from execution.telemetry import log_execution
-except ImportError:
-    def log_execution(*args, **kwargs):
-        return None
-
 
 MAX_RETRIES = 3
 BASE_DELAY = 1.0
 MAX_PROMPT_LENGTH = 100000
 OLLAMA_URL = os.getenv("OLLAMA_HOST", "http://localhost:11434") + "/api/chat"
 LOCAL_MODEL = os.getenv("LOCAL_MODEL_NAME", "gemma4:4b")
-OLLAMA_TIMEOUT_SEC = float(os.getenv("OLLAMA_TIMEOUT_SEC", "5"))
+# Single home for the local-timeout rule: local_guards.LOCAL_TIMEOUT_SEC.
+OLLAMA_TIMEOUT_SEC = LOCAL_TIMEOUT_SEC  # re-export for existing importers/tests
 
 FREE_CHAIN = [
     "google/gemini-2.0-flash-exp:free",
@@ -97,7 +69,11 @@ FREE_CHAIN = [
     "qwen/qwen-2-72b-instruct:free",
 ]
 
+# Quality-first: strongest Claude Sonnet first (direct Anthropic), matching
+# model_router's Claude-first order. The stale claude-3.5-sonnet entry stays as
+# a keyless-OpenRouter Claude fallback.
 PREMIUM_CHAIN = [
+    "anthropic/claude-sonnet-4-6",
     "gemini-3.1-pro-preview",
     "gemini-3-pro-preview",
     "anthropic/claude-3.5-sonnet",
@@ -143,6 +119,8 @@ ANTHROPIC_MODEL_ALIASES = {
     "claude-3-sonnet": "claude-3-5-sonnet-latest",
     "claude-3-haiku": "claude-3-5-haiku-latest",
     "claude-3.5-sonnet": "claude-3-5-sonnet-latest",
+    # current Sonnet (matches model_router's direct-Anthropic id)
+    "claude-sonnet-4-6": "claude-sonnet-4-6",
 }
 
 OPENROUTER_MODEL_ALIASES = {
@@ -162,10 +140,6 @@ OPENROUTER_ANTHROPIC_MODEL_ALIASES = {
 }
 
 DEFAULT_SYSTEM_INSTRUCTION = "You are the Antigravity Synthesis Engine."
-
-
-class InfrastructureError(Exception):
-    pass
 
 
 def _safe_console_text(value: Any) -> str:
@@ -192,10 +166,6 @@ class LLMGateway:
             load_dotenv(env_path)
 
         load_dotenv()
-
-        global_env = ROOT_DIR / ".env"
-        if global_env.exists():
-            load_dotenv(global_env)
 
         self.gemini_primary_key = os.getenv("GEMINI_API_KEY")
         self.gemini_paid_key = os.getenv("GEMINI_PAID_API_KEY", "").strip() or None
@@ -232,12 +202,22 @@ class LLMGateway:
         model: Optional[str] = None,
         model_chain: Optional[List[str]] = None,
         return_metadata: bool = False,
+        local_only: bool = False,
         **kwargs,
     ) -> Any:
         provider_kwargs = dict(kwargs)
         base_tags = list(provider_kwargs.pop("tags", []))
 
-        if model_chain:
+        if local_only:
+            # Fail-closed privacy routing: keep only bare Ollama tags (name:tag,
+            # no provider prefix) from the requested chain; never add cloud
+            # models. A local failure raises instead of failing over to cloud.
+            requested = list(model_chain or ([model] if model else []))
+            chain = [
+                m for m in requested
+                if "/" not in m and ":" in m and ":free" not in m.lower()
+            ] or [LOCAL_MODEL]
+        elif model_chain:
             chain = list(model_chain)
         elif model:
             chain = [model]
@@ -246,7 +226,7 @@ class LLMGateway:
         else:
             chain = PREMIUM_CHAIN if self.default_tier == "PREMIUM" else FAST_CHAIN
 
-        if self.local_enabled and LOCAL_MODEL not in chain:
+        if not local_only and self.local_enabled and LOCAL_MODEL not in chain:
             chain = list(chain) + [LOCAL_MODEL]
 
         if len(prompt) > MAX_PROMPT_LENGTH:
@@ -335,7 +315,12 @@ class LLMGateway:
                             fallback_index=index,
                             **provider_kwargs,
                         )
-                elif target_model == LOCAL_MODEL:
+                elif target_model == LOCAL_MODEL or (
+                    # bare Ollama tag (name:tag, no provider prefix) — any installed
+                    # local model, not just the env-pinned LOCAL_MODEL. Without this,
+                    # gemma4:12b / qwen3.6:35b misrouted to _call_gemini and failed.
+                    "/" not in target_model and ":" in target_model
+                ):
                     response_text = self._call_local(
                         model=target_model,
                         prompt=prompt,
@@ -400,25 +385,16 @@ class LLMGateway:
         tier: Optional[str] = None,
         required_json_keys: Optional[list] = None,
         project_context: str = "HUB",
-        tool_calls: Any = 0,
-        tool_latencies: Optional[list] = None,
-        mod_type: str = "READ",
     ) -> dict:
-        safe_prompt = AIGuardrails.validate_input(prompt, max_length=MAX_PROMPT_LENGTH)
-
-        is_blocked, block_msg = NuclearOption.inspect(safe_prompt, context=task_name)
-        if is_blocked:
-            raise InfrastructureError(block_msg)
-
+        # Prompt-length enforcement lives in generate_text (MAX_PROMPT_LENGTH).
         active_tier = (tier or self.default_tier or "PREMIUM").upper()
         model_chain = self._build_legacy_chain(requested_model, active_tier)
         system_instruction = DEFAULT_SYSTEM_INSTRUCTION
         if required_json_keys:
             system_instruction += " Return ONLY valid JSON."
 
-        start_time = time.time()
         response = self.generate_text(
-            prompt=safe_prompt,
+            prompt=prompt,
             system_instruction=system_instruction,
             temperature=0.0,
             model_chain=model_chain,
@@ -426,29 +402,7 @@ class LLMGateway:
             return_metadata=True,
             tags=[f"task:{task_name}", f"context:{project_context}"],
         )
-
-        content = response["text"]
-        parsed = self._parse_legacy_content(content, required_json_keys)
-        latency_ms = (time.time() - start_time) * 1000
-        tool_call_count, tool_call_names = self._normalize_tool_calls(
-            tool_calls, tool_latencies or []
-        )
-
-        log_execution(
-            task_name=task_name,
-            model_tier=self._classify_model_tier(response["model"], active_tier),
-            latency_ms=latency_ms,
-            tokens_in=len(safe_prompt),
-            tokens_out=len(content),
-            status="success",
-            project=project_context,
-            tool_calls=tool_call_count,
-            tool_calls_list=tool_call_names,
-            tool_latencies=tool_latencies or [],
-            mod_type=mod_type,
-            session_id=os.environ.get("CONVERSATION_ID"),
-        )
-        return parsed
+        return self._parse_legacy_content(response["text"], required_json_keys)
 
     def _build_legacy_chain(
         self, requested_model: Optional[str], active_tier: str
@@ -548,16 +502,11 @@ class LLMGateway:
             return {"content": content}
 
         json_candidate = self._extract_json_object(content)
-        try:
-            return AIGuardrails.validate_output_json(
-                json_candidate, required_keys=required_json_keys
-            )
-        except Exception:
-            parsed = json.loads(json_candidate)
-            missing = [key for key in required_json_keys if key not in parsed]
-            if missing:
-                raise ValueError(f"Missing required JSON keys: {missing}")
-            return parsed
+        parsed = json.loads(json_candidate)
+        missing = [key for key in required_json_keys if key not in parsed]
+        if missing:
+            raise ValueError(f"Missing required JSON keys: {missing}")
+        return parsed
 
     def parse_jsonish_payload(self, result: Any) -> Dict[str, Any]:
         if isinstance(result, dict):
@@ -582,44 +531,6 @@ class LLMGateway:
         cleaned = re.sub(r"\s*```$", "", cleaned).strip()
         match = re.search(r"(\{.*\})", cleaned, re.DOTALL)
         return match.group(1) if match else cleaned
-
-    def _normalize_tool_calls(
-        self, tool_calls: Any, tool_latencies: List[dict]
-    ) -> Tuple[int, List[str]]:
-        names: List[str] = []
-        if isinstance(tool_calls, (list, tuple, set)):
-            names = [str(item) for item in tool_calls]
-            return len(names), names
-
-        if isinstance(tool_calls, dict):
-            names = [str(key) for key in tool_calls.keys()]
-            return len(names), names
-
-        if not names and tool_latencies:
-            names = [
-                str(tool.get("tool"))
-                for tool in tool_latencies
-                if isinstance(tool, dict) and tool.get("tool")
-            ]
-
-        try:
-            count = int(tool_calls or 0)
-        except (TypeError, ValueError):
-            count = len(names)
-
-        return count, names
-
-    def _classify_model_tier(self, model: str, requested_tier: str) -> str:
-        normalized = model.lower()
-        if normalized == LOCAL_MODEL.lower():
-            return "LOCAL"
-        if ":free" in normalized or normalized.startswith("openrouter/"):
-            return "FREE"
-        if "flash" in normalized:
-            return "FAST"
-        if normalized.startswith("anthropic/") or "pro" in normalized:
-            return "PREMIUM"
-        return requested_tier
 
     def _call_gemini(self, model: str, prompt: str, **kwargs) -> str:
         if not self.gemini_keys:
@@ -657,7 +568,7 @@ class LLMGateway:
 
                     response = requests.post(
                         f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model}:generateContent",
-                        params={"key": key},
+                        headers={"x-goog-api-key": key},
                         json=request_payload,
                         timeout=60,
                     )
@@ -695,7 +606,7 @@ class LLMGateway:
                         },
                         tags=tags,
                     )
-                    return scrub_text(text)
+                    return text
                 except Exception as exc:
                     last_exception = exc
                     err_msg = str(exc).lower()
@@ -766,7 +677,7 @@ class LLMGateway:
                     },
                     tags=tags,
                 )
-                return scrub_text(text)
+                return text
             except Exception as exc:
                 err_msg = str(exc).lower()
                 if any(
@@ -789,8 +700,8 @@ class LLMGateway:
         tags = kwargs.get("tags", [])
 
         headers = {
-            "HTTP-Referer": "https://order-samurai.local",
-            "X-Title": "Order Samurai",
+            "HTTP-Referer": "https://antigravity-ai.com",
+            "X-Title": "Antigravity JARVIS",
         }
         if self.openrouter_key:
             headers["Authorization"] = f"Bearer {self.openrouter_key}"
@@ -839,7 +750,7 @@ class LLMGateway:
                     },
                     tags=tags,
                 )
-                return scrub_text(text)
+                return text
             except Exception as exc:
                 err_msg = str(exc).lower()
                 if any(
@@ -907,7 +818,7 @@ class LLMGateway:
                     },
                     tags=tags,
                 )
-                return scrub_text(text)
+                return text
             except Exception as exc:
                 err_msg = str(exc).lower()
                 if any(
@@ -943,6 +854,15 @@ class LLMGateway:
             },
             "stream": False,
         }
+        if kwargs.get("num_ctx"):
+            # always pin num_ctx for long prompts — Ollama's default window
+            # silently truncates from the front, which reads as model stupidity
+            payload["options"]["num_ctx"] = int(kwargs["num_ctx"])
+        if "think" in kwargs:
+            # thinking builds (qwen3.6, gemma4:12b on this Ollama) burn the whole
+            # num_predict budget in `thinking` and return empty content unless
+            # thinking is disabled — the exact failure that killed the local tier
+            payload["think"] = bool(kwargs["think"])
         if kwargs.get("response_schema"):
             payload["format"] = "json"
 
@@ -969,7 +889,7 @@ class LLMGateway:
             },
             tags=tags or ["local-fallback"],
         )
-        return scrub_text(text)
+        return text
 
     def _log_langfuse_generation(
         self,
@@ -988,7 +908,7 @@ class LLMGateway:
             self.langfuse.generation(
                 name=name,
                 input=prompt,
-                output=scrub_text(response_text),
+                output=response_text,
                 model=model,
                 usage=usage or {},
                 metadata=metadata or {},

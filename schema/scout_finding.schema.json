@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentica-os/governance/schema/scout_finding.schema.json",
+  "title": "Scout Finding (one entry of a ronin scout's returned array)",
+  "description": "Versioned contract for a single ronin scout finding — the re-measurement a ronin-{bow,sword,brush,arts} agent returns for one reflex (or one constituent of a correlation reflex), consumed by sensei-cycle Step 4 to decide which findings reach the rival verifier. Draft-07 is mandatory, not stylistic: ajv 6.15.0 (api/package.json) rejects 2020-12 outright while Python jsonschema 4.26 accepts it, so a 2020-12 schema passes the Python tests and silently fails on the TS side.\n\nDERIVED FROM THE DOCUMENTED CONTRACT, NOT FROM HISTORY. There is no scout-finding corpus: state/ronin_results/*.json holds four singletons with divergent shapes ({status,item_id,reason,detail} / {status,item_id,metric,commit_hash,detail} / {status}) which are remediation-item results, not scout findings. The authority is the Output block of sub-bundles/claude/agents/ronin-*.md plus sensei-cycle SKILL.md Steps 3-4. Validate this against NEW scout runs, not against ronin_results.",
+  "type": "object",
+  "required": [
+    "reflex_id",
+    "real",
+    "evidence",
+    "root_cause",
+    "proposed_fix",
+    "target_repo",
+    "risk_tier",
+    "fixability"
+  ],
+  "properties": {
+    "reflex_id": {
+      "description": "Echoed verbatim from the batch input, so a flattened multi-pillar finding array stays attributable.",
+      "type": "string",
+      "minLength": 1
+    },
+    "real": {
+      "description": "Did the LIVE re-measurement reproduce the breach? false + fixability 'phantom' means the wid_payload snapshot was stale.",
+      "type": "boolean"
+    },
+    "evidence": {
+      "description": "The re-measurement itself. Open object — metrics differ in what they can cite — but re_measured and source_file are the two the rival independently re-derives against, so both are required. Absence of data is never healthy: an unresolvable source is a finding (real:false, fixability:structural), not an empty evidence block.",
+      "type": "object",
+      "required": ["re_measured", "source_file"],
+      "properties": {
+        "re_measured": { "type": ["string", "number", "null"] },
+        "snapshot": { "type": ["string", "number", "null"] },
+        "source_file": {
+          "description": "One path, or the list of paths when a metric is derived from several. minLength/minItems each constrain only their own type — an empty citation is not a citation.",
+          "type": ["string", "array"],
+          "minLength": 1,
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "window_days": { "type": ["number", "null"] },
+        "skipped_lines": { "type": "number" }
+      },
+      "additionalProperties": true
+    },
+    "root_cause": {
+      "description": "One sentence.",
+      "type": "string",
+      "minLength": 1
+    },
+    "proposed_fix": {
+      "description": "A command, or null when the finding is a phantom and there is nothing to fix.",
+      "type": ["string", "null"]
+    },
+    "target_repo": {
+      "description": "Where the fix would land — determined per finding, never assumed from the scout's pillar. Null on the same condition proposed_fix is null: a phantom finding has nothing to fix, so it has nowhere to land. Added 2026-07-28 after the first ARMED cycle — ronin-bow correctly returned a phantom with target_repo:null and the schema logged a violation for it, which would have held A3's 'seven clean days' gate permanently unreachable, since phantoms are a normal scout outcome. null is listed in the enum as well as the type: draft-07 checks enum by exact value, so a nullable type alone would still fail here.",
+      "type": ["string", "null"],
+      "enum": ["order-samurai", "agentica-os", "claude-config", null]
+    },
+    "risk_tier": {
+      "description": "'security' whenever the proposed fix touches security controls (hooks, gates, scrubbers) — those are ALWAYS manual, so the value gates automation.",
+      "type": "string",
+      "enum": ["readonly", "code", "security"]
+    },
+    "fixability": {
+      "description": "'structural' routes to backlog escalation (SKILL.md Step 7); 'phantom' means suppress, not remediate.",
+      "type": "string",
+      "enum": ["phantom", "skill", "code", "structural"]
+    }
+  },
+  "additionalProperties": true,
+  "if": { "properties": { "fixability": { "const": "phantom" } }, "required": ["fixability"] },
+  "then": {},
+  "else": {
+    "description": "Nullability of target_repo/proposed_fix is tied to phantom, not granted outright. Making target_repo nullable for phantoms (2026-07-28) otherwise also let a REAL finding — fixability 'code' or 'skill', something a remediation is expected to act on — validate with nowhere to land and nothing to run. Warn-only today and nothing reads target_repo yet, so this is inert; it stops being inert the moment A3 flips enforcement or remediation starts routing on the field, and the schema should not be the thing that has to be remembered then.",
+    "properties": {
+      "target_repo": { "type": "string" },
+      "proposed_fix": { "type": "string" }
+    }
+  }
+}

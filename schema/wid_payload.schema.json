@@ -16,7 +16,12 @@
       "minLength": 1
     },
     "reflexes": {
-      "description": "Priority-ordered reflex/metric breaches the engine may dispatch.",
+      "description": "DISPATCH channel. Priority-ordered reflex/metric breaches the engine may dispatch and the dashboard may offer a run button for.",
+      "type": "array",
+      "items": { "$ref": "#/definitions/reflex" }
+    },
+    "advisory_reflexes": {
+      "description": "ADVISORY channel. Real breaches on metrics whose METRIC_CONFIG says auto_remediable:false — no routed action can move them, so they must never reach the dashboard run button or ReflexEngine auto-fire. Carried as a SIBLING key (never merged into `reflexes`) for investigation-only consumers: sensei's adversarial loop ends in a verdict, not a fix, so these are exactly its highest-value targets. Suppressing them at the producer starved the 6-hourly cycle for 8 days (2026-07-19 -> 2026-07-29). Optional: a payload written before this key existed is still valid.",
       "type": "array",
       "items": { "$ref": "#/definitions/reflex" }
     }

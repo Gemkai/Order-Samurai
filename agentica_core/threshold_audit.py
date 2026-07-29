@@ -53,11 +53,12 @@ def audit_threshold_changes(
             old = prev.get(m)
             if old is None:
                 changes.append({"ts": now, "source": source, "metric": m, "change": "added", "new": r})
-            elif old.get("warn") != r["warn"] or old.get("fail") != r["fail"]:
+            elif (old.get("warn") != r["warn"] or old.get("fail") != r["fail"]
+                  or old.get("dir") != r["dir"]):
                 changes.append({
                     "ts": now, "source": source, "metric": m, "change": "threshold",
-                    "old": {"warn": old.get("warn"), "fail": old.get("fail")},
-                    "new": {"warn": r["warn"], "fail": r["fail"]},
+                    "old": {"warn": old.get("warn"), "fail": old.get("fail"), "dir": old.get("dir")},
+                    "new": {"warn": r["warn"], "fail": r["fail"], "dir": r["dir"]},
                 })
         for m, old in prev.items():
             if m not in cur:

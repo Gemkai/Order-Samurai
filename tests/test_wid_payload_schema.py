@@ -13,10 +13,15 @@ from pathlib import Path
 import jsonschema
 import pytest
 
-# agentica_core lives in the canonical Governance kernel (parents[2]).
+# agentica_core lives in the Governance kernel — resolved by marker, not depth:
+# parents[2] is Governance/ in the live tree but points OUTSIDE the repo in the
+# flat exported product tree. See tests/_layout.py.
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO))
-_GOVERNANCE = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+from _layout import governance_root  # noqa: E402
+
+_GOVERNANCE = governance_root(__file__)
 if str(_GOVERNANCE) not in sys.path:
     sys.path.insert(0, str(_GOVERNANCE))
 

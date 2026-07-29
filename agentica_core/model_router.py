@@ -15,6 +15,9 @@ Usage:
     text = call_llm(system="You are ...", user="Analyse this...", task="analysis")
     if text is None:
         # all backends failed or unavailable
+
+Sensitive data: pass local_only=True — the chain is then Ollama only and fails
+closed (returns None) instead of falling back to any cloud backend.
 """
 from __future__ import annotations
 
@@ -23,19 +26,34 @@ import os
 import urllib.error
 import urllib.request
 
-from agentica_core.llm.local_guards import extract_message_text, floor_max_tokens
+from agentica_core.brain_context import load_brain_context
+from agentica_core.llm.local_guards import (
+    LOCAL_TIMEOUT_SEC,
+    extract_message_text,
+    floor_max_tokens,
+)
 
-_TIMEOUT_S = 30
+# Cloud-backend timeout. Quality-first: 60s gives the strongest models headroom
+# to finish a full analysis response rather than being cut off mid-generation.
+# Local Ollama uses LOCAL_TIMEOUT_SEC (180s) for the same reason on cold loads.
+_TIMEOUT_S = 60
 
 _OLLAMA_BASE = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/") + "/v1"
 
+# Quality-first roster + fallback order. The chain (call_llm below) tries Claude
+# first, then Gemini, then local Ollama, then OpenRouter — highest-capability
+# provider first, cloud-free models only as a last resort. Where the two model
+# families differed, the stronger option was chosen: Gemini 2.5 (not the stale
+# 2.0 pin) and Llama 3.3-70B (not 3.1-8B) on the free tier. Analysis tasks route
+# to each provider's strongest model; classification stays on the efficient tier
+# (haiku/flash are already high-quality for that simple task).
 _MODELS: dict[str, dict[str, str]] = {
     "claude": {
         "classification": "claude-haiku-4-5-20251001",
         "analysis": "claude-sonnet-4-6",
     },
     "gemini": {
-        "classification": "gemini-2.0-flash",
+        "classification": "gemini-2.5-flash",
         "analysis": "gemini-2.5-flash",
     },
     "ollama": {
@@ -43,8 +61,8 @@ _MODELS: dict[str, dict[str, str]] = {
         "analysis": "qwen3.6:35b",
     },
     "openrouter": {
-        "classification": "google/gemma-2-9b-it:free",
-        "analysis": "meta-llama/llama-3.1-8b-instruct:free",
+        "classification": "meta-llama/llama-3.3-70b-instruct:free",
+        "analysis": "meta-llama/llama-3.3-70b-instruct:free",
     },
 }
 
@@ -55,12 +73,32 @@ def call_llm(
     task: str = "classification",
     max_tokens: int = 2048,
     temperature: float = 0.0,
+    local_only: bool = False,
+    brain: bool = False,
 ) -> str | None:
     """Call the best available LLM with an automatic fallback chain.
 
     Returns the response text, or None when every backend is unavailable or errors.
+
+    local_only=True restricts the chain to local Ollama and fails closed:
+    prompts carrying sensitive data must never fall back to a cloud backend,
+    so an Ollama failure returns None rather than retrying in the cloud.
+
+    brain=True prepends the shared Brain³ context (the Knowledge/vault/me/ identity
+    portfolio + long-term-memory index) to the system prompt, so any backend — local
+    Ollama included — plugs into the same shared brain the file-reading harnesses use.
+    A missing brain yields an empty preamble (no-op), never an error.
     """
-    for backend in (_call_claude, _call_gemini, _call_ollama, _call_openrouter):
+    if brain:
+        preamble = load_brain_context()
+        if preamble:
+            system = f"{preamble}\n\n---\n\n{system}"
+    backends = (
+        (_call_ollama,)
+        if local_only
+        else (_call_claude, _call_gemini, _call_ollama, _call_openrouter)
+    )
+    for backend in backends:
         try:
             result = backend(system, user, task, max_tokens, temperature)
             if result:
@@ -115,10 +153,13 @@ def _call_gemini(
     }).encode()
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models"
-        f"/{model_id}:generateContent?key={api_key}"
+        f"/{model_id}:generateContent"
     )
     req = urllib.request.Request(
-        url, data=payload, headers={"Content-Type": "application/json"}, method="POST"
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+        method="POST",
     )
     with urllib.request.urlopen(req, timeout=_TIMEOUT_S) as resp:
         body = json.loads(resp.read())
@@ -143,7 +184,7 @@ def _call_ollama(
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=_TIMEOUT_S) as resp:
+    with urllib.request.urlopen(req, timeout=LOCAL_TIMEOUT_SEC) as resp:
         body = json.loads(resp.read())
         # thinking models (qwen3.6, deepseek-r1) leave content empty on the
         # OpenAI-compat endpoint and put output in reasoning/thinking —
@@ -173,7 +214,7 @@ def _call_openrouter(
         headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
-            "HTTP-Referer": "https://github.com/Gemkai/order-samurai",
+            "HTTP-Referer": "https://github.com/order-samurai",
         },
         method="POST",
     )

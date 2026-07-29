@@ -4,6 +4,7 @@ each returns a concrete count or None (never a fabricated value).
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -17,26 +18,31 @@ def _read_json(path: Path):
         return None
 
 
-def _count_lines(path: Path) -> int | None:
-    """Count valid JSON objects in a JSONL file (one per line).
+def _count_autonomic_events(event_name: str) -> int | None:
+    """Count records in the canonical autonomic_events.jsonl stream matching `event_name`.
 
-    Using JSON-parse count rather than raw line count prevents overcounting
-    when files are ever written with multi-line pretty-printing.
-    """
-    import json as _json
+    Reuses agentica_core.telemetry.default_events_path() (single source of truth for the
+    path) rather than re-deriving it. Returns None if the module or file is unreachable —
+    never fabricates a zero for a source that couldn't be read."""
     try:
-        count = 0
-        for ln in path.read_text(encoding="utf-8", errors="ignore").splitlines():
-            ln = ln.strip()
-            if ln:
-                try:
-                    _json.loads(ln)
-                    count += 1
-                except _json.JSONDecodeError:
-                    pass  # skip malformed or continuation lines
-        return count
-    except OSError:
+        from agentica_core.telemetry import default_events_path
+    except Exception:
         return None
+    path = default_events_path()
+    if not path.exists():
+        return None
+    count = 0
+    for ln in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            rec = json.loads(ln)
+        except ValueError:
+            continue
+        if isinstance(rec, dict) and rec.get("event") == event_name:
+            count += 1
+    return count
 
 
 def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
@@ -77,20 +83,10 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
         out["open_cves"] = n
         out["deprecated_deps"] = len(dep.get("pip_outdated") or [])
 
-    can = _read_json(data / "canary_status.json")
-    if isinstance(can, dict) and "failed" in can:
-        # A run where every canary failed to even execute (harness/spawn fault — e.g. the
-        # `claude --print` child crashing on init, not a skill verdict) is not evidence that
-        # skills are healthy OR broken. Leave the metric SIMULATED (honest unknown) rather than
-        # asserting a false all-clear or all-fail. behavioral_canary.py reports could_not_run +
-        # total; older snapshots omit them, so only suppress when both are present and conclusive.
-        total = can.get("total")
-        cnr = can.get("could_not_run")
-        all_harness_fault = (
-            isinstance(cnr, int) and isinstance(total, int) and total > 0 and cnr >= total
-        )
-        if not all_harness_fault:
-            out["canary_failures"] = int(can.get("failed") or 0)
+    # canary_failures RETIRED 2026-07-11 (C/D/F plan step 5): behavioral_canary.py
+    # was never scheduled on this host, so canary_status.json is permanently absent —
+    # a dark weight-3 metric. Re-add only together with a scheduled canary run.
+    # (The security-gate self-test below is a DIFFERENT canary and stays.)
 
     # Sword: security-gate self-test. Fault if the gate failed its last canary OR the canary
     # is older than its own freshness budget (a stale all-clear is not an all-clear).
@@ -132,21 +128,16 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
     except Exception:
         pass
 
-    reaped = _count_lines(data / "mcp_reaper.jsonl")
-    if reaped is not None:
-        out["processes_reaped"] = reaped
+    # processes_reaped RETIRED 2026-07-08 audit: no reaper was ever ported to this
+    # host (mcp_reaper.jsonl permanently absent) — the metric could only be fake.
 
-    # Sword: weighted security scorecard (this platform's own total, 0-100; non-additive)
-    sc = _read_json(data / "security_scorecard.json")
-    if isinstance(sc, dict) and platform:
-        plat = (sc.get("platforms") or {}).get(platform)
-        if isinstance(plat, dict) and "total" in plat:
-            out["security_scorecard"] = plat["total"]
+    # security_scorecard RETIRED 2026-07-11: the Windows scripts-tier emitter is
+    # gone and its content overlaps Guardrail_Blocks + Secrets_Detected +
+    # Gate_Canary_Fault — removal, never faking.
 
-    # Sword: red-team-style safety scan of installed skills (supply-chain vetting)
-    ss = _read_json(data / "skill_safety_scan.json")
-    if isinstance(ss, dict):
-        out["skill_safety_findings"] = int(ss.get("critical_count", 0)) + int(ss.get("warning_count", 0))
+    # skill_safety_findings RETIRED 2026-07-08 audit: no skill scanner exists on
+    # this host and the mapped remediation audited dep packages, not skills —
+    # re-introduce only together with a real scanner + quarantine bin.
 
     # skills_optimized + skill_promotions RETIRED 2026-07-19 (metric-surface review
     # Part E item 3): skill_improve_after_use_log.jsonl / skill_promotion_log.jsonl
@@ -156,6 +147,13 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
     conf = _read_json(data / "skill_conflicts.json")
     if isinstance(conf, dict):
         out["skill_conflicts"] = len(conf.get("groups") or [])
+
+    # AUTO-016: Knowledge Prompted — count of memory_recall autonomic events (<BRAND>³
+    # recall telemetry: a Read of a memory/vault file during a session, emitted by
+    # agentica_emit.py's SessionEnd hook into the canonical autonomic_events stream).
+    kp = _count_autonomic_events("memory_recall")
+    if kp is not None:
+        out["knowledge_prompted"] = kp
 
     # secret_scrubs RETIRED 2026-07-19 (metric-surface review Part E item 3):
     # secret_scrubber.jsonl is absent on this host — the protective counter never
@@ -169,11 +167,6 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
     # SWORD-001 guardrail_blocks RETIRED 2026-07-19: security_gate_log.jsonl has no
     # writer on this host (Windows-era gate log) — re-introduce only with a real
     # block-logger in the live guardrails hook.
-
-    # SWORD-002: security scorecard total
-    sc2 = score_security_posture(runtime_root)
-    if sc2 is not None:
-        out["security_scorecard_total"] = sc2
 
     # GOVERNANCE-001: adversarial governance code review findings (CRITICAL+HIGH count)
     gov = governance_findings()
@@ -200,26 +193,19 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
                 continue
         out["config_drift_rate"] = drift_count
 
-    # AUTO-007: Vulnerability Window (Patch Latency) — days since CVEs were first detected
-    dep_window = _read_json(data / "dependency_audit.json")
-    if isinstance(dep_window, dict):
-        cves_w = dep_window.get("pip_cves") or []
-        npm_w = dep_window.get("npm_audits")
-        n_cves_w = len(cves_w) if isinstance(cves_w, list) else 0
-        if isinstance(npm_w, list):
-            n_cves_w += sum(a.get("total", 0) for a in npm_w if isinstance(a, dict))
-        if n_cves_w > 0:
-            gen_at = dep_window.get("generated_at")
-            if gen_at:
-                try:
-                    dt_gen = datetime.fromisoformat(gen_at.replace("Z", "+00:00"))
-                    if dt_gen.tzinfo is None:
-                        dt_gen = dt_gen.replace(tzinfo=timezone.utc)
-                    out["vulnerability_window_days"] = round(
-                        (datetime.now(timezone.utc) - dt_gen).total_seconds() / 86400, 1
-                    )
-                except Exception:
-                    pass
+    # AUTO-007: Vulnerability Window (Patch Latency) — age of the longest-open
+    # unpatched CVE, from a PERSISTENT per-CVE first-seen ledger (scouts.
+    # vulnerability_window). The old inline version used dependency_audit.json's
+    # `generated_at`, which is stamped fresh on every scan — so a CVE open for
+    # weeks always read back as ~0 days the moment the scanner re-ran. The ledger
+    # makes first_seen persist across runs so the window genuinely grows.
+    try:
+        from agentica_core.scouts.vulnerability_window import update_and_measure as _vuln_window
+        _vw = _vuln_window(runtime_root)
+        if _vw.get("vulnerability_window_days") is not None:
+            out["vulnerability_window_days"] = _vw["vulnerability_window_days"]
+    except Exception:
+        pass
 
     # SWORD-kill_chain_discovery: discover untracked kill chains from telemetry
     try:
@@ -232,25 +218,9 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
     return out
 
 
-def score_security_posture(runtime_root: Path, platform: str = "claude") -> int | float | None:
-    """SWORD-002: return the weighted security scorecard total for *platform* (0-100).
-
-    Reads security_scorecard.json for platforms.<platform>.total.
-    If security_gate_canary.json reports gate_working == False, subtracts 20 from the score.
-    Returns None if the scorecard file is missing or the platform key is absent.
-    """
-    data = runtime_root / "data"
-    sc = _read_json(data / "security_scorecard.json")
-    if not isinstance(sc, dict):
-        return None
-    plat = (sc.get("platforms") or {}).get(platform)
-    if not isinstance(plat, dict) or "total" not in plat:
-        return None
-    total = plat["total"]
-    gc = _read_json(data / "security_gate_canary.json")
-    if isinstance(gc, dict) and gc.get("gate_working") is False:
-        total = total - 20
-    return total
+# score_security_posture removed 2026-07-11 with the Security_Scorecard retirement
+# (dead Windows scripts-tier emitter; content overlapped Guardrail_Blocks +
+# Secrets_Detected + Gate_Canary_Fault).
 
 
 def governance_findings() -> dict:
@@ -335,3 +305,98 @@ def agent_process_count() -> int | None:
                    if ln.strip().lower().startswith(("python", "node")))
     except Exception:
         return None
+
+
+# --- Knowledge layer (Memory) --------------------------------------------------------------
+
+_INDEX_LINK = re.compile(r"\]\(([^)#\s]+\.md)\)")
+
+
+def _load_okf_tools(repo_root: Path):
+    """Load Knowledge/okf/okf_tools.py by explicit path. No sys.path/sys.modules pollution,
+    so tests can point at throwaway roots without hitting Python's import cache."""
+    mod_path = repo_root / "Knowledge" / "okf" / "okf_tools.py"
+    if not mod_path.is_file():
+        return None
+    import importlib.util
+    try:
+        spec = importlib.util.spec_from_file_location("_agentica_okf_tools", mod_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
+
+
+def _index_drift(d: Path) -> int | None:
+    """Symmetric difference between what index.md lists and the concept files on disk.
+    None when there is no index.md to check (that absence is its own verifier finding)."""
+    idx = d / "index.md"
+    if not idx.is_file():
+        return None
+    try:
+        listed = {Path(m).name for m in _INDEX_LINK.findall(idx.read_text(encoding="utf-8"))}
+        actual = {p.name for p in d.glob("*.md")} - {"index.md", "log.md"}
+        return len(listed ^ actual)
+    except OSError:
+        return None
+
+
+def knowledge_signals(repo_root: Path | None = None) -> dict:
+    """Knowledge-layer health signals (platform-independent — compute once per aggregate).
+
+    Reads what the Knowledge layer already publishes: the OKF toolkit's view of
+    Knowledge/vault, vault/me file ages, and the dashboard's graph.json. Missing
+    sources are omitted from the dict — never fabricated (tier-honesty)."""
+    root = repo_root or Path(__file__).resolve().parents[3]
+    out: dict = {}
+    vault = root / "Knowledge" / "vault"
+
+    okf = _load_okf_tools(root)
+    if okf is not None and vault.is_dir():
+        try:
+            total = ok = 0
+            for p in okf.iter_concepts(vault):
+                total += 1
+                if okf.read_concept(vault, p)["conformant"]:
+                    ok += 1
+            if total:
+                out["okf_total_concepts"] = total
+                out["okf_conformance_pct"] = round(100.0 * ok / total, 1)
+        except OSError:
+            pass
+
+    me = vault / "me"
+    try:
+        mtimes = [f.stat().st_mtime for f in me.glob("*.md")]
+    except OSError:
+        mtimes = []
+    if mtimes:
+        out["knowledge_staleness_days"] = round(
+            (datetime.now(timezone.utc).timestamp() - max(mtimes)) / 86400.0, 1)
+
+    drift = _index_drift(me)
+    if drift is not None:
+        out["index_drift"] = drift
+
+    gpath = root / "Knowledge" / "dashboard" / "graph.json"
+    g = _read_json(gpath)
+    if isinstance(g, dict) and isinstance(g.get("nodes"), list):
+        nodes = g["nodes"]
+        linked: set = set()
+        for pair in g.get("links", []):
+            if isinstance(pair, (list, tuple)) and len(pair) == 2:
+                linked.update(pair)
+        mem_idx = [i for i, n in enumerate(nodes) if isinstance(n, dict) and n.get("ring") == 2]
+        if mem_idx:
+            archive = sum(1 for i in mem_idx if nodes[i].get("cluster") == "ARCHIVE")
+            out["archive_ratio_pct"] = round(100.0 * archive / len(mem_idx), 1)
+            out["orphan_concepts"] = sum(
+                1 for i in mem_idx
+                if i not in linked and nodes[i].get("cluster") != "ARCHIVE")
+        try:
+            out["graph_age_days"] = round(
+                (datetime.now(timezone.utc).timestamp() - gpath.stat().st_mtime) / 86400.0, 2)
+        except OSError:
+            pass
+    return out

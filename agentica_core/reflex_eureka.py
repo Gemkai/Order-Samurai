@@ -138,7 +138,12 @@ def analyze(log_path: Path, out_path: Path = _FINDINGS_FILE) -> dict:
 
     # Classify by effectiveness (only count pairs with enough data)
     mature = [s for s in stats if s["total_runs"] >= _MIN_RUNS]
-    gotchas = [s for s in mature if (s["effectiveness_rate"] or 1) < _LOW_IMPROVEMENT_THRESHOLD]
+    # rate is never None for a mature pair (total_runs >= _MIN_RUNS > 0), but guard
+    # explicitly: a 0.0 rate is falsy, so `rate or 1` would wrongly exclude the worst
+    # offender (0% effective) from GOTCHA.
+    gotchas = [s for s in mature
+               if s["effectiveness_rate"] is not None
+               and s["effectiveness_rate"] < _LOW_IMPROVEMENT_THRESHOLD]
     rules   = [s for s in mature if (s["effectiveness_rate"] or 0) >= _HIGH_IMPROVEMENT_THRESHOLD]
     context = [s for s in mature
                if _LOW_IMPROVEMENT_THRESHOLD <= (s["effectiveness_rate"] or 0) < _HIGH_IMPROVEMENT_THRESHOLD]
@@ -297,13 +302,10 @@ def _export_to_lesson_pipeline(content: str, has_findings: bool) -> None:
 if __name__ == "__main__":
     import sys
 
-    _THIS = Path(__file__).resolve()
-    _local_root = _THIS.parents[1]
-    if (_local_root / "config").exists() and not (_local_root / "Order Samurai").exists():
-        _default_root = _local_root
-    else:
-        _default_root = _local_root / "Order Samurai"
-    _root = os.environ.get("ORDER_SAMURAI_ROOT", str(_default_root))
+    _root = os.environ.get(
+        "ORDER_SAMURAI_ROOT",
+        str(Path(__file__).resolve().parents[1] / "Order Samurai"),
+    )
     _log_path = Path(_root) / "state" / "exec_log.jsonl"
     result = analyze(_log_path)
     print(

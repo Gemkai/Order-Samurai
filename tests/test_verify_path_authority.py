@@ -44,7 +44,7 @@ class VerifyPathAuthorityTests(unittest.TestCase):
         live_root.mkdir(parents=True, exist_ok=True)
         bad_file = live_root / "bad.py"
         bad_file.write_text(
-            'ROOT = "C:\\\\Users\\\\exampleuser\\\\Desktop\\\\Projects\\\\Order Samurai"\n',
+            'ROOT = "C:\\\\Users\\\\example\\\\Desktop\\\\Projects\\\\Order Samurai"\n',
             encoding="utf-8",
         )
 

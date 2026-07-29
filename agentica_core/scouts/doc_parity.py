@@ -34,6 +34,13 @@ def _changed_py_files() -> list[str]:
             "--name-only",
             "--diff-filter=AM",
             "--format=",
+            # Scope to the Order Samurai subtree. REPO is a subdirectory of the
+            # enclosing AgenticaOS repo, so `git -C REPO` resolves to that repo's
+            # toplevel and would otherwise count every .py changed repo-wide
+            # (636 vs the 8 actually under Order Samurai). The `.` pathspec is
+            # relative to REPO and limits the walk to this subtree.
+            "--",
+            ".",
         ],
         capture_output=True,
         text=True,
@@ -85,9 +92,26 @@ def _has_doc(py_path: str) -> bool:
     return False
 
 
+# Solution docs describe changes to *runtime solution code*. Per
+# config/hub_surface_matrix.json, execution/ and scouts/ are the `runtime`
+# surfaces; tests/ is `quality_gate`, Research/ is `knowledge_source`, bin/ is
+# `operator`, and docs/artifacts/state/reports/backlog/prompts/soji have their
+# own contracts. Doc-parity governs runtime code only, so a change to a test or
+# a research note does not, by itself, demand a solution doc.
+_SOLUTION_CODE_SURFACES = ("execution/", "scouts/")
+
+
+def _is_solution_code(py_path: str) -> bool:
+    """True if the changed .py is runtime solution code (execution/ or scouts/),
+    matched on the Order-Samurai-relative segment of the path."""
+    norm = py_path.replace("\\", "/")
+    tail = norm.split("Order Samurai/", 1)[-1]
+    return tail.startswith(_SOLUTION_CODE_SURFACES)
+
+
 def run() -> dict:
     """Scout entry point. Returns doc_parity_issues count and stale_files list."""
-    changed = _changed_py_files()
+    changed = [f for f in _changed_py_files() if _is_solution_code(f)]
     stale: list[str] = [f for f in changed if not _has_doc(f)]
     return {
         "doc_parity_issues": len(stale),

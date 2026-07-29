@@ -10,7 +10,7 @@ from __future__ import annotations
 import importlib
 from typing import Callable
 
-from .types import VerifierResult
+from .core_types import VerifierResult
 
 Verifier = Callable[[], "list[VerifierResult]"]
 _VALID_STATUS = {"OK", "WARN", "FAIL"}
@@ -58,6 +58,13 @@ def run_all(verifiers: list[Verifier]) -> list[VerifierResult]:
             raw_results = vf()
         except Exception as exc:  # crashing verifier -> FAIL, not abort
             results.append({"status": "FAIL", "label": source, "detail": f"verifier raised: {exc!r}"})
+            continue
+        # A verifier that returns a non-list (e.g. None from falling off the end,
+        # or a bare dict) must also be isolated as a single FAIL — never iterated
+        # into a TypeError abort or per-key bogus results.
+        if not isinstance(raw_results, (list, tuple)):
+            results.append({"status": "FAIL", "label": source,
+                            "detail": f"verifier returned non-list: {raw_results!r}"})
             continue
         for raw in raw_results:
             results.append(normalize_result(raw, source))

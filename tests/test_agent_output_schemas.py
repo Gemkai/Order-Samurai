@@ -28,7 +28,12 @@ import pytest
 
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO))
-_GOVERNANCE = Path(__file__).resolve().parents[2]
+# Resolve by marker, not by depth: parents[2] is Governance/ in the live tree but
+# points OUTSIDE the repo in the flat exported product tree. See tests/_layout.py.
+sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+from _layout import governance_root  # noqa: E402
+
+_GOVERNANCE = governance_root(__file__)
 if str(_GOVERNANCE) not in sys.path:
     sys.path.insert(0, str(_GOVERNANCE))
 

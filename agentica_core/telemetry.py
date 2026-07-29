@@ -34,7 +34,11 @@ REQUIRED_FIELDS: dict[str, type | tuple[type, ...]] = {
 # orchestration-level (see Order Samurai/Research/METRICS.md instrumentation gaps).
 OPTIONAL_FIELDS: dict[str, type | tuple[type, ...]] = {
     "error": str,
+    "exit_code": int,           # harness exit code; presence proves the error channel is wired (Error_Rate falsifiability)
     "session_id": str,
+    "turns": int,               # user back-and-forth prompt turns this session (cumulative
+                                # snapshot like tool_calls — a resumed session re-emits higher;
+                                # Avg_Session_Turns reducer takes max per session). 0 = not parsed.
     "tool_calls": int,
     "tool_calls_list": list,
     "tool_latencies": list,
@@ -58,6 +62,7 @@ OPTIONAL_FIELDS: dict[str, type | tuple[type, ...]] = {
     "output_words": int,        # agent output word count (slop-density denominator)
     "frustration_signals": int, # user turns expressing dissatisfaction
     "rework_turns": int,        # user turns requesting correction/redo
+    "stop_hook_refires": int,   # Stop/goal-hook re-fire loops (assistant self-repetition against a stuck hook); emitter = stop-hook-breaker (CP-9)
     "skills_used": list,        # skill names invoked this session (Simplify Pass, dead-skill detection)
     "rule_violations": int,     # CLAUDE.md principle violations fired during this session window
     # git-platform fields (emitted by the post-commit hook; absent in session-level records)
@@ -65,9 +70,18 @@ OPTIONAL_FIELDS: dict[str, type | tuple[type, ...]] = {
     "files_changed": int,       # files changed in the commit
     "insertions": int,          # lines inserted
     "deletions": int,           # lines deleted
+    # Sword / security signals:
+    "dangerous_tool_invocations": int,  # PreToolUse guardrail blocks this session (source:
+                                         # count_dangerous_tool_invocations(), reading the harness's
+                                         # own ~/.claude/data/hook_timings.jsonl — hook=="guardrails",
+                                         # status=="blocked"/exit_code==2; Research/METRICS.md Sword >
+                                         # Agent Operation > Dangerous Tool Invocations, +FIELD)
 }
 
-VALID_TIERS = {"AUTO", "DERIVED", "SIMULATED", "SKILL"}
+# LLM-JUDGED: an LLM classifier-judge score (evals/), reproducible only up to model
+# variance — honest-lower than deterministic DERIVED/AUTO, honest-higher than SIMULATED.
+# Ratified 2026-07-15 for the Arts output-quality metrics; carries a "· llm-judged" badge.
+VALID_TIERS = {"AUTO", "DERIVED", "SIMULATED", "SKILL", "LLM-JUDGED"}
 VALID_TRENDS = {"up", "down", "neutral"}
 _METRIC_REQUIRED = {"val", "delta", "trend", "history", "tier"}
 
@@ -79,6 +93,9 @@ AUTONOMIC_EVENTS = {
     "permission_escalation", "loop_breaker_fire", "hook_failure", "scope_change",
     "compaction", "mechanism_run", "rule_violation",
     "pipeline_error",  # emitted by the Order Samurai autonomic_events_scout
+    # knowledge-layer recall telemetry — schema first; the hook emitter is staged behind
+    # the control-plane gate (see HANDOFF 2026-07-06 <BRAND>³ governance wiring):
+    "memory_recall", "recall_miss", "memory_contradicted",
 }
 EVENT_REQUIRED: dict[str, type | tuple[type, ...]] = {"timestamp": str, "event": str}
 
@@ -197,3 +214,47 @@ def append_event(event: dict[str, Any], path: Path | None = None) -> Path:
     with target.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(event) + "\n")
     return target
+
+
+# --- Sword / security signal readers ------------------------------------------------------
+# Read-only over the harness's own control-plane logs under ~/.claude/data/ — the pillar
+# never writes there (see prompts/ronin_sword.md scope boundary).
+
+def default_hook_timings_path() -> Path:
+    """~/.claude/data/hook_timings.jsonl — every PreToolUse/PostToolUse hook dispatch,
+    written by hook_dispatch.py's own `_log_timing` (real, pre-existing harness log;
+    not something this pillar emits). Each record: {ts, hook, event, status, duration_ms,
+    exit_code, platform}."""
+    return Path.home() / ".claude" / "data" / "hook_timings.jsonl"
+
+
+def count_dangerous_tool_invocations(path: Path | None = None) -> int:
+    """Count real `guardrails` PreToolUse hook blocks (status=="blocked", i.e. exit_code==2 —
+    a dangerous Bash/git pattern or a protected-path Read was stopped) recorded in
+    hook_timings.jsonl. This is the FIELD-tier source for Sword's Dangerous_Tool_Invocations
+    (Research/METRICS.md): a real signal the harness already writes on every dangerous-command
+    block, not a fabricated count. Fail-open like every other reader in this module — an
+    absent/unreadable log returns 0, it does not raise."""
+    target = path or default_hook_timings_path()
+    if not target.exists():
+        return 0
+    count = 0
+    try:
+        with target.open("r", encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(rec, dict):
+                    continue
+                if rec.get("hook") != "guardrails":
+                    continue
+                if rec.get("status") == "blocked" or rec.get("exit_code") == 2:
+                    count += 1
+    except OSError:
+        return 0
+    return count

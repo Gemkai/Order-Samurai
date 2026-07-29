@@ -16,11 +16,9 @@ def atomic_json_write(path: Path, data: Any) -> None:
     try:
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-        if path.exists():
-            try:
-                path.unlink()
-            except OSError:
-                pass
+        # os.replace (Path.replace) atomically replaces an existing destination on
+        # POSIX and Windows. Unlinking first would open a window where `path` does
+        # not exist — the exact torn/missing read this helper prevents.
         tmp.replace(path)
     except Exception:
         if tmp.exists():

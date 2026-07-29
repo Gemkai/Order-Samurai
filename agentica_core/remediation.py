@@ -32,12 +32,9 @@ from .telemetry import parse_ts
 import os
 
 _THIS = Path(__file__).resolve()
-_local_root = _THIS.parents[1]
-if (_local_root / "config").exists() and not (_local_root / "Order Samurai").exists():
-    _default_root = _local_root
-else:
-    _default_root = _local_root / "Order Samurai"
-_OS_ROOT = Path(os.environ.get("ORDER_SAMURAI_ROOT", str(_default_root)))
+# exec_log.jsonl is written by the API server each time a dashboard skill button is clicked.
+_OS_ROOT = Path(os.environ.get("ORDER_SAMURAI_ROOT",
+    str(_THIS.parents[1] / "Order Samurai")))
 _EXEC_LOG = _OS_ROOT / "state" / "exec_log.jsonl"
 
 
@@ -92,8 +89,13 @@ def _has_fire_time_measurement(row: dict) -> bool:
 def _skill_uses(records: list[dict]) -> dict[str, list[tuple[datetime, str]]]:
     """skill name -> sorted (timestamp, actor) pairs.
 
-    Actor is "ronin" when the action was triggered by the reflex engine
-    automatically, "human" for dashboard button clicks or AI session use.
+    Actor is "reflex" when the action was triggered by the always-on reflex
+    engine automatically (threshold breach, or its ronin-mode regression
+    bridge), "human" for dashboard button clicks or AI session use. NOTE:
+    despite the name, this is NEVER the Sensei/ronin-mode backlog-implementation
+    worker (bin/ronin-pillar, subagent_type="ronin") — that path commits directly
+    via git and never touches exec_log.jsonl, so it is invisible here by design;
+    see Backlog_Burn_Rate for that work instead (Research/METRICS.md, 2026-07-14).
 
     Two sources:
       1. Telemetry records with a ``skills_used`` list (emitted by AI sessions).
@@ -102,12 +104,24 @@ def _skill_uses(records: list[dict]) -> dict[str, list[tuple[datetime, str]]]:
     """
     uses: dict[str, list[tuple[datetime, str]]] = {}
 
-    # Source 1: telemetry records (Claude Code sessions — human-initiated)
+    # Source 1: telemetry records (Claude Code sessions — human-initiated).
+    # The SessionEnd emitter re-emits a session's ENTIRE skills_used list on each
+    # resume, so without per-(session, skill) dedup one invocation reappears as a
+    # fresh "use" at every later emit timestamp — phantom uses that can land in
+    # later snapshot windows. Keep the EARLIEST timestamp per (session, skill);
+    # records without a real session identity keep one use per record.
+    seen_sess_skill: set[tuple[str, str]] = set()
     for r in records:
         dt = parse_ts(r.get("timestamp"))
         if not dt:
             continue
+        sid = r.get("session_id")
+        real_sid = sid if sid and sid != "local-session" else None
         for s in (r.get("skills_used") or []):
+            if real_sid:
+                if (real_sid, s) in seen_sess_skill:
+                    continue
+                seen_sess_skill.add((real_sid, s))
             uses.setdefault(s, []).append((dt, "human"))
 
     # Source 2: dashboard exec_log (best-effort; absent on first run). Rows carrying a
@@ -121,14 +135,14 @@ def _skill_uses(records: list[dict]) -> dict[str, list[tuple[datetime, str]]]:
         dt = parse_ts(row.get("timestamp"))
         skill = row.get("skill", "")
         if dt and skill:
-            actor = "ronin" if row.get("source") == "reflex_engine" else "human"
+            actor = "reflex" if row.get("source") == "reflex_engine" else "human"
             uses.setdefault(skill, []).append((dt, actor))
 
     for s in uses:
-        # Sort by timestamp; break ties so exec_log (ronin/human) entries sort before
+        # Sort by timestamp; break ties so exec_log (reflex/human) entries sort before
         # telemetry entries — exec_log has ground-truth actor attribution and should
-        # win deduplication when Ronin fires a skill that also appears in telemetry.
-        uses[s].sort(key=lambda x: (x[0], 0 if x[1] == "ronin" else 1))
+        # win deduplication when the reflex engine fires a skill that also appears in telemetry.
+        uses[s].sort(key=lambda x: (x[0], 0 if x[1] == "reflex" else 1))
     return uses
 
 
@@ -192,7 +206,7 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
             "metric": metric, "skill": skill, "command": row.get("command", ""),
             "before": round(va, 2), "after": round(vc, 2), "outcome": outcome,
             "used_at": dt.isoformat(),
-            "actor": "ronin" if row.get("source") == "reflex_engine" else "human",
+            "actor": "reflex" if row.get("source") == "reflex_engine" else "human",
         })
 
     for metric, rem in insights.REMEDIATION.items():
@@ -211,29 +225,38 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
         tl.sort()
         if len(tl) < 2:
             continue
-        # Deduplicate: track (actor, before_val, after_val) per metric to prevent multiple
-        # telemetry sessions logging the same skill use in the same snapshot window from
-        # inflating counts. Actor is included so ronin and human runs are deduplicated
-        # separately — a ronin run should not hide a human run or vice versa.
-        seen_pairs: set[tuple[str, float, float]] = set()
+        # Deduplicate per snapshot WINDOW (before_ts, after_ts): the metric's
+        # movement across one window can only be attributed once, however many
+        # log entries land inside it. Keyed on snapshot TIMESTAMPS, not values —
+        # value-keyed dedup conflated distinct windows whose before/after happened
+        # to be equal, hiding real repeat runs (the reflex engine's 2026-06-09..14
+        # simplify successes were invisible on the dashboard). Actor is NOT in the
+        # key: a reflex-fired run also lands in session telemetry as a "human" use,
+        # so actor-keyed dedup recorded one physical run twice. When both actors
+        # share a window, reflex wins — exec_log has ground-truth attribution.
+        window_events: dict[tuple[datetime, datetime], dict] = {}
         for ub, actor in uses[skill]:
             before = [(dt, v) for dt, v in tl if dt <= ub and insights._health(v, rule) < 40]
             after = [(dt, v) for dt, v in tl if dt > ub]
             if not before or not after:
                 continue  # skill not used while flagged, or no post-use snapshot
             va, vc = before[-1][1], after[0][1]
-            pair = (actor, round(va, 2), round(vc, 2))
-            if pair in seen_pairs:
-                continue  # same actor+window already recorded; skip duplicate
-            seen_pairs.add(pair)
+            window = (before[-1][0], after[0][0])
+            existing = window_events.get(window)
+            if existing is not None:
+                if actor == "reflex" and existing["actor"] == "human":
+                    existing["actor"] = "reflex"
+                    existing["used_at"] = ub.isoformat()
+                continue
             improved = (vc > va) if rule["dir"] == "higher" else (vc < va)
             worse = (vc < va) if rule["dir"] == "higher" else (vc > va)
             outcome = "improved" if improved else ("regressed" if worse else "flat")
-            events.append({
+            window_events[window] = {
                 "metric": metric, "skill": skill, "command": rem["command"],
                 "before": round(va, 2), "after": round(vc, 2), "outcome": outcome,
                 "used_at": ub.isoformat(), "actor": actor,
-            })
+            }
+        events.extend(window_events.values())
 
     applied = len(events)
     improved = sum(1 for e in events if e["outcome"] == "improved")
