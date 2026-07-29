@@ -26,7 +26,13 @@ import os
 import urllib.error
 import urllib.request
 
-from agentica_core.brain_context import load_brain_context
+def load_brain_context(*args, **kwargs) -> str:
+    try:
+        mod = __import__("agentica_core.brain_context", fromlist=["load_brain_context"])
+        return mod.load_brain_context(*args, **kwargs)
+    except Exception:
+        return ""
+
 from agentica_core.llm.local_guards import (
     LOCAL_TIMEOUT_SEC,
     extract_message_text,
