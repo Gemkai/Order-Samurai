@@ -102,9 +102,27 @@ class ExtractSignalsTests(unittest.TestCase):
         _, _, tools = extract_signals(_session(tools=4))
         self.assertEqual(tools, 4)
 
+    def test_counts_error_stop_reasons_from_list_snapshot(self) -> None:
+        # session_tracker.py writes stop_reasons as a LIST (one append per stop),
+        # so a real snapshot with any recorded stop reason must score, not crash.
+        session = {"turn_count": 10, "stop_reasons": ["end_turn", "error_max_tokens"]}
+        self.assertEqual(extract_signals(session), (10, 1, 0))
+
     def test_tolerates_null_collections(self) -> None:
         session = {"turn_count": 2, "stop_reasons": None, "tools_used": None}
         self.assertEqual(extract_signals(session), (2, 0, 0))
+
+    def test_reads_turns_field_from_live_session_tracker_snapshot(self) -> None:
+        # The live producer of the default snapshot (~/.claude/scripts/
+        # session_tracker.py) writes "turns", never "turn_count". Without the
+        # turn signal a 45-turn session scores its 0-turn floor AND one error
+        # stop reason computes error_rate = 1/max(0,1) = 100%.
+        session = {
+            "turns": 45,
+            "stop_reasons": ["end_turn", "error_max_tokens"],
+            "tools_used": {"Read": 3, "Bash": 2},
+        }
+        self.assertEqual(extract_signals(session), (45, 1, 2))
 
 
 # ---------------------------------------------------------------------------

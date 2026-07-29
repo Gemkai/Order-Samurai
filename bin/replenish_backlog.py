@@ -8,15 +8,20 @@ keyword density, and proposes the top 5 into PROPOSED_BACKLOG.json.
 
 import argparse
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-METRICS_MD = PROJECT_ROOT / "Research" / "METRICS.md"
-DOJO_STATE = PROJECT_ROOT / "state" / "DOJO_STATE.json"
-PROPOSED_BACKLOG = PROJECT_ROOT / "state" / "PROPOSED_BACKLOG.json"
+METRICS_MD = PROJECT_ROOT / "Research" / "METRICS.md"   # read-only source doc — worktree copy is fine
+# State is canonical in the MAIN tree; meditation_overnight.sh exports MEDITATION_STATE_DIR when the
+# cycle runs in a worktree so the proposals a later `bin/ronin promote` reads (from the main tree)
+# actually land there, not in the disposable worktree. Falls back to script-relative for manual use.
+_STATE_DIR = Path(os.environ["MEDITATION_STATE_DIR"]) if os.environ.get("MEDITATION_STATE_DIR") else PROJECT_ROOT / "state"
+MEDITATION_STATE = _STATE_DIR / "MEDITATION_STATE.json"
+PROPOSED_BACKLOG = _STATE_DIR / "PROPOSED_BACKLOG.json"
 
 SCORE_KEYWORDS = {"security", "token", "cost", "error", "latency", "drift"}
 
@@ -64,10 +69,10 @@ def score_row(title: str, measures: str) -> int:
 
 
 def load_existing_titles() -> set:
-    """Return lowercased title substrings already in DOJO_STATE backlog."""
+    """Return lowercased title substrings already in MEDITATION_STATE backlog."""
     titles = set()
     try:
-        data = json.loads(DOJO_STATE.read_text(encoding="utf-8"))
+        data = json.loads(MEDITATION_STATE.read_text(encoding="utf-8"))
         for item in data.get("backlog", []):
             titles.add(item.get("title", "").lower())
     except Exception:
@@ -79,7 +84,7 @@ def load_proposed() -> dict:
     try:
         return json.loads(PROPOSED_BACKLOG.read_text(encoding="utf-8"))
     except Exception:
-        return {"generated_at": "", "note": "Run bin/ronin propose to push approved:true items to DOJO_STATE.json", "items": []}
+        return {"generated_at": "", "note": "Run bin/ronin propose to push approved:true items to MEDITATION_STATE.json", "items": []}
 
 
 def already_proposed(title: str, proposed_items: list) -> bool:
@@ -120,8 +125,10 @@ def parse_candidates(existing_titles: set) -> list:
         measures = m.group(2).strip()
         status = m.group(4).strip()
 
-        # Skip rows that are already LIVE — they don't need backlog work
-        if status.upper() == "LIVE":
+        # Skip rows that are already LIVE — they don't need backlog work.
+        # Normalize markdown/whitespace so "**LIVE**", "LIVE (approx)", and
+        # "**LIVE** (AUTO-005 ...)" all count, not just the bare "LIVE" string.
+        if status.upper().strip("* `").startswith("LIVE"):
             continue
 
         # Skip header rows and separator rows
@@ -130,13 +137,13 @@ def parse_candidates(existing_titles: set) -> list:
         if re.match(r"^[-:]+$", raw_title):
             continue
 
-        # Skip if already in the dojo backlog (keyword match)
+        # Skip if already in the meditation backlog (keyword match)
         title_lower = raw_title.lower()
-        already_in_dojo = any(
-            title_lower in existing or existing in title_lower
+        already_in_meditation = any(
+            existing and (title_lower in existing or existing in title_lower)
             for existing in existing_titles
         )
-        if already_in_dojo:
+        if already_in_meditation:
             continue
 
         pillar = infer_pillar(raw_title + " " + measures + " " + current_pillar_hint)
@@ -208,8 +215,8 @@ def main():
     if not METRICS_MD.exists():
         print(f"ERROR: METRICS.md not found at {METRICS_MD}", file=sys.stderr)
         sys.exit(1)
-    if not DOJO_STATE.exists():
-        print(f"ERROR: DOJO_STATE.json not found at {DOJO_STATE}", file=sys.stderr)
+    if not MEDITATION_STATE.exists():
+        print(f"ERROR: MEDITATION_STATE.json not found at {MEDITATION_STATE}", file=sys.stderr)
         sys.exit(1)
 
     existing_titles = load_existing_titles()

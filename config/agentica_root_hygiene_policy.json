@@ -1,0 +1,68 @@
+{
+ "version": 1,
+ "name": "Agentica-OS Repo Root Hygiene Policy",
+ "description": "Classifies every allowed top-level entry of the AgenticaOS repo root. Anything unclassified surfaces as a WARN in doctor.py (verify_agentica_root_hygiene). File entries may use glob patterns (e.g. HANDOFF-*.md for the single active workstream handoff allowed at root).",
+ "directories": {
+  "live": [
+   "Data",
+   "Execution",
+   "Governance",
+   "Knowledge"
+  ],
+  "support": [
+   "docs",
+   "sub-bundles"
+  ],
+  "state": [
+   ".audit-state",
+   ".claude",
+   ".planning",
+   ".pytest_cache",
+   ".tmp",
+   "scratch"
+  ],
+  "dependency": [
+   ".venv"
+  ],
+  "metadata": [
+   ".git",
+   ".github"
+  ]
+ },
+ "files": {
+  "metadata": [
+   ".DS_Store",
+   ".gitignore",
+   ".gitmodules",
+   "AGENTS.md",
+   "CLAUDE.md",
+   "PROJECT_FACTS.md",
+   "README.md",
+   "SHARED_NOTES.md"
+  ],
+  "state": [
+   ".quality_register.md",
+   "STATE.md",
+   "HANDOFF-*.md"
+  ],
+  "support": [
+   "bootstrap-mac.sh",
+   "install_gemma4_models.sh",
+   "requirements-dev.txt"
+  ]
+ },
+ "requiredDirectories": [
+  "Data",
+  "Execution",
+  "Governance",
+  "Knowledge",
+  "docs"
+ ],
+ "requiredFiles": [
+  "AGENTS.md",
+  "CLAUDE.md",
+  "README.md",
+  "STATE.md"
+ ],
+ "boundaryRules": []
+}

@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "name": "Order Samurai Hub Surface Matrix",
+  "description": "Authoritative classification of every major surface in the Order Samurai governance hub. Each surface has exactly one role, one owner, and one discoverability contract. Paths are repo-relative to the Order Samurai root and resolve on disk. Hand-maintained: answers policy/intent questions (who owns a surface, how it is discovered), not existence questions.",
+  "surfaceRoles": [
+    "runtime",
+    "operator",
+    "registry",
+    "data_record",
+    "generated_truth",
+    "knowledge_source",
+    "quality_gate",
+    "archive"
+  ],
+  "surfaces": [
+    {
+      "path": "execution",
+      "role": "runtime",
+      "owner": "Order Samurai execution plane",
+      "discoverabilityContract": "deterministic scripts and layer verifiers, reached via `python -m execution.<name>`",
+      "notes": "Blessed runtime. Scoring, verifiers, doctor, runtime_paths. No exploratory or archive code may live here."
+    },
+    {
+      "path": "scouts",
+      "role": "runtime",
+      "owner": "Order Samurai execution plane",
+      "discoverabilityContract": "read-only ronin pillar scouts, invoked by sensei-cycle",
+      "notes": "bow/sword/brush/arts live re-measurement probes."
+    },
+    {
+      "path": "soji",
+      "role": "runtime",
+      "owner": "Order Samurai execution plane",
+      "discoverabilityContract": "janitor/cleanup routines, invoked by scheduled hygiene passes",
+      "notes": "Soji = the dojo cleaning discipline; keeps state and artifacts tidy."
+    },
+    {
+      "path": "bin",
+      "role": "operator",
+      "owner": "Order Samurai operator surface",
+      "discoverabilityContract": "human/agent CLI entrypoints (e.g. ronin-local) on PATH via bootstrap",
+      "notes": "Thin launchers only; real logic lives in execution/."
+    },
+    {
+      "path": "prompts",
+      "role": "operator",
+      "owner": "Order Samurai operator surface",
+      "discoverabilityContract": "hand-authored prompt templates referenced by name from execution scripts",
+      "notes": "Intent artifacts. Not generated."
+    },
+    {
+      "path": "config",
+      "role": "registry",
+      "owner": "Governance control plane",
+      "discoverabilityContract": "policy + scorecard + surface-matrix JSON, loaded by verifiers via runtime_paths",
+      "notes": "Mix of hand-maintained policy and generated control-plane metadata; the authoritative what-is-allowed layer."
+    },
+    {
+      "path": "backlog",
+      "role": "registry",
+      "owner": "Governance control plane",
+      "discoverabilityContract": "proposed reflex/reducer backlog consumed by the OS metric-intake pipeline",
+      "notes": "PROPOSED_BACKLOG is auto-generated; ronin proposes, humans ratify into the live registry."
+    },
+    {
+      "path": "state",
+      "role": "data_record",
+      "owner": "Data layer",
+      "discoverabilityContract": "runtime state snapshots read by scouts and doctor; never hand-edited",
+      "notes": "Volatile telemetry/state. Answers existence questions, not policy."
+    },
+    {
+      "path": "reports",
+      "role": "data_record",
+      "owner": "Data layer",
+      "discoverabilityContract": "generated governance and anti-drift reports, referenced by documentation_parity",
+      "notes": "Output records; regenerated, not authored."
+    },
+    {
+      "path": "artifacts",
+      "role": "generated_truth",
+      "owner": "Order Samurai execution plane",
+      "discoverabilityContract": "score_architecture.py emits architecture_score.json/.md here; consumed by aggregate",
+      "notes": "Generated truth: answers existence/state questions only. Must never be hand-edited."
+    },
+    {
+      "path": "Research",
+      "role": "knowledge_source",
+      "owner": "Knowledge layer",
+      "discoverabilityContract": "research insights and proposed reducers, cited before implementing metric changes",
+      "notes": "Durable analysis inputs to governance decisions."
+    },
+    {
+      "path": "docs",
+      "role": "knowledge_source",
+      "owner": "Knowledge layer",
+      "discoverabilityContract": "domain solution docs with YAML frontmatter, searchable before debugging",
+      "notes": "Human-readable architecture and solved-problem knowledge."
+    },
+    {
+      "path": "tests",
+      "role": "quality_gate",
+      "owner": "Order Samurai execution plane",
+      "discoverabilityContract": "pytest suite gating execution/scouts changes",
+      "notes": "Enforces the verifier and scoring contracts; must pass before promotion."
+    }
+  ],
+  "boundaryInvariants": [
+    "artifacts/ and state/ are generated_truth/data_record and must never be hand-edited.",
+    "config/ policy files are the only authoritative what-is-allowed source; execution reads, never inlines, them.",
+    "Every surface listed here resolves on disk relative to the Order Samurai root."
+  ]
+}

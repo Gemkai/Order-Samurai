@@ -1,0 +1,52 @@
+[
+  {
+    "_fixture_note": "Contract-derived, NOT corpus-derived. No scout-finding corpus exists (state/ronin_results/*.json are 4 remediation-item singletons with divergent shapes). Source of truth: the Output block of sub-bundles/claude/agents/ronin-*.md and sensei-cycle SKILL.md Steps 3-4. Replace with captured rows once a real scout run is recorded.",
+    "reflex_id": "metric:bow:Error_Rate",
+    "real": true,
+    "evidence": {
+      "re_measured": 0.31,
+      "snapshot": 0.29,
+      "source_file": "Governance/Order Samurai/state/error_triage.json",
+      "window_days": 30,
+      "skipped_lines": 0
+    },
+    "root_cause": "Calibrated error rate stayed above the 0.25 threshold across the full window; the snapshot understated it by one partial day.",
+    "proposed_fix": "/verifier-repair",
+    "target_repo": "order-samurai",
+    "risk_tier": "code",
+    "fixability": "skill"
+  },
+  {
+    "_fixture_note": "Phantom: live re-measurement is within threshold, so the snapshot was stale. proposed_fix is null by contract and fixability suppresses rather than remediates.",
+    "reflex_id": "metric:arts:Slop_Density",
+    "real": false,
+    "evidence": {
+      "re_measured": 0.04,
+      "snapshot": 0.18,
+      "source_file": "Governance/Order Samurai/state/slop_strip.json",
+      "window_days": 30,
+      "skipped_lines": 0
+    },
+    "root_cause": "Snapshot predates the last /slop-strip run; live value is inside threshold.",
+    "proposed_fix": null,
+    "target_repo": "order-samurai",
+    "risk_tier": "readonly",
+    "fixability": "phantom"
+  },
+  {
+    "_fixture_note": "Structural: routes to PROPOSED_BACKLOG escalation (SKILL.md Step 7), never to an autonomous skill spawn. risk_tier security means the fix is manual regardless of fixability.",
+    "reflex_id": "metric:sword:Guardrail_Blocks",
+    "real": true,
+    "evidence": {
+      "re_measured": "source unresolvable",
+      "snapshot": 7,
+      "source_file": "Governance/agentica_core/scouts/__init__.py",
+      "window_days": 30
+    },
+    "root_cause": "Metric's live source file could not be resolved from the scouts registry, so the breach cannot be attributed to a fixable defect.",
+    "proposed_fix": "/audit-mechanisms",
+    "target_repo": "agentica-os",
+    "risk_tier": "security",
+    "fixability": "structural"
+  }
+]

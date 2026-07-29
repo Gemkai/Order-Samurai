@@ -1,0 +1,13 @@
+{
+  "id": "c2_ignores_healthy_sessions",
+  "group": "cliff_reducer",
+  "kind": "guard",
+  "description": "Sessions in the healthy 100-120k band produce zero cliff events (held-out).",
+  "grounded_in": "Context_Cliff_Events reducer semantics (brush metric, fdf761f)",
+  "sensitive_to": [
+    "context_cliff_token_threshold"
+  ],
+  "fixture": "c2_healthy_sessions",
+  "grader": "graders.check_c2_ignores_healthy_sessions",
+  "repeats": 1
+}

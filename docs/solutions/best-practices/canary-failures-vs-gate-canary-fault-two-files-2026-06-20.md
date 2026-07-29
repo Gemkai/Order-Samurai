@@ -33,7 +33,7 @@ Documenting it (this file) is the resolution. The real defects are downstream (b
 | `Canary_Failures` | `~/.claude/data/canary_status.json` (`failed`) | `behavioral_canary.py` → `run_canary_scout.py` (SessionStart, regenerates when ≥7d stale) | # behavioral-canary skills that did not pass their last suite run | **5** (history [5,5,5,5], stuck) |
 | `Gate_Canary_Fault` / `Canary_Health` | `~/.claude/data/security_gate_canary.json` | `/security-gate` skill | Is the security-gate self-test working + fresh (≤max_age_days)? | **0** (healthy; last_run 2026-06-06, max_age 35) |
 
-Wiring (live Governance kernel, `~/Desktop\Agentica OS\Governance`):
+Wiring (live Governance kernel, `C:\Users\example\Desktop\Agentica OS\Governance`):
 - `agentica_core/scouts/__init__.py:80-82` reads `canary_status.json` → `out["canary_failures"] = failed`
 - `agentica_core/scouts/__init__.py:86-99` reads `security_gate_canary.json` → `out["gate_canary_fault"]`
 - `agentica_core/aggregate.py:1344-1347` maps both into the sword "Audit Trail" group.

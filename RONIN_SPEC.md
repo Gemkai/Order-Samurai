@@ -61,16 +61,16 @@
 
 ## Terminology
 
-The dojo has three nested units of work. Naming them precisely prevents the drift that
+The meditation cycle has three nested units of work. Naming them precisely prevents the drift that
 makes "run the cycle" / "the sweep" / "the session" ambiguous.
 
-- **Keiko** (稽古) — *one bounded run of the dojo*: a `run_id` with a start and deadline that
-  executes a series of cycles (e.g. `bin/dojo_overnight.sh`, the ~6-hour batch of up to 60
-  cycles, or a shorter manual sitting). "Keiko" is the dojo-native word for a training session.
+- **Keiko** (稽古) — *one bounded run of the meditation cycle*: a `run_id` with a start and deadline
+  that executes a series of cycles (e.g. `bin/meditation_overnight.sh`, the ~6-hour batch of up to 60
+  cycles, or a shorter manual sitting). "Keiko" is the traditional Japanese word for a training session.
   **Do not call this a "session"** — that term is reserved for telemetry/work sessions
   (`Session_Count`, `Avg_Session_Turns`, Claude/Codex/Antigravity work sessions) and would collide.
 - **Cycle** — *one iteration inside a keiko*: one ronin, one pillar, one work-unit, advanced through
-  Steps B→F of `prompts/dojo_cycle.md`. Tracked by the `cycle` counter in `state/DOJO_STATE.json`.
+  Steps B→F of `prompts/meditation_cycle.md`. Tracked by the `cycle` counter in `state/MEDITATION_STATE.json`.
   The dashboard **RUN button triggers a single cycle**, not a keiko.
 - **Work-unit** — *one backlog item* (`kind` ∈ stream/field/scout/skill) a cycle advances
   `todo → doing → done`. A completed, timestamped work-unit is one calibration sample for the

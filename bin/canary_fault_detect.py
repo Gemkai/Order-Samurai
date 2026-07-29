@@ -101,7 +101,11 @@ def _classify_class(state: dict | None, now: datetime, default_max_age_days: int
     if parsed is None:
         return "corrupt"
     age = (now - parsed).days
-    max_age = state.get("max_age_days", default_max_age_days)
+    # None-sentinel (not `or`): an explicit "max_age_days": null falls back to the
+    # default, but a configured 0 stays 0 — `or` would silently widen a must-run-
+    # daily canary to the 7-day default (fail-open on a safety mechanism).
+    ma = state.get("max_age_days")
+    max_age = default_max_age_days if ma is None else ma
     return "stale" if age > max_age else "healthy"
 
 

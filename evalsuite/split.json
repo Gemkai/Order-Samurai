@@ -1,0 +1,19 @@
+{
+  "frozen_at": "2026-07-16",
+  "held_in": [
+    "a1_recent_retry_detected",
+    "a2_deep_retry_detected",
+    "a3_no_false_retry",
+    "b1_judge_valid_label",
+    "c1_counts_heavy_sessions",
+    "d1_parks_permanent_failure",
+    "d2_recovers_transient_error"
+  ],
+  "held_out": [
+    "a4_deep_errored_detected",
+    "c2_ignores_healthy_sessions",
+    "d3_survives_quota_window",
+    "d4_bounds_daily_thrash"
+  ],
+  "rotation_policy": "after every 5 accepted edits or 90 days: retire >=1 held-out task, author a replacement from the newest weakness cluster (winner selection leaks held-out information even though the proposer never reads it)"
+}

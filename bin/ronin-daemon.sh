@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# ronin-daemon.sh — 24/7 autonomous daemon for the Order Samurai Dojo.
-# No time or cycle cap. Runs until DOJO_STOP, daily budget exceeded, or
+# ronin-daemon.sh — 24/7 autonomous daemon for the Order Samurai Meditation.
+# No time or cycle cap. Runs until MEDITATION_STOP, daily budget exceeded, or
 # MAX_CONSECUTIVE_FAILS consecutive failures.
 #
 # Usage:
-#   DOJO_STOP file          — place in repo root to halt gracefully
+#   MEDITATION_STOP file          — place in repo root to halt gracefully
 #   bin/ronin promote       — approve backlog proposals so daemon can continue
 #
-# Env var defaults (override via dojo.env or shell export):
+# Env var defaults (override via meditation.env or shell export):
 #   DAILY_BUDGET_USD=5.00   MAX_CONSECUTIVE_FAILS=5   CYCLE_TIMEOUT=1200
 #   MAX_TURNS=30            COOLDOWN=15
 set -euo pipefail
 
 # Portable timeout: GNU coreutils `timeout` when present, bash watchdog on macOS
-# (where `timeout` does not exist — it silently killed every Mac dojo cycle).
+# (where `timeout` does not exist — it silently killed every Mac meditation cycle).
 tmo() {
   local secs="${1%s}"; shift
   if command -v timeout >/dev/null 2>&1; then timeout "${secs}s" "$@"; return $?; fi
@@ -35,23 +35,25 @@ MAX_TURNS="${MAX_TURNS:-80}"      # 4 parallel ronins × ~15 turns each + Sensei
 COOLDOWN="${COOLDOWN:-15}"
 CYCLE_COST_USD="${CYCLE_COST_USD:-0.08}"   # 4 ronins × ~$0.02 each per cycle
 ENABLED_RONINS="${ENABLED_RONINS:-bow,sword,brush,arts}"
-VALIDATE_CMD="${VALIDATE_CMD:-python execution/doctor.py && python agentica_core/aggregate.py}"
-DOJO_DRYRUN="${DOJO_DRYRUN:-0}"
+# NB: must stay in sync with meditation.env and meditation_overnight.sh — the old fallback's
+# `&& python agentica_core/aggregate.py` half never resolved from this cwd.
+VALIDATE_CMD="${VALIDATE_CMD:-python execution/doctor.py}"
+MEDITATION_DRYRUN="${MEDITATION_DRYRUN:-0}"
 
 cd "$REPO_DIR"
 
-# Load dojo.env if present (set -a exports every assignment; set +a restores)
-[ -f dojo.env ] && set -a && . ./dojo.env && set +a
+# Load meditation.env if present (set -a exports every assignment; set +a restores)
+[ -f meditation.env ] && set -a && . ./meditation.env && set +a
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-PROMPT_FILE="prompts/dojo_cycle.md"
+PROMPT_FILE="prompts/meditation_cycle.md"
 LOGBOOK="artifacts/ronin_logs.md"
 STATE_DIR="state"
 BUDGET_LEDGER="${STATE_DIR}/budget_ledger.json"
 WARN_BASELINE="${STATE_DIR}/daemon_warn_baseline.txt"
-DOJO_STATE="${STATE_DIR}/DOJO_STATE.json"
+MEDITATION_STATE="${STATE_DIR}/MEDITATION_STATE.json"
 DATE="$(date +%F)"
 
 mkdir -p "${STATE_DIR}" "${STATE_DIR}/logs" artifacts
@@ -71,7 +73,7 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "not a git repo"; 
 if ! git diff --quiet || ! git diff --cached --quiet; then
     echo "Working tree is dirty. Commit or stash first."; exit 1
 fi
-[ -f "$DOJO_STATE" ] || cp "${STATE_DIR}/DOJO_STATE.seed.json" "$DOJO_STATE" 2>/dev/null || true
+[ -f "$MEDITATION_STATE" ] || cp "${STATE_DIR}/MEDITATION_STATE.seed.json" "$MEDITATION_STATE" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
 # Budget ledger helpers
@@ -112,8 +114,11 @@ try:
     spent = float(d.get("spent_usd", 0))
     limit = float(d.get("daily_limit_usd", ${DAILY_BUDGET_USD}))
     sys.exit(0 if spent < limit else 1)
-except Exception:
-    sys.exit(0)
+except Exception as e:
+    # Fail CLOSED: an unreadable ledger must stop spending, not silently
+    # disable the daily cap (the whole point of the ledger).
+    print(f"check_budget: ledger unreadable ({e}) — treating as over budget", file=sys.stderr)
+    sys.exit(1)
 PYEOF
 }
 
@@ -148,24 +153,31 @@ except Exception:
 # WARN baseline helpers
 # ---------------------------------------------------------------------------
 
-# Read current WARN count from doctor.py output (returns integer)
+# Read current WARN count from doctor.py output. Prints an integer, or the
+# sentinel ERR when the validator did not actually run (crash/timeout/no
+# Summary line). ERR must NEVER be treated as a passing count — a dead
+# validator previously printed 0 (or -1, which no count can exceed), silently
+# disabling the WARN ratchet forever. The Summary-line check distinguishes
+# "doctor ran and found FAILs" (trust its WARN count, nonzero rc is fine)
+# from "doctor never produced a verdict".
 count_warns() {
     python3 -c "
-import subprocess, re, os
+import subprocess, re, sys
 try:
-    # Read the validate command from the environment (DOJO_VALIDATE_CMD is exported below) rather
-    # than interpolating it into this source string — a quote in the value could otherwise break
-    # out of the literal and inject arbitrary Python. shell=True is retained because the default
-    # command chains with '&&'; the value is the operator's own configured command, passed as data.
-    cmd = os.environ.get('DOJO_VALIDATE_CMD', '')
-    out = subprocess.run(cmd, shell=True,
-                         capture_output=True, text=True, timeout=120).stdout
-    warns = len(re.findall(r'\\bWARN\\b', out))
-    print(warns)
+    r = subprocess.run('${VALIDATE_CMD}', shell=True,
+                       capture_output=True, text=True, timeout=120)
+    out = r.stdout or ''
+    if 'Summary:' not in out:
+        print('ERR')
+    else:
+        print(len(re.findall(r'\\bWARN\\b', out)))
 except Exception:
-    print(-1)
-" 2>/dev/null || echo -1
+    print('ERR')
+" 2>/dev/null || echo ERR
 }
+
+# True when \$1 is a non-negative integer (i.e. a real WARN count, not ERR/garbage)
+is_count() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
 
 # Read the saved WARN baseline (returns integer, 0 if missing)
 read_warn_baseline() {
@@ -190,7 +202,7 @@ has_approved_backlog() {
     python3 - <<PYEOF
 import json, sys
 try:
-    with open("${DOJO_STATE}") as f:
+    with open("${MEDITATION_STATE}") as f:
         state = json.load(f)
     items = state.get("backlog", [])
     approved = [i for i in items if str(i.get("status","")).lower() == "approved"]
@@ -202,11 +214,11 @@ PYEOF
 }
 
 # ---------------------------------------------------------------------------
-# Tool allowlist (matches dojo_overnight.sh)
+# Tool allowlist (matches meditation_overnight.sh)
 # ---------------------------------------------------------------------------
-ALLOWED='Read,Edit,Write,Grep,Glob,Task,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git checkout -- :*),Bash(./bin/ronin-local:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(node:*),Bash(jq:*)'
+ALLOWED='Read,Edit,Write,Grep,Glob,Task,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git checkout -- :*),Bash(git worktree:*),Bash(./bin/ronin-local:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(node:*),Bash(jq:*)'
 
-export DOJO_ENABLED_RONINS="$ENABLED_RONINS" DOJO_VALIDATE_CMD="$VALIDATE_CMD"
+export MEDITATION_ENABLED_RONINS="$ENABLED_RONINS" MEDITATION_VALIDATE_CMD="$VALIDATE_CMD"
 
 # ---------------------------------------------------------------------------
 # Daemon startup
@@ -215,8 +227,13 @@ log "RONIN DAEMON start: daily_budget=\$${DAILY_BUDGET_USD} max_fails=${MAX_CONS
 
 init_budget_ledger
 
-# Capture pre-run WARN baseline (before first cycle)
+# Capture pre-run WARN baseline (before first cycle). Fail closed: a daemon
+# whose quality gate can't run must not fire unattended code-modifying cycles.
 PRE_WARNS="$(count_warns)"
+if ! is_count "$PRE_WARNS"; then
+    log "FATAL: validator (${VALIDATE_CMD}) did not produce a verdict — refusing to start with a dead WARN ratchet"
+    exit 1
+fi
 write_warn_baseline "$PRE_WARNS"
 log "Initial WARN baseline: ${PRE_WARNS}"
 
@@ -229,8 +246,8 @@ consecutive_fails=0
 while :; do
 
     # ── 1. Stop-file gate ────────────────────────────────────────────────────
-    if [ -f DOJO_STOP ]; then
-        log "DOJO_STOP present — halting daemon."
+    if [ -f MEDITATION_STOP ]; then
+        log "MEDITATION_STOP present — halting daemon."
         break
     fi
 
@@ -285,6 +302,19 @@ while :; do
     # ── 7. WARN ratchet ──────────────────────────────────────────────────────
     POST_WARNS="$(count_warns)"
 
+    # Validator dead/garbled after a code-modifying cycle → the cycle may have
+    # broken it. Discard the cycle like a ratchet trip; never write a
+    # non-numeric baseline.
+    if ! is_count "$POST_WARNS" || ! is_count "$PREV_WARNS"; then
+        log "VALIDATOR DEAD after cycle (post='${POST_WARNS}' prev='${PREV_WARNS}') — discarding cycle (git checkout -- .)"
+        git checkout -- . 2>/dev/null || true
+        consecutive_fails=$((consecutive_fails+1))
+        printf '%s | cycle %d | VALIDATOR_DEAD post=%s prev=%s rc=%d\n' \
+            "$(date '+%F %T')" "$cycle" "$POST_WARNS" "$PREV_WARNS" "$rc" >> "$LOGBOOK"
+        sleep "$COOLDOWN"
+        continue
+    fi
+
     if [ "$POST_WARNS" -gt "$PREV_WARNS" ] 2>/dev/null; then
         log "WARN ratchet triggered: ${PREV_WARNS} -> ${POST_WARNS} WARNs — discarding cycle (git checkout -- .)"
         git checkout -- . 2>/dev/null || true
@@ -325,7 +355,7 @@ while :; do
     esac
 
     # ── 10. Dry-run early exit ────────────────────────────────────────────────
-    if [ "$DOJO_DRYRUN" = "1" ]; then
+    if [ "$MEDITATION_DRYRUN" = "1" ]; then
         log "DRYRUN — one cycle done, stopping."
         break
     fi

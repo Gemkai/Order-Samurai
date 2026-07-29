@@ -15,6 +15,7 @@ Two metric classes per pillar:
 - **+STREAM** — needs a separate event stream (`Data/telemetry/autonomic_events.jsonl`)
 - **+SCOUT** — needs a platform-specific collector
 - **+SKILL** — needs LLM/manual judgment
+- **LLM-JUDGED** — scored now by an LLM classifier-judge (`agentica_core/evals/`); reproducible only up to model variance — honest-lower than a deterministic LIVE, honest-higher than SIMULATED. Carries a "· llm-judged" badge and is never shown as ground truth. (Ratified 2026-07-15.)
 
 ---
 
@@ -25,13 +26,13 @@ the **design catalog below is the roadmap** (untapped candidate rows + `+FIELD`/
 Tier: **AUTO** = verifier/log-derived · **DERIVED** = computed from canonical telemetry. All real.
 Wired reducers in `aggregate.py`: **22** (was 19; +3 added 2026-06-07: Governance_Pass_Rate, Principle_Violations, Loop_Breaker_Fires).
 
-**🏹 Bow (20)** — Activity: Error_Rate, Latency_P50, Latency_P95, Throughput, Tool_Calls, Tool_Diversity, Session_Count, Avg_Session_Turns, MCP_Smoke_Fails · Autonomic: Processes_Reaped, Config_Drift_Rate, Agent_Process_Count, Mechanism_Orphans · Governance: Governance_Pass_Rate, Verifier_Failures, Principle_Violations · Failure: Hook_Failure_Rate, Zombie_Process_Count, Loop_Breaker_Fires
+**🏹 Bow (21)** — Activity: Error_Rate, Latency_P50, Latency_P95, Throughput, Tool_Calls, Tool_Diversity, Session_Count, Avg_Session_Turns, MCP_Smoke_Fails · Autonomic: Processes_Reaped, Config_Drift_Rate, Agent_Process_Count, Mechanism_Orphans · Governance: Governance_Pass_Rate, Verifier_Failures, Principle_Violations · Failure: Hook_Failure_Rate, Zombie_Process_Count, Loop_Breaker_Fires · Agent Operation: Lesson_Graduation_Rate
 
 **⚔️ Sword (11)** — Vulnerability: Open_CVEs · Code Security: Boundary_Violations, Secrets_Detected, Gate_Fires, Secret_Scrubs · Governance: Rule_Violations · Audit Trail: Canary_Failures, Gate_Canary_Fault · Posture: Security_Scorecard · Supply Chain: Skill_Safety_Findings, Deprecated_Deps
 
-**🖌️ Brush (12)** — Token Efficiency: Total_Cost, Token_Spend, Cost_Per_Task, Token_Execution_Density, Model_Tier_Mix, Local_Routing_Share, MCP_vs_CLI_Ratio · Code Health: Revision_Ratio, Hardcoded_Path_Incidents, Root_Hygiene_Issues · Orchestration: Subagent_Spawns · Architecture: Architecture_Scorecard_Grade
+**🖌️ Brush (13)** — Token Efficiency: Total_Cost, Token_Spend, Cost_Per_Task, Token_Execution_Density, Model_Tier_Mix, Local_Routing_Share, MCP_vs_CLI_Ratio, Cache_Hit_Rate · Code Health: Revision_Ratio, Hardcoded_Path_Incidents, Root_Hygiene_Issues · Orchestration: Subagent_Spawns · Architecture: Architecture_Scorecard_Grade
 
-**🎭 Arts (8)** — Output Quality: Slop_Density · Interaction: Frustration_Signals, Rework_Loops · Process: Simplify_Runs · Docs: Doc_Parity_Issues · Craft: Skills_Optimized, Skill_Promotions, Skill_Conflicts
+**🎭 Arts (9)** — Output Quality: Slop_Density · Interaction: Frustration_Signals, Rework_Loops, Stop_Hook_Loops · Process: Simplify_Runs · Docs: Doc_Parity_Issues · Craft: Skills_Optimized, Skill_Promotions, Skill_Conflicts
 
 **Metric_Live_Fraction: 22/47 = 47%** (wired reducers ÷ full catalog)
 
@@ -65,14 +66,71 @@ Wired reducers in `aggregate.py`: **22** (was 19; +3 added 2026-06-07: Governanc
 | Error Rate / Latency P50·P95·P99 / Throughput | task health | telemetry | LIVE |
 | Knowledge Prompted | # knowledge/lessons/context docs surfaced per task | — | +FIELD (`knowledge_refs`) |
 | Rediscovery Rate | re-solving the same problem (repeated task_name) | telemetry.task_name | LIVE (approx) |
-| Lesson Graduation Rate | lessons added to the ledger / time | lessons ledger count | +SCOUT |
+| Lesson Graduation Rate | % of skills ever added to the real lesson ledger that graduated to a proven-effective RULE | `~/.claude/data/skill_improve_queue.jsonl` (ledger) vs. `~/.claude/data/auto_eureka_skills.md` RULE section (`_lesson_graduation_rate`, `aggregate.py`) | **LIVE** (AUTO-017, 2026-07-14) |
+
+### Harness Weakness (cluster W — 2026-07-16, self-harness M2 intake)
+> **The mechanism layer.** Every metric above fires on a *symptom* (a number crossed a line). These
+> two fire on a *recurring behavioural mechanism* — the missing input to stage 1 of the self-harness
+> loop (`bin/weakness_mining_scout.py`, Research/SELF_HARNESS_EVOLUTION_PLAN.md M2). A cluster is a
+> group of failed runs sharing an exact `(terminal_cause, causal_status, mechanism)` signature.
+> Counted only when recurrent (support ≥ 3) AND addressable by a declared editable-surface key —
+> the paper's own rule that not every cluster deserves a fix (task difficulty, flakiness, and model
+> capability limits are excluded, not patched).
+>
+> **Known substrate gap (measured 2026-07-16):** trace coverage is **0.083** — `reflex_output.jsonl`
+> began ~2026-07-13 and captures stdout for only some metrics, so 11 of 12 failed runs in the window
+> have no trace to attribute. The judge is not the bottleneck (0 judge gaps). These metrics will read
+> near-zero until per-run trace capture exists; that is an honest gap, not a clean bill of health.
+
+| Metric | Measures | Source | Status |
+|--------|----------|--------|--------|
+| Weakness_Cluster_Count | recurring, addressable agent failure mechanisms (dir=lower; 0 = no known fixable weakness) | `state/weakness_clusters.json` → `actionable_count` (`bin/weakness_mining_scout.py`) | +SCOUT (intake — awaiting replenish_backlog → ronin propose) |
+| Top_Cluster_Support | size of the largest actionable cluster (dir=lower; how concentrated the worst weakness is) | `state/weakness_clusters.json` → `top_cluster_support` | +SCOUT (intake — awaiting replenish_backlog → ronin propose) |
+| Tool_Retry_Rate | share of tool calls re-issued with IDENTICAL arguments — the blind-retry mechanism, measured not judged (dir=lower) | `state/tool_trust.json` → `retry_rate` (`bin/tool_trust_annotator.py`, **heuristic** kind — no LLM) | +SCOUT (intake — awaiting replenish_backlog → ronin propose) |
+
+> **Tool_Retry_Rate is deliberately a NEW metric, not a change to `Tool_Response_Utilization`.**
+> The tool-trust annotator produces a *deterministic* downstream-fate label, which outranks that
+> metric's 12B judgment on the honesty ladder — but rewiring a LIVE metric's computation is a
+> semantics change that belongs in intake and ratification, not in a mechanical milestone. First
+> live reading (2026-07-16, 3,286 calls / 60 sessions): trust 93.1%, retry 1.8%, errored-no-retry
+> 5.1% — and one real finding already: `mcp__Claude_Browser__computer` re-issues **41%** (45/110)
+> of its calls with identical arguments, versus ~0–2% for Bash/Edit/Write.
+
+### Agent Yield / Delivery (cluster Y — 2026-07-14 grill, qwen-reviewed)
+> **The output layer.** The dashboard measured hygiene (ratios flat when healthy) and cost, but not
+> *yield* — a week of 146 commits / 33 wargames / 32 graduated lessons moved zero metrics. Design rule
+> from the grill: **credit is only counted when gated by a completion/quality check — never by raw
+> volume.** Commit-count, LOC, and `feat:`-prefix candidates (Merge_Throughput, Docs_Written,
+> Net_Code_Delta, Feature_Ship_Rate, raw Tests_Added) were REJECTED as gameable vanity. Intake only:
+> these flow `METRICS.md → replenish_backlog → ronin propose`; the LIVE registry is never wired directly.
+
+| Metric | Measures | Source | Status |
+|--------|----------|--------|--------|
+| Remediation Efficacy | % of fired remediations that **causally improved** their metric (`improved ÷ applied`); the `improved` flag is set by the **rival adversarial verifier**, NOT self-reported | `wid_payload.json.remediation_efficacy` (already computed: 18/25 = 72%; from `exec_log.jsonl` + sensei rival verdicts, `aggregate.py`) | **LIVE — display+grade only, no emitter.** dir=higher; thresholds PROVISIONAL (warn 60 / fail 45) and gated: show ungraded until n≥20 applied-in-window (mirrors `_MIN_HISTORY` sigma-gate) — n=25 makes 60/45 jittery |
+| Backlog Burn Rate | validated backlog items **whose ronin-validation gate passed AND whose commit landed** per window, value-weighted — explicitly NOT raw `proposed→live` status flips (agent-writable, fakeable) | `PROPOSED_BACKLOG.json` (status+approved+triaged_at) + landed-commit check | +STREAM (needs a status-transition ledger emitter) |
+| Metric Live Fraction | catalog dark→live conversion = LIVE reducers ÷ full catalog (doc computes 22/47 today); a row counts LIVE only if its reducer is **wired + validated** | `aggregate.py` REGISTRY vs this catalog | LIVE (**Meta** class — distinct from per-pillar Instrumentation_Coverage; it tracks the ronins' own output, not agent work) |
+
+### Capability Growth (cluster K — capacity, not yield)
+> qwen review finding #4: skill accumulation is **capacity-building**, not immediate output — kept out
+> of the Yield cluster to avoid implying double-count with Lesson Graduation (lessons build skills).
+
+| Metric | Measures | Source | Status |
+|--------|----------|--------|--------|
+| Skill Promotions | skills promoted a tier (proven-effective) per window — promotion-gated, distinct from Lesson Graduation (lesson→RULE) | already in `METRIC_CONFIG` (`/skill-creator`); `skill_efficacy.json` | surface (already mapped, not currently displayed) |
+
+### Roadmap — honest test yield (not added; +SCOUT)
+> The ONLY honest test-yield signal. Raw `Tests_Added` (LOC) was cut as gameable vanity.
+
+| Metric | Measures | Source | Status |
+|--------|----------|--------|--------|
+| Test Coverage Delta | net coverage-% change per window (real yield, not LOC) | `pytest --cov` run over time | +SCOUT (needs a coverage collector) |
 
 ### Failure & Mechanism Health (cluster D)
 | Metric | Measures | Source | Status |
 |--------|----------|--------|--------|
 | Loop-Breaker Fires | times the 3×-same-error breaker tripped | `loop_breaker_state.json` emissions | **LIVE** |
-| Self-Correction Rate | errors fixed autonomously vs escalated to human | telemetry.status + events | +FIELD/+STREAM |
-| Mechanism Liveness | registered mechanisms that ran AND had output consumed (3-step Mechanism Rule) | mechanism audit | +STREAM |
+| Self-Correction Rate | % of applied autonomous remediations that IMPROVED their target metric (improved ÷ applied) — the reflex/sensei self-healing success rate | `remediation.efficacy()` (real per-event before/after) → bow/Autonomic/Self_Correction_Rate | **LIVE** (AUTO-005, 2026-07-09; calibrated day-one, no seed coefficient) |
+| Mechanism Liveness | count of real `mechanism_run` events (registered mechanisms that ran AND had output consumed, 3-step Mechanism Rule) this window | `~/.claude/data/mechanism_audit.json` (scouts/autonomic_events_scout.py emitter) + ReflexEngine exec_log bridge (`refresh_dashboard.py`) → `Data/telemetry/autonomic_events.jsonl` → bow/Autonomic/Mechanism_Liveness | **LIVE** (AUTO-019, 2026-07-12; count-based, not per-mechanism ratio — data_gap until the emitter has produced an event) |
 | Stale Scheduled Tasks | never_run / failed / stale (automation_scout taxonomy) | scheduled-task scout | +SCOUT |
 | Hook Failure Rate | hooks that errored | state/autonomic_events.jsonl | LIVE |
 | Skill Index Staleness | claude_skills points whose payload path no longer resolves on disk (→ 0) | Qdrant `claude_skills` scroll + `os.path.exists` | PROPOSED 2026-07-06 · source-ready |
@@ -90,7 +148,7 @@ Wired reducers in `aggregate.py`: **22** (was 19; +3 added 2026-06-07: Governanc
 ### Agent Operation (security-relevant behavior)
 | Metric | Measures | Source | Status |
 |--------|----------|--------|--------|
-| Dangerous Tool Invocations | shell w/ raw input, secret-in-log (CLAUDE.md grep checks) | telemetry tool risk tag | +FIELD |
+| Dangerous Tool Invocations | real `guardrails` PreToolUse hook blocks (dangerous Bash/git pattern or protected-path Read) | `telemetry.dangerous_tool_invocations` field, populated by `count_dangerous_tool_invocations()` reading `~/.claude/data/hook_timings.jsonl` (hook_dispatch.py's own dispatch log; hook=="guardrails", status=="blocked") | +FIELD (AUTO-013, 2026-07-12 — schema + real reader landed; not yet wired into an autonomic_events emitter or aggregate.py REGISTRY) |
 | Push Bypasses | `--no-verify` / hook bypasses | git scout | +SCOUT |
 | Permission Escalations | elevated-access requests | autonomic events | +STREAM |
 
@@ -110,7 +168,7 @@ Wired reducers in `aggregate.py`: **22** (was 19; +3 added 2026-06-07: Governanc
 | **Total Cost / Token Spend** | total $ and tokens | telemetry.total_cost / tokens_* | LIVE |
 | **Cost per Task / per Project** | mean spend, with project contributions | telemetry.total_cost, project | LIVE |
 | Context Utilization | prompt tokens vs model window | telemetry.tokens_prompt | LIVE |
-| Cache Hit Rate | prompt-cache reuse | — | +FIELD (`cache_read_tokens`) |
+| Cache Hit Rate | prompt-cache reuse (`cache_read_input_tokens` / total input) | `~/.claude/projects/**/*.jsonl` message.usage (`_cache_hit_rate`, `aggregate.py`) | LIVE |
 | Model Tier Mix | distribution across model tiers | telemetry.model_tier | LIVE |
 | Revision Ratio | CLOBBER vs SURGICAL edits (rework signal) | telemetry.mod_type | LIVE |
 | **Orchestrator Chain Depth & Fan-out** | orchestration fan-out: Agent+Task calls/session (`chain_depth`); Agent spawns (`subagent_spawns`) — NOT nesting depth | — | +FIELD (`orchestrator`, `chain_depth`, `subagent_spawns`) |
@@ -132,7 +190,7 @@ Wired reducers in `aggregate.py`: **22** (was 19; +3 added 2026-06-07: Governanc
 |--------|----------|--------|--------|
 | MCP-vs-CLI Ratio | MCP calls that should have been CLI (MCP ≈ 35× tokens) | telemetry.mcp_or_cli | LIVE |
 | Model Selection Adherence | Opus usage % (target < 20%); Sonnet/Haiku mix | telemetry.model | +FIELD (`model`) |
-| Context Cliff Events | sessions crossing ~70% context window | telemetry.tokens_prompt vs window | LIVE (approx) |
+| Context Cliff Events | sessions whose max context exceeded ~140k tokens (absolute cutoff; models here are ~1M-window, so a %-of-window rule never fires) | transcript usage blocks (`aggregate.r_context_cliff_events`) | LIVE (approx) |
 | Compaction Events | # /compact + pre-compact extraction compliance | autonomic events (compaction) | +STREAM |
 | Cost per Outcome | $ per merged PR / resolved task (not just per task) | telemetry.total_cost + outcome link | +FIELD |
 
@@ -161,6 +219,19 @@ Wired reducers in `aggregate.py`: **22** (was 19; +3 added 2026-06-07: Governanc
 | Skill Documentation Coverage | orchestrators/sub-skills with a valid SKILL.md | skill inventory | LIVE (approx) |
 | Output Acceptance Rate | accepted vs reverted/regenerated outputs | — | +FIELD |
 
+### Output Quality — Tool Use (evals.tool_triad; llm-judged, context-only v1)
+Three SEPARATE scores (never blended). Data already lives in transcripts; scored by a
+classifier-judge on the local tier. `SIMULATED` until the reducer is wired + first run, then
+`LLM-JUDGED` (proposed legend token — an llm judgment, never a deterministic `LIVE`).
+| Metric | Measures | Source | Status |
+|--------|----------|--------|--------|
+| Tool_Selection_Accuracy | llm-judge: was an appropriate tool chosen for the task | `bin/tool_quality_scout.py` → `state/tool_quality.json` | LLM-JUDGED |
+| Tool_Arg_Correctness | llm-judge: were the tool's arguments well-formed and correct | `bin/tool_quality_scout.py` → `state/tool_quality.json` | LLM-JUDGED |
+| Tool_Response_Utilization | llm-judge: did the agent use the tool's result correctly | `bin/tool_quality_scout.py` → `state/tool_quality.json` | LLM-JUDGED |
+| Faithfulness_Score | llm-judge (red_team/qwen): output faithful to in-transcript context, not hallucinated; context-bearing turns only | `bin/tool_quality_scout.py` → `state/tool_quality.json` | SIMULATED |
+| Refusal_Appropriateness | llm-judge: among detected refusals, was refusing appropriate vs an over-refusal | `bin/tool_quality_scout.py` → `state/tool_quality.json` | SIMULATED |
+| Retrieval_Relevance | llm-judge: do top-k Qdrant chunks support a FIXED seed query set (claude_skills benchmark, not live traffic) | `bin/tool_quality_scout.py` (seed `config/retrieval_seed_queries.json`) → `state/tool_quality.json` | SIMULATED |
+
 ---
 
 ## Instrumentation gaps — what must be added to make these live
@@ -173,7 +244,10 @@ The canonical telemetry schema (`agentica_core/telemetry.py`) was harvested from
 - `chain_depth` — orchestration fan-out: count of Agent+Task calls per session (NOT nesting depth — true parent→child nesting is structurally unobservable in transcripts)
 - `subagent_spawns` + `parent_task` — subagent fan-out and cost attribution (the 7–10× multiplier)
 - `knowledge_refs` — count/ids of knowledge/lessons/context surfaced
-- `cache_read_tokens` — prompt-cache reuse
+- ~~`cache_read_tokens` — prompt-cache reuse~~ RESOLVED (AUTO-009): no new canonical-record
+  field needed — `_cache_hit_rate` (`aggregate.py`) reads `cache_read_input_tokens` /
+  `cache_creation_input_tokens` / `input_tokens` directly off each transcript's real
+  `message.usage` block (`~/.claude/projects/**/*.jsonl`).
 - per-tool outcome in `tool_latencies` (add `ok: bool`)
 - `model` — concrete model id (for Model Selection Adherence / Opus<20%)
 - `skill_tier` — skill priority tier used (tool-wrapper/reviewer/generator/pipeline) for Skill Selection Efficiency
@@ -214,6 +288,7 @@ quality skills. These flesh out the thin Sword/Arts pillars. Source scripts are 
 | **Slop_Density** | transcript: AI-slop markers + em-dashes / 1k words (`humanizer`/`ai-slop-cleaner`) | **LIVE** |
 | **Frustration_Signals** | transcript: user dissatisfaction turns | **LIVE** |
 | **Rework_Loops** | transcript: user correction/redo turns | **LIVE** |
+| **Stop_Hook_Loops** | `stop_hook_refires` — assistant self-repetition against a stuck Stop/goal hook; emitter = stop-hook-breaker hook (CP-9, staged) | **DERIVED (0=clean; pending CP-9 emitter for positive counts)** |
 | **Simplify_Runs** | transcript: `skills_used` contains `simplify` (mandated gate adherence) | **LIVE** |
 | Simplify_Reduction | `code-simplifier.mjs` lines/complexity removed | +FIELD |
 | Review Findings | `ce-code-review` / `gsd-code-review` findings by severity | +SCOUT |

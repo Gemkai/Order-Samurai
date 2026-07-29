@@ -98,6 +98,26 @@ class StalenessBoundaryTests(unittest.TestCase):
         verdict = classify(_canary(days_ago=20, max_age_days=35), NOW)
         self.assertEqual(verdict["fault_class"], "healthy")
 
+    def test_explicit_null_max_age_falls_back_to_default(self) -> None:
+        # A canary file with "max_age_days": null must classify via the default
+        # window, not raise TypeError on `age > None`.
+        canary = _canary(days_ago=1)
+        canary["max_age_days"] = None
+        verdict = classify(canary, NOW, default_max_age_days=7)
+        self.assertEqual(verdict["fault_class"], "healthy")
+
+    def test_explicit_null_max_age_still_detects_stale(self) -> None:
+        canary = _canary(days_ago=8)
+        canary["max_age_days"] = None
+        verdict = classify(canary, NOW, default_max_age_days=7)
+        self.assertEqual(verdict["fault_class"], "stale")
+
+    def test_zero_max_age_is_preserved_not_defaulted(self) -> None:
+        # A configured 0 means must-run-daily: a 3-day-old run is stale. An `or`
+        # fallback would silently widen this to the 7-day default (fail-open).
+        verdict = classify(_canary(days_ago=3, max_age_days=0), NOW, default_max_age_days=7)
+        self.assertEqual(verdict["fault_class"], "stale")
+
 
 # ---------------------------------------------------------------------------
 # Regeneration safety

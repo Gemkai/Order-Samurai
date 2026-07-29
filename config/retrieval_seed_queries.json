@@ -1,0 +1,22 @@
+{
+  "_note": "DRAFT seed set for Retrieval_Relevance (M4) — awaiting user ratification. A curated, fixed query set benchmarking the claude_skills knowledge layer; NOT live traffic. Edit freely; the nightly scout reads this verbatim.",
+  "collection": "claude_skills",
+  "top_k": 5,
+  "queries": [
+    "review code for security vulnerabilities",
+    "fix a failing git hook",
+    "commit my changes safely without breaking anything",
+    "plan a multi-step feature before writing code",
+    "simplify and refactor code for clarity",
+    "run a comprehensive security audit of the codebase",
+    "summarize a YouTube video transcript",
+    "search the web and write a cited research report",
+    "connect to the Stripe payments API",
+    "debug why something stopped working and find the root cause",
+    "reduce token usage and optimize context",
+    "design and build a frontend UI component",
+    "check whether my mechanisms are wired up correctly",
+    "consolidate and clean up my memory files",
+    "schedule a recurring task to run automatically"
+  ]
+}

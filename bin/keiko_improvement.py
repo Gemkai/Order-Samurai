@@ -1,31 +1,36 @@
 #!/usr/bin/env python3
-"""keiko_improvement.py — loop-until-dry early-stop signal for the dojo keiko.
+"""keiko_improvement.py — loop-until-dry early-stop signal for the meditation keiko.
 
-A keiko (dojo_overnight.sh) runs a fixed >=60 cycles / 6h regardless of whether the
+A keiko (meditation_overnight.sh) runs a fixed >=60 cycles / 6h regardless of whether the
 cycles are productive. Running past the point of genuine work wastes tokens and tempts
 the agent into manufactured busywork. This script tracks a progress signal across cycles
 and tells the loop to halt once K consecutive cycles produce no improvement.
 
 Progress signal = sum of each pillar's live_current (count of live metrics) in
-state/DOJO_STATE.json. live_current rising = more instrumentation = real progress.
+state/MEDITATION_STATE.json. live_current rising = more instrumentation = real progress.
 
-State carried in DOJO_STATE.json (additive fields, ignored by other readers):
+State carried in MEDITATION_STATE.json (additive fields, ignored by other readers):
   _keiko_last_signal : the signal at the previous cycle
   flat_cycle_count   : consecutive cycles with no improvement
 
 Exit code: 0 = keep going (or first observation), 3 = halt (K flat cycles reached).
-Called after each cycle by dojo_overnight.sh.
+Called after each cycle by meditation_overnight.sh.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8")  # Windows cp1252 guard
 
-STATE = Path(__file__).resolve().parents[1] / "state" / "DOJO_STATE.json"
+# State is canonical in the MAIN tree; meditation_overnight.sh exports MEDITATION_STATE_DIR when the
+# cycle runs in a worktree so the flat-cycle signal is read/written against the same state the hero
+# metrics see. Falls back to the script-relative state/ for standalone use.
+_STATE_DIR = os.environ.get("MEDITATION_STATE_DIR")
+STATE = (Path(_STATE_DIR) if _STATE_DIR else Path(__file__).resolve().parents[1] / "state") / "MEDITATION_STATE.json"
 
 
 def _signal(state: dict) -> float:

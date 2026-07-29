@@ -1,0 +1,13 @@
+{
+  "id": "a1_recent_retry_detected",
+  "group": "bounded_scan",
+  "kind": "guard",
+  "description": "An identical retry in the newest transcript is detected by the trust annotator.",
+  "grounded_in": "browser-computer 41% identical-retry finding (2026-07-16, 3,286 calls)",
+  "sensitive_to": [
+    "scout_max_files"
+  ],
+  "fixture": "a1_recent_retry",
+  "grader": "graders.check_a1_recent_retry_detected",
+  "repeats": 1
+}

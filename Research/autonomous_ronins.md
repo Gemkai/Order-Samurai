@@ -7,8 +7,8 @@ Before achieving full background autonomy, each of these autonomic concepts must
 
 This document maps traditional IT Operations and Autonomic Computing concepts to the specific pillars of the Order Samurai project, defining the target behaviors and the specific metrics used to monitor them.
 
-## 1. The Way of the Bow (Operational Status & Agent Activity)
-**Focus:** Precision, monitoring, and operational activity.
+## 1. The Way of the Bow (Operational Status)
+**Focus:** Operations & Runtime Health
 
 This pillar embodies the classic autonomic computing properties for infrastructure stability:
 *   **Self-Monitoring:** Continuously running automated health checks and gathering real-time telemetry.
@@ -23,7 +23,7 @@ This pillar embodies the classic autonomic computing properties for infrastructu
 *   **Telemetry Ping Success Rate:** The percentage of automated health checks that return a 200/OK status without requiring intervention.
 
 ## 2. The Way of the Sword (Security Integrity)
-**Focus:** Threat protection, quarantine, and code security.
+**Focus:** Protection and Hardening
 
 While Pillar 1 keeps the system alive, Pillar 2 keeps it safe. The equivalent autonomous concepts are:
 *   **Self-Protecting / Self-Securing:** Automatically establishing zero-trust boundaries and actively scrubbing secrets or isolating sensitive data without human intervention.
@@ -35,8 +35,8 @@ While Pillar 1 keeps the system alive, Pillar 2 keeps it safe. The equivalent au
 *   **Vulnerability Window (Patch Latency):** Time elapsed between a dependency being flagged as vulnerable and the agent autonomously generating a patch.
 *   **Boundary Violations Blocked:** Number of execution attempts that violated archive-boundary scan rules or attempted to access out-of-scope roots (tracked via `root_hygiene_policy.json`).
 
-## 3. The Way of the Brush (Architecture Optimization & Token Efficiency)
-**Focus:** Code health, modular design, and token economy.
+## 3. The Way of the Brush (Architecture Optimization)
+**Focus:** Design and Structure
 
 This pillar applies autonomic principles to code quality and system architecture:
 *   **Self-Refactoring:** Automatically enforcing clean code standards and deterministic logic paths as code is committed.
@@ -49,8 +49,8 @@ This pillar applies autonomic principles to code quality and system architecture
 *   **Hardcoded Path Incidents:** Number of hardcoded machine-local or repo-local paths detected versus paths generated via canonical truth.
 *   **Token Execution Density:** The ratio of tokens consumed to successful operations executed, tracking optimization efficiency.
 
-## 4. The Way of the Cultural Arts (UX, Docs, & Vibe Alignment)
-**Focus:** Copy refinement, documentation parity, and UX polish.
+## 4. The Way of the Cultural Arts (Project Performance)
+**Focus:** Refinement, UX, and Documentation
 
 This pillar ensures the end-user experience, polish, and documentation never degrade:
 *   **Self-Documenting:** Achieving automatic documentation parity so the documentation naturally and instantly evolves exactly as the runtime code does.

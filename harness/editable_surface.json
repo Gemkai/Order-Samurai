@@ -1,0 +1,63 @@
+{
+  "surface_version": 1,
+  "description": "The complete editable surface of the Order Samurai harness. A self-harness proposer may ONLY emit diffs against the `values` block of this file. Everything else in the repo is off-limits to automated proposals. Every value here MUST equal the live value of its consumer at the time it was added -- this file is a declaration of what is tunable, never a behavior change.",
+  "provenance": "M1 of Research/SELF_HARNESS_EVOLUTION_PLAN.md. Each `consumer` below was verified to exist AND to actually read this file on 2026-07-16 -- a declared-but-unwired knob is worse than an absent one, because it reads as governed while nothing enforces it. Planned knobs dropped from v1: `scout_transcript_window_days` (the scout windows by file count, not days -- admitted as `scout_max_files` instead); `judge_max_tokens` at the planned 1024 (live value is 512, so 512 was admitted); `meditation_verification_clause` (no such clause exists in prompts/meditation_cycle.md); `sensei_cycle_timeout_seconds` and `sensei_max_turns` (meditation.env already owns those values and bin/meditation_overnight.sh keeps hand-synced fallback literals -- declaring them here too would create a second source of truth for one number. v2 prerequisite: retire the meditation.env duplicates and make surface.env the single source, which means editing a live unattended runner and is not worth bundling into a behaviour-neutral change). v1 is values-only; there are no instruction surfaces.",
+  "values": {
+    "reflex_cooldown_minutes": {
+      "value": 30,
+      "type": "int",
+      "min": 10,
+      "max": 240,
+      "consumer": "api/src/reflex-engine.ts COOLDOWN_MS",
+      "note": "Per-reflex re-fire cooldown, multiplied by the skill-efficacy multiplier."
+    },
+    "loop_breaker_limit": {
+      "value": 2,
+      "type": "int",
+      "min": 1,
+      "max": 5,
+      "consumer": "api/src/reflex-engine.ts LOOP_BREAKER_LIMIT",
+      "note": "Consecutive hard failures before a reflex is parked as stuck."
+    },
+    "incomplete_limit": {
+      "value": 4,
+      "type": "int",
+      "min": 2,
+      "max": 10,
+      "consumer": "api/src/reflex-engine.ts INCOMPLETE_LIMIT",
+      "note": "Lenient budget for non-finishing runs (quota/turn-cap), weaker evidence than a hard error."
+    },
+    "scout_max_files": {
+      "value": 60,
+      "type": "int",
+      "min": 10,
+      "max": 200,
+      "consumer": "Order Samurai/bin/tool_quality_scout.py run_scout(max_files=)",
+      "note": "Newest-N transcript files scanned by the nightly quality scouts."
+    },
+    "judge_max_tokens": {
+      "value": 512,
+      "type": "int",
+      "min": 512,
+      "max": 4096,
+      "consumer": "agentica_core/evals/judge.py floor_max_tokens(512)",
+      "note": "Floor is contractual (local_guards): thinking models return empty content below it. min must never drop under 512."
+    },
+    "context_cliff_token_threshold": {
+      "value": 140000,
+      "type": "int",
+      "min": 80000,
+      "max": 180000,
+      "consumer": "agentica_core/aggregate.py _CLIFF_THRESHOLD",
+      "note": "Absolute high-context cutoff (window-agnostic) for the Context_Cliff_Events metric."
+    },
+    "judge_min_n": {
+      "value": 30,
+      "type": "int",
+      "min": 5,
+      "max": 200,
+      "consumer": "agentica_core/aggregate.py _judge_min_n() (min accepted judgments before a transcript-sampled judge metric grades; below it -> SIMULATED)",
+      "note": "Min-sample guard for llm-judged, transcript-sampled metrics (tool triad, faithfulness, refusal). Retrieval_Relevance exempt (fixed seed benchmark)."
+    }
+  }
+}

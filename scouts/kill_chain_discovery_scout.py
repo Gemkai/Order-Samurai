@@ -3,7 +3,8 @@
 """
 kill_chain_discovery_scout.py — Weekly discovery scout
 Clusters unmatched events, proposes new chains via the model router
-(Claude → Gemini/Antigravity → Ollama → OpenRouter).
+(local Ollama only, fail-closed — alert clusters are security telemetry
+from this machine and must never reach a cloud backend).
 """
 from __future__ import annotations
 
@@ -25,6 +26,10 @@ if str(_GOVERNANCE) not in sys.path:
     sys.path.insert(0, str(_GOVERNANCE))
 
 from agentica_core.model_router import call_llm
+# Canonical atomic writer (tmp + direct replace, re-raises on failure). Replaces
+# this scout's former local copy, which swallowed write errors and used a
+# unlink-then-replace sequence that opened a torn-read window.
+from agentica_core.atomic import atomic_json_write
 
 UNMATCHED_LOG = REPO_ROOT / "state" / "kill_chain_unmatched.jsonl"
 PROPOSED_CHAINS_FILE = REPO_ROOT / "state" / "proposed_kill_chains.json"
@@ -61,53 +66,33 @@ def read_jsonl(path: Path) -> list[dict]:
         pass
     return records
 
-def atomic_json_write(path: Path, data: dict):
-    tmp = str(path) + ".tmp"
-    try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        # Windows-safe replace
-        if path.exists():
-            try:
-                path.unlink()
-            except Exception:
-                pass
-        Path(tmp).replace(path)
-    except Exception:
-        if Path(tmp).exists():
-            try:
-                Path(tmp).unlink()
-            except Exception:
-                pass
-
-def atomic_jsonl_append(file_path: Path, entry: dict):
+def atomic_jsonl_append(file_path: Path, entry: dict) -> None:
+    """Append one JSONL entry via tmp + direct atomic replace. Re-raises on
+    failure so the caller can report accurately (the prior version swallowed
+    write errors, so a failed persist still printed 'Successfully wrote'). A
+    read error on the existing file also propagates rather than silently
+    truncating it to just the new entry."""
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    lines = []
+    lines: list[str] = []
     if file_path.exists():
-        try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    if line.strip():
-                        lines.append(line)
-        except Exception:
-            pass
+        # No except here: an unreadable existing file must NOT be silently
+        # overwritten with only the new entry (that would drop prior events).
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = [line for line in f if line.strip()]
     lines.append(json.dumps(entry) + "\n")
     tmp_path = file_path.with_suffix(".jsonl.tmp")
     try:
         with open(tmp_path, "w", encoding="utf-8") as f:
             f.writelines(lines)
-        if file_path.exists():
-            try:
-                file_path.unlink()
-            except Exception:
-                pass
+        # Direct atomic replace — no unlink-first torn-read window.
         tmp_path.replace(file_path)
     except Exception:
         if tmp_path.exists():
             try:
                 tmp_path.unlink()
-            except Exception:
+            except OSError:
                 pass
+        raise
 
 def propose_chain_via_lm(taxonomy: dict, cluster_events: list[dict]) -> dict | None:
     examples = "\n".join(f"- Type: {e.get('event_type')}, Detail: {e.get('detail')}" for e in cluster_events[:5])
@@ -131,12 +116,15 @@ def propose_chain_via_lm(taxonomy: dict, cluster_events: list[dict]) -> dict | N
         "Propose a new chain definition that encapsulates this pattern."
     )
     
+    # Alert clusters are security telemetry from this machine — never send them
+    # to a cloud backend. Fails closed (None) when Ollama is down.
     raw = call_llm(
         system=system_prompt,
         user=user_prompt,
         task="analysis",
         max_tokens=1000,
         temperature=0.0,
+        local_only=True,
     )
     if not raw:
         return None
@@ -234,7 +222,17 @@ def run() -> int:
         print(f"Analyzing Cluster {idx} ({len(cluster)} events)...")
         prop = propose_chain_via_lm(taxonomy, cluster)
         if prop:
-            confidence = prop.get("confidence", 0.0)
+            # The local Ollama model can return confidence as a string ("0.9",
+            # "high") despite the float instruction. Coerce defensively — a raw
+            # `str >= float` comparison raises TypeError and, being outside any
+            # try in this loop, would abort the scout and drop every remaining
+            # cluster this run.
+            raw_conf = prop.get("confidence", 0.0)
+            try:
+                confidence = float(raw_conf)
+            except (TypeError, ValueError):
+                print(f"  [SKIP] Non-numeric confidence {raw_conf!r} from model — skipping cluster.")
+                continue
             print(f"  Proposed: {prop.get('name')} (confidence: {confidence})")
             if confidence >= 0.7:
                 proposal_entry = {
@@ -263,16 +261,24 @@ def run() -> int:
     # 5. Write state files
     if not args.dry_run and proposals_added > 0:
         proposed_data["last_run"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        atomic_json_write(PROPOSED_CHAINS_FILE, proposed_data)
-        
-        # Emit autonomic event
         auto_entry = {
             "event": "kill_chain_proposal",
             "pillar": "sword",
             "detail": f"Proposed {proposals_added} new kill chains for review.",
             "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         }
-        atomic_jsonl_append(AUTONOMIC_EVENTS_LOG, auto_entry)
+        # The atomic writers re-raise on failure — report accurately and exit
+        # nonzero rather than printing "Successfully wrote" over a silent loss of
+        # human-review security telemetry.
+        try:
+            atomic_json_write(PROPOSED_CHAINS_FILE, proposed_data)
+            atomic_jsonl_append(AUTONOMIC_EVENTS_LOG, auto_entry)
+        except Exception as exc:
+            print(
+                f"[ERROR] Failed to persist {proposals_added} proposal(s) — state NOT saved: {exc}",
+                file=sys.stderr,
+            )
+            return 1
         print(f"Successfully wrote {proposals_added} new proposal(s) and emitted autonomic event.")
 
     return 0

@@ -126,9 +126,9 @@ def test_enqueue_hitl_idempotent(tmp_repo):
 
 def test_enqueue_distinguishes_by_pillar(tmp_repo):
     """R4: pillar is part of the approval key."""
-    wi_arts = WorkItem(skill="simplify", source="dojo", pillar="arts",
+    wi_arts = WorkItem(skill="simplify", source="meditation", pillar="arts",
                        blast_radius=BlastRadius.REPO, reversible=True)
-    wi_brush = WorkItem(skill="simplify", source="dojo", pillar="brush",
+    wi_brush = WorkItem(skill="simplify", source="meditation", pillar="brush",
                         blast_radius=BlastRadius.REPO, reversible=True)
     id_a = enqueue_hitl(wi_arts, Tier.QUEUE, tmp_repo)
     id_b = enqueue_hitl(wi_brush, Tier.QUEUE, tmp_repo)
@@ -310,9 +310,9 @@ def test_resolve_ronin_env_override(tmp_repo, monkeypatch):
     assert resolve_ronin_mode("arts", tmp_repo) is False
 
 
-def test_resolve_ronin_dojo_state_top_level(tmp_repo, monkeypatch):
+def test_resolve_ronin_meditation_state_top_level(tmp_repo, monkeypatch):
     monkeypatch.delenv("BUSHIDO_RONIN_GLOBAL", raising=False)
-    (tmp_repo / "state" / "DOJO_STATE.json").write_text(json.dumps({
+    (tmp_repo / "state" / "MEDITATION_STATE.json").write_text(json.dumps({
         "ronin_mode": "ronin",
         "pillars": {"arts": {"ronin_mode": "dormant"}},
     }))
@@ -323,13 +323,13 @@ def test_resolve_ronin_dojo_state_top_level(tmp_repo, monkeypatch):
 def test_top_level_dormant_falls_through_to_per_pillar(tmp_repo, monkeypatch):
     """Per Phase 2.3 spec: 'When absent or "dormant", per-pillar settings apply.'"""
     monkeypatch.delenv("BUSHIDO_RONIN_GLOBAL", raising=False)
-    (tmp_repo / "state" / "DOJO_STATE.json").write_text(json.dumps({
+    (tmp_repo / "state" / "MEDITATION_STATE.json").write_text(json.dumps({
         "ronin_mode": "dormant",   # explicit dormant
         "pillars": {"arts": {"ronin_mode": "ronin"}},   # arts IS ronin
     }))
     assert resolve_ronin_mode("arts", tmp_repo) is True
     # And a pillar not in ronin_mode stays False
-    (tmp_repo / "state" / "DOJO_STATE.json").write_text(json.dumps({
+    (tmp_repo / "state" / "MEDITATION_STATE.json").write_text(json.dumps({
         "ronin_mode": "dormant",
         "pillars": {"bow": {"ronin_mode": "dormant"}},
     }))
@@ -338,7 +338,7 @@ def test_top_level_dormant_falls_through_to_per_pillar(tmp_repo, monkeypatch):
 
 def test_resolve_ronin_per_pillar_fallback(tmp_repo, monkeypatch):
     monkeypatch.delenv("BUSHIDO_RONIN_GLOBAL", raising=False)
-    (tmp_repo / "state" / "DOJO_STATE.json").write_text(json.dumps({
+    (tmp_repo / "state" / "MEDITATION_STATE.json").write_text(json.dumps({
         # No top-level ronin_mode
         "pillars": {"arts": {"ronin_mode": "ronin"}, "bow": {"ronin_mode": "dormant"}},
     }))
@@ -348,7 +348,7 @@ def test_resolve_ronin_per_pillar_fallback(tmp_repo, monkeypatch):
 
 def test_resolve_ronin_default_false(tmp_repo, monkeypatch):
     monkeypatch.delenv("BUSHIDO_RONIN_GLOBAL", raising=False)
-    # No DOJO_STATE.json
+    # No MEDITATION_STATE.json
     assert resolve_ronin_mode("arts", tmp_repo) is False
 
 
@@ -367,6 +367,23 @@ def test_budget_overrun_hard_stops_decide(tmp_repo):
         "spent_usd": 6.50,
         "daily_limit_usd": 5.00,
         "cycles": 30,
+    }))
+    wi = WorkItem(
+        skill="canary-fault-diagnosis", source="reflex", pillar="sword",
+        blast_radius=BlastRadius.CONFINED, reversible=True,
+    )
+    tier, qid = decide(wi, tmp_repo)
+    assert tier == Tier.HARD_STOP
+    assert qid is None
+
+
+def test_zero_daily_limit_freezes_spending(tmp_repo):
+    """An explicit $0 limit is a budget freeze, not a fall-through to the $5 default."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    (tmp_repo / "state" / "budget_ledger.json").write_text(json.dumps({
+        "date": today,
+        "spent_usd": 0.10,
+        "daily_limit_usd": 0,
     }))
     wi = WorkItem(
         skill="canary-fault-diagnosis", source="reflex", pillar="sword",
@@ -404,7 +421,7 @@ def test_approval_does_not_bypass_hard_limit(tmp_repo):
     data = json.loads(queue_path.read_text())
     data["items"].append({
         "id": "hitl-old",
-        "source": "dojo", "skill": "simplify", "pillar": "arts",
+        "source": "meditation", "skill": "simplify", "pillar": "arts",
         "metric_id": None, "backlog_id": None,
         "status": "approved", "tier_assigned": "queue",
         "enqueued_at": "x", "approved_at": "y",
@@ -416,7 +433,7 @@ def test_approval_does_not_bypass_hard_limit(tmp_repo):
     queue_path.write_text(json.dumps(data))
 
     wi = WorkItem(
-        skill="simplify", source="dojo", pillar="arts",
+        skill="simplify", source="meditation", pillar="arts",
         blast_radius=BlastRadius.REPO, reversible=True,
     )
     tier, _ = decide(wi, tmp_repo)
@@ -459,3 +476,85 @@ def test_mark_complete_failed(tmp_repo):
 
 def test_mark_complete_unknown_returns_false(tmp_repo):
     assert mark_complete("hitl-does-not-exist", tmp_repo) is False
+
+
+# ── approval_tier override (allowlist) ────────────────────────────────────────
+
+# Skills whose shipped approval_tier deliberately differs from the 2-axis matrix
+# cell. Everything else in state/skill_tiers.json must agree with the matrix, so
+# that a future entry cannot quietly buy itself a softer tier — adding one here
+# is the deliberate act that records the decision.
+TIER_OVERRIDE_EXCEPTIONS = {
+    # User decision 2026-07-28: "classify it as auto because that is ronin
+    # mode's entire point." Repo blast is real and stated; the exception is to
+    # the tier, not to the blast radius.
+    "ronin-pillar": Tier.AUTO,
+}
+
+
+def _shipped_tier_table() -> dict[str, dict]:
+    path = _REPO / "state" / "skill_tiers.json"
+    return json.loads(path.read_text(encoding="utf-8"))["skills"]
+
+
+def test_shipped_table_matches_matrix_except_declared_exceptions():
+    """Guard: no skill drifts away from its matrix cell without being declared."""
+    diverging = {}
+    for name, meta in _shipped_tier_table().items():
+        try:
+            blast = BlastRadius(meta.get("blast_radius", "repo"))
+        except ValueError:
+            blast = BlastRadius.REPO
+        matrix_only = compute_tier(
+            WorkItem(skill=name, blast_radius=blast,
+                     reversible=bool(meta.get("reversible", True)))
+        )
+        declared = Tier(str(meta["approval_tier"]).lower())
+        if declared != matrix_only:
+            diverging[name] = declared
+    assert diverging == TIER_OVERRIDE_EXCEPTIONS
+
+
+def test_ronin_pillar_resolves_to_auto():
+    """The item-1 decision, asserted against the real shipped table."""
+    wi = skill_to_work_item("ronin-pillar", source="reflex", repo_root=_REPO)
+    # Blast radius stays honest — ronin-pillar commits to the live tree.
+    assert wi.blast_radius == BlastRadius.REPO
+    assert wi.approval_tier == "auto"
+    assert compute_tier(wi) == Tier.AUTO
+
+
+def test_override_does_not_widen_untabled_skills():
+    """No override present → matrix default (QUEUE), unchanged."""
+    wi = skill_to_work_item("no-such-skill-anywhere", source="reflex", repo_root=_REPO)
+    assert wi.approval_tier is None
+    assert compute_tier(wi) == Tier.QUEUE
+
+
+@pytest.mark.parametrize("blast,reversible", [
+    (BlastRadius.IRREVERSIBLE, True),
+    (BlastRadius.IRREVERSIBLE, False),
+    (BlastRadius.REPO, False),
+    (BlastRadius.SYSTEM, False),
+])
+def test_override_cannot_escape_hard_stop(blast, reversible):
+    """An `auto` override must never buy a hard-stopped op an auto-fire."""
+    wi = WorkItem(skill="hostile", blast_radius=blast,
+                  reversible=reversible, approval_tier="auto")
+    assert compute_tier(wi) == Tier.HARD_STOP
+    assert compute_tier(wi, ronin_mode=True) == Tier.HARD_STOP
+
+
+def test_override_can_also_tighten():
+    """The override is not auto-only: it can pin a confined skill to queue."""
+    wi = WorkItem(skill="cautious", blast_radius=BlastRadius.CONFINED,
+                  reversible=True, approval_tier="queue")
+    assert compute_tier(wi) == Tier.QUEUE
+    # ...and ronin mode still collapses it, as with any QUEUE.
+    assert compute_tier(wi, ronin_mode=True) == Tier.AUTO
+
+
+def test_unparseable_override_falls_back_to_matrix():
+    wi = WorkItem(skill="typo", blast_radius=BlastRadius.REPO,
+                  reversible=True, approval_tier="atuo")
+    assert compute_tier(wi) == Tier.QUEUE

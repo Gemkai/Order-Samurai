@@ -292,14 +292,29 @@ def decide(candidate: Candidate, parsed: dict | None, ml_mode: bool) -> tuple[st
 # Orchestration (testable via injected fns; no pip side effects in tests)
 # ---------------------------------------------------------------------------
 
-def _real_dry_run(name: str) -> str:
+def _real_dry_run(name: str) -> str | None:
+    """Dry-run output, or None when the dry-run itself failed (network/index
+    error). A failed dry-run's output has none of the markers parse_dry_run
+    looks for, so returning it would read as "dry-run clean" and let the real
+    install proceed ungated — decide() already blocks on parsed=None."""
     proc = subprocess.run(
         [sys.executable, "-m", "pip", "install", "--upgrade", name, "--dry-run"],
         capture_output=True,
         text=True,
         timeout=PIP_TIMEOUT_S,
     )
+    if proc.returncode != 0:
+        print(f"pip-safe-upgrade: dry-run for {name} exited {proc.returncode} — "
+              f"blocking (no verified dry-run)", file=sys.stderr)
+        return None
     return proc.stdout + proc.stderr
+
+
+def _pip_audit_available() -> bool:
+    """pip-audit is an optional tool; absence must degrade, not block (the same
+    contract codebase_deps_audit._real_pip_audit documents)."""
+    import importlib.util
+    return importlib.util.find_spec("pip_audit") is not None
 
 
 def _real_apply(name: str) -> bool:
@@ -344,6 +359,14 @@ def _real_apply(name: str) -> bool:
         # If we can't resolve the new version, default to allowing it
         return True
 
+    # pip-audit exits non-zero BOTH when it finds vulnerabilities and when it
+    # cannot run at all (module not installed) — only a real audit verdict may
+    # trigger the rollback below. An unavailable auditor fails open, matching
+    # the except-branch below and codebase_deps_audit's documented degrade.
+    if not _pip_audit_available():
+        print(f"pip-safe-upgrade: Warning: pip-audit unavailable; skipping post-upgrade audit for {name}.", file=sys.stderr)
+        return True
+
     # 4. Write temporary requirements file and run pip-audit
     tmp_path = None
     try:
@@ -365,18 +388,24 @@ def _real_apply(name: str) -> bool:
             print(f"pip-safe-upgrade: SECURITY AUDIT FAILED for {name}=={new_ver}. Vulnerabilities found.", file=sys.stderr)
             if prev_ver:
                 print(f"pip-safe-upgrade: Rolling back {name} to {prev_ver}...", file=sys.stderr)
-                subprocess.run(
+                rb = subprocess.run(
                     [sys.executable, "-m", "pip", "install", f"{name}=={prev_ver}"],
                     capture_output=True,
                     timeout=PIP_TIMEOUT_S,
                 )
             else:
                 print(f"pip-safe-upgrade: Uninstalling {name} (no previous version)...", file=sys.stderr)
-                subprocess.run(
+                rb = subprocess.run(
                     [sys.executable, "-m", "pip", "uninstall", "-y", name],
                     capture_output=True,
                     timeout=PIP_TIMEOUT_S,
                 )
+            if rb.returncode != 0:
+                # The vulnerable version is still installed — say so loudly instead
+                # of logging "Rolling back..." and moving on as if it worked.
+                print(f"pip-safe-upgrade: ROLLBACK FAILED for {name} (exit {rb.returncode}) — "
+                      f"vulnerable version {new_ver} is STILL INSTALLED. Manual action required.",
+                      file=sys.stderr)
             return False
 
     except Exception as e:
@@ -434,7 +463,8 @@ def run_plan(
                 blocked.append(_row(cand, block))
                 continue
 
-        parsed = parse_dry_run(dry_run_fn(cand.name))
+        dry_out = dry_run_fn(cand.name)
+        parsed = parse_dry_run(dry_out) if dry_out is not None else None
         action, reason = decide(cand, parsed, ml_mode)
 
         if action == "skip":

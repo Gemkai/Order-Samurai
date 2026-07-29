@@ -6,37 +6,37 @@
 
 ## The Four Pillars
 
-### 1. The Way of the Bow (Operational Status & Agent Activity)
+### 1. The Way of the Bow (Operational Status)
 
-**Focus**: Precision, monitoring, and operational activity.
+**Focus**: Precision and monitoring.
 
-- Real-time telemetry, task error rates, latencies, and tool call volume.
-- Zero-drift enforcement, reaped processes, and daemon restart events.
-- Predictive self-monitoring and liveness checks via the Unified Doctor.
+- Automated health checks and real-time telemetry
+- Zero-drift enforcement for configurations and environments
+- Predictive maintenance via the JARVIS Intelligence Dashboard
 
 ### 2. The Way of the Sword (Security Integrity)
 
-**Focus**: Threat protection, quarantine, and code security.
+**Focus**: Protection and hardening.
 
-- Real-time secret scrubbing at terminal boundaries (`verify_secrets`).
-- Blocking of out-of-scope paths, boundary violations, and exfiltration attempts.
-- Automated vulnerability audits, canary liveness, and supply-chain safety scans.
+- Secret scrubbing and sensitive data isolation
+- Continuous vulnerability patching and dependency auditing
+- Zero-trust architecture by default
 
-### 3. The Way of the Brush (Architecture Optimization & Token Efficiency)
+### 3. The Way of the Brush (Architecture Optimization)
 
-**Focus**: Code health, modular design, and token economy.
+**Focus**: Design and structure.
 
-- Token spend, cost per task, model tier mix, and API budget efficiency.
-- Code hygiene (revision ratios, path authority, and top-level root sprawl).
-- Subagent orchestration chain depth, fan-out, and routing accuracy.
+- Clean code enforcement and deterministic logic paths
+- Mapping intent-driven vibes to modular architectural changes
+- Token and performance efficiency at the core
 
-### 4. The Way of the Cultural Arts (UX, Docs, & Vibe Alignment)
+### 4. The Way of the Cultural Arts (Project Performance)
 
-**Focus**: Copy refinement, documentation parity, and UX polish.
+**Focus**: Refinement and UX.
 
-- Real-time document/runtime parity and documentation latency tracking.
-- Interactive UX telemetry (frustration signals, rework loops, and simplify runs).
-- Copywriting, commit hygiene, and AI-generated "slop" checks (Anti-Slop Vibe Score).
+- High-fidelity visual consistency and polished interactions
+- Micro-animations and premium UX standards
+- Documentation parity and community-driven excellence
 
 ---
 

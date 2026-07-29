@@ -9,33 +9,41 @@ case "$PILLAR" in bow|sword|brush|arts) ;; *) echo "Unknown pillar: $PILLAR" >&2
 REPO_DIR="${REPO_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$REPO_DIR"
 
-[ -f dojo.env ] && set -a && . ./dojo.env && set +a
+[ -f meditation.env ] && set -a && . ./meditation.env && set +a
 
-PROMPT_FILE="prompts/dojo_cycle.md"
+PROMPT_FILE="prompts/meditation_cycle.md"
 [ -f "$PROMPT_FILE" ] || { echo "Missing $PROMPT_FILE" >&2; exit 1; }
 
-ALLOWED='Read,Edit,Write,Grep,Glob,Task,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git checkout -- :*),Bash(./bin/ronin-local:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(node:*),Bash(jq:*)'
+ALLOWED='Read,Edit,Write,Grep,Glob,Task,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git checkout -- :*),Bash(git worktree:*),Bash(./bin/ronin-local:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(node:*),Bash(jq:*)'
 
 FULL_PROMPT="$(cat "$PROMPT_FILE")
 
 ---
 DISPATCH OVERRIDE (TUI-triggered single-pillar run):
 Focus this cycle exclusively on pillar=${PILLAR}.
-Skip Step B if state/DOJO_STATE.json already has live_current set.
+Skip Step B if state/MEDITATION_STATE.json already has live_current set.
 In Step C, only consider backlog items where pillar=${PILLAR}.
 Proceed through Steps D → E → F normally."
 
-# Fallback literals match dojo.env (single source) — no silent divergence if dojo.env is absent.
+# Model tier: pin so the cycle doesn't inherit an expensive interactive session default
+# (CLAUDE.md efficiency rule). CYCLE_MODEL from meditation.env (single source); empty =
+# inherit session default (rollback). Sonnet is the stated-sufficient tier for ronin work.
+CYCLE_MODEL="${CYCLE_MODEL:-sonnet}"
+MODEL_ARGS=()
+[ -n "$CYCLE_MODEL" ] && MODEL_ARGS=(--model "$CYCLE_MODEL")
+
+# Fallback literals match meditation.env (single source) — no silent divergence if meditation.env is absent.
 CLAUDE_CMD=(claude -p "$FULL_PROMPT"
   --allowedTools "$ALLOWED"
   --permission-mode acceptEdits
+  "${MODEL_ARGS[@]}"
   --max-turns "${MAX_TURNS:-80}")
 
 if command -v timeout >/dev/null 2>&1; then
   exec timeout "${CYCLE_TIMEOUT:-2400}s" "${CLAUDE_CMD[@]}"
 fi
 # macOS has no GNU `timeout` — this exec failed silently on every Mac cycle
-# ("exec: timeout: not found"), so no dojo cycle ever ran here. Bash watchdog
+# ("exec: timeout: not found"), so no meditation cycle ever ran here. Bash watchdog
 # with the same kill-after semantics:
 "${CLAUDE_CMD[@]}" & PID=$!
 ( sleep "${CYCLE_TIMEOUT:-2400}" && kill -TERM "$PID" 2>/dev/null ) & WD=$!

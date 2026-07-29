@@ -101,17 +101,17 @@ def still_breaching(reflexes: list[dict], metric: str) -> bool:
 # Real I/O (called only by main() — never in tests)
 # ---------------------------------------------------------------------------
 
-def _repo_root() -> Path:
-    """Resolve the repo root (holds agentica_core) and put it on sys.path.
+def _governance_root() -> Path:
+    """Resolve the Governance root (holds agentica_core) and put it on sys.path.
 
-    parents[1] == the pack root from bin/. The gate is read-only (it never writes), so it
-    is safe to run either from the live ORDER_SAMURAI_ROOT (the engine runs it there,
-    before any staging worktree exists) or from a worktree — both resolve the same
-    agentica_core and read seconds-fresh telemetry."""
-    repo_root = Path(__file__).resolve().parents[1]
-    if str(repo_root) not in sys.path:
-        sys.path.insert(0, str(repo_root))
-    return repo_root
+    parents[2] == Governance from Governance/Order Samurai/bin/. The gate is read-only
+    (it never writes), so it is safe to run either from the live ORDER_SAMURAI_ROOT (the
+    engine runs it there, before any staging worktree exists) or from a worktree — both
+    resolve the same agentica_core and read seconds-fresh telemetry."""
+    governance_root = Path(__file__).resolve().parents[2]
+    if str(governance_root) not in sys.path:
+        sys.path.insert(0, str(governance_root))
+    return governance_root
 
 
 def _live_payload(window_days: int) -> dict:
@@ -119,7 +119,7 @@ def _live_payload(window_days: int) -> dict:
     refresh_dashboard.py performs (aggregate re-runs verifiers, secret scan,
     architecture score, knowledge signals over near-live telemetry); write_history=False
     keeps it side-effect-free (no wid_payload write, no history append)."""
-    _repo_root()
+    _governance_root()
     from agentica_core.aggregate import aggregate  # noqa: E402
 
     payload = aggregate(window_days=window_days, write_history=False)
@@ -127,7 +127,7 @@ def _live_payload(window_days: int) -> dict:
 
 
 def _known_metric(metric: str) -> bool:
-    _repo_root()
+    _governance_root()
     from agentica_core.insights import METRIC_CONFIG  # noqa: E402
 
     return metric in METRIC_CONFIG
@@ -136,7 +136,7 @@ def _known_metric(metric: str) -> bool:
 def main(argv: list[str] | None = None) -> int:
     # Windows stdout defaults to cp1252 and can't encode non-ASCII in session ids/messages;
     # the resulting UnicodeEncodeError would exit non-zero and be read as PROCEED. That is
-    # still fail-open (safe), but reconfiguring keeps the log clean.
+    # still fail-open (safe), but reconfiguring keeps the log clean. (anti-pattern #13)
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):

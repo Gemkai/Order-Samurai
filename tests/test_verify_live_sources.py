@@ -31,7 +31,7 @@ def test_logical_sources_skipped(source):
 
 
 @pytest.mark.parametrize("source", [
-    "state/DOJO_STATE.json", "~/.claude/data/security_scorecard.json",
+    "state/MEDITATION_STATE.json", "~/.claude/data/security_scorecard.json",
     "file.mtime(state/charters/*.md, execution/**/*.py)",
 ])
 def test_concrete_sources_not_logical(source):
@@ -153,3 +153,39 @@ def test_run_checks_skips_logical_sources(monkeypatch, tmp_path):
     results = vls.run_checks(repo_root=tmp_path)
     _, exit_code = vls.summarize(results)
     assert exit_code == 0
+
+
+# ── real REGISTRY declaration parity (Estimated_Human_Time_Saved) ─────────────
+# The 2026-07-12 doctor FAIL was a declaration drift: tokens that don't exist
+# (vibe_alignment.json, doc_parity.json) on a metric reporting LIVE. These pin
+# the REAL registry entry to the reducer's actual read paths so a revert or
+# future drift fails in CI instead of only at doctor-runtime on one machine.
+
+def _real_ehts_entry():
+    from agentica_core.ronin_metrics import REGISTRY
+    return next(e for e in REGISTRY if e.get("metric") == "Estimated_Human_Time_Saved")
+
+
+def _ehts_fixture_repo(tmp_path):
+    # Two levels below tmp_path, mirroring AgenticaOS/Governance/"Order Samurai"
+    # so the declaration's ../../Data token lands at tmp_path/Data.
+    root = tmp_path / "Governance" / "os"
+    (root / "state" / "charters").mkdir(parents=True)
+    (root / "state" / "MEDITATION_STATE.json").write_text("{}", encoding="utf-8")
+    (root / "state" / "vibe_alignment.json").write_text("{}", encoding="utf-8")
+    (root / "state" / "charters" / "bow.md").write_text("# charter", encoding="utf-8")
+    hist = tmp_path / "Data" / "telemetry"
+    hist.mkdir(parents=True)
+    (hist / "metrics_history.jsonl").write_text("", encoding="utf-8")
+    return root
+
+
+def test_real_ehts_declaration_resolves_against_reducer_read_paths(tmp_path):
+    root = _ehts_fixture_repo(tmp_path)
+    assert vls._source_missing_tokens(_real_ehts_entry()["source"], root) == []
+
+
+def test_pre_fix_ehts_declaration_does_not_resolve(tmp_path):
+    root = _ehts_fixture_repo(tmp_path)
+    broken = "state/MEDITATION_STATE.json+vibe_alignment.json+doc_parity.json"
+    assert vls._source_missing_tokens(broken, root) == ["vibe_alignment.json", "doc_parity.json"]

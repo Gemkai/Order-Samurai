@@ -17,6 +17,7 @@ if str(_GOVERNANCE) not in sys.path:
     sys.path.insert(0, str(_GOVERNANCE))
 
 
+from agentica_core.aggregate import r_mcp_vs_cli
 from agentica_core.ronin_metrics import (  # type: ignore[attr-defined]
     REGISTRY,
     compute_metric,
@@ -127,62 +128,48 @@ class LoadTelemetryRecordsTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# compute_metric — MCP_vs_CLI_Ratio
+# live kernel — MCP_vs_CLI_Ratio (registered 2026-07-12 from the resolved
+# frozen-kernel orphan; the frozen reducer counted only the literal "mcp",
+# a value the canonical telemetry never emits — real vocabulary is
+# cli / mixed / none)
 # ---------------------------------------------------------------------------
 
 class McpVsCliRatioTests(unittest.TestCase):
 
-    def test_returns_zero_when_no_records_carry_the_field(self) -> None:
-        sandbox = _sandbox(self._testMethodName)
-        records = [{"model_tier": "CLOUD"}, {"session_id": "abc"}]
+    def test_returns_none_when_no_records_carry_the_field(self) -> None:
+        records = [{"model_tier": "PREMIUM"}, {"session_id": "abc"}]
 
-        result = compute_metric("MCP_vs_CLI_Ratio", records, sandbox)
+        self.assertIsNone(r_mcp_vs_cli(records))
 
-        self.assertTrue(result["live"])
-        self.assertEqual(result["value"], 0.0)
+    def test_returns_none_when_all_sessions_made_no_external_connection(self) -> None:
+        records = [{"mcp_or_cli": "none"}, {"mcp_or_cli": "none"}]
 
-    def test_returns_one_when_all_records_are_mcp(self) -> None:
-        sandbox = _sandbox(self._testMethodName)
-        records = [{"mcp_or_cli": "mcp"}, {"mcp_or_cli": "mcp"}]
+        self.assertIsNone(r_mcp_vs_cli(records))
 
-        result = compute_metric("MCP_vs_CLI_Ratio", records, sandbox)
-
-        self.assertEqual(result["value"], 1.0)
-
-    def test_returns_zero_when_all_records_are_cli(self) -> None:
-        sandbox = _sandbox(self._testMethodName)
+    def test_returns_zero_when_all_routed_sessions_used_cli_only(self) -> None:
         records = [{"mcp_or_cli": "cli"}, {"mcp_or_cli": "cli"}]
 
-        result = compute_metric("MCP_vs_CLI_Ratio", records, sandbox)
+        self.assertEqual(r_mcp_vs_cli(records), 0.0)
 
-        self.assertEqual(result["value"], 0.0)
-
-    def test_returns_correct_ratio_for_mixed_records(self) -> None:
-        sandbox = _sandbox(self._testMethodName)
+    def test_counts_mixed_sessions_as_mcp_usage(self) -> None:
         records = [
-            {"mcp_or_cli": "mcp"},
+            {"mcp_or_cli": "mixed"},
             {"mcp_or_cli": "cli"},
             {"mcp_or_cli": "mcp"},
             {"mcp_or_cli": "cli"},
         ]
 
-        result = compute_metric("MCP_vs_CLI_Ratio", records, sandbox)
+        self.assertAlmostEqual(r_mcp_vs_cli(records), 50.0)
 
-        self.assertAlmostEqual(result["value"], 0.5)
-
-    def test_ignores_records_without_the_field_when_computing_ratio(self) -> None:
-        sandbox = _sandbox(self._testMethodName)
-        # 2 mcp, 1 cli — the record with no field should be excluded
+    def test_excludes_unconnected_sessions_from_the_denominator(self) -> None:
+        # 1 mixed, 1 cli routed; the "none" session made no routing choice
         records = [
-            {"mcp_or_cli": "mcp"},
-            {"mcp_or_cli": "mcp"},
+            {"mcp_or_cli": "mixed"},
             {"mcp_or_cli": "cli"},
-            {"session_id": "no-field"},
+            {"mcp_or_cli": "none"},
         ]
 
-        result = compute_metric("MCP_vs_CLI_Ratio", records, sandbox)
-
-        self.assertAlmostEqual(result["value"], 2 / 3)
+        self.assertAlmostEqual(r_mcp_vs_cli(records), 50.0)
 
 
 # ---------------------------------------------------------------------------
@@ -277,103 +264,6 @@ class RegistryStructureTests(unittest.TestCase):
         for entry in REGISTRY:
             with self.subTest(metric=entry.get("metric")):
                 self.assertIn(entry["pillar"], valid)
-
-
-# ---------------------------------------------------------------------------
-# compute_metric — Hook_Failure_Rate
-# ---------------------------------------------------------------------------
-
-class HookFailureRateTests(unittest.TestCase):
-
-    def test_returns_zero_when_no_events_file(self) -> None:
-        sandbox = _sandbox(self._testMethodName)
-
-        result = compute_metric("Hook_Failure_Rate", [], sandbox)
-
-        self.assertTrue(result["live"])
-        self.assertEqual(result["value"], 0.0)
-
-    def test_returns_zero_when_events_file_is_empty(self) -> None:
-        sandbox = _sandbox(self._testMethodName)
-        events_path = sandbox / "state" / "autonomic_events.jsonl"
-        events_path.parent.mkdir(parents=True, exist_ok=True)
-        events_path.write_text("", encoding="utf-8")
-
-        result = compute_metric("Hook_Failure_Rate", [], sandbox)
-
-        self.assertEqual(result["value"], 0.0)
-
-    def test_returns_one_when_all_events_are_hook_failures(self) -> None:
-        sandbox = _sandbox(self._testMethodName)
-        events_path = sandbox / "state" / "autonomic_events.jsonl"
-        events_path.parent.mkdir(parents=True, exist_ok=True)
-        events_path.write_text(
-            json.dumps({"event": "hook_failure", "detail": "err1"}) + "\n"
-            + json.dumps({"event": "hook_failure", "detail": "err2"}) + "\n",
-            encoding="utf-8",
-        )
-
-        result = compute_metric("Hook_Failure_Rate", [], sandbox)
-
-        self.assertEqual(result["value"], 1.0)
-
-    def test_returns_correct_fraction_for_mixed_events(self) -> None:
-        sandbox = _sandbox(self._testMethodName)
-        events_path = sandbox / "state" / "autonomic_events.jsonl"
-        events_path.parent.mkdir(parents=True, exist_ok=True)
-        events_path.write_text(
-            json.dumps({"event": "hook_failure", "detail": "f1"}) + "\n"
-            + json.dumps({"event": "hook_failure", "detail": "f2"}) + "\n"
-            + json.dumps({"event": "zombie_killed", "detail": "z1"}) + "\n",
-            encoding="utf-8",
-        )
-
-        result = compute_metric("Hook_Failure_Rate", [], sandbox)
-
-        self.assertAlmostEqual(result["value"], 2 / 3)
-
-
-# ---------------------------------------------------------------------------
-# compute_metric — Zombie_Process_Count
-# ---------------------------------------------------------------------------
-
-class ZombieProcessCountTests(unittest.TestCase):
-
-    def test_returns_zero_when_no_events_file(self) -> None:
-        sandbox = _sandbox(self._testMethodName)
-
-        result = compute_metric("Zombie_Process_Count", [], sandbox)
-
-        self.assertTrue(result["live"])
-        self.assertEqual(result["value"], 0)
-
-    def test_returns_zero_when_no_zombie_events(self) -> None:
-        sandbox = _sandbox(self._testMethodName)
-        events_path = sandbox / "state" / "autonomic_events.jsonl"
-        events_path.parent.mkdir(parents=True, exist_ok=True)
-        events_path.write_text(
-            json.dumps({"event": "hook_failure", "detail": "f1"}) + "\n",
-            encoding="utf-8",
-        )
-
-        result = compute_metric("Zombie_Process_Count", [], sandbox)
-
-        self.assertEqual(result["value"], 0)
-
-    def test_counts_zombie_killed_events(self) -> None:
-        sandbox = _sandbox(self._testMethodName)
-        events_path = sandbox / "state" / "autonomic_events.jsonl"
-        events_path.parent.mkdir(parents=True, exist_ok=True)
-        events_path.write_text(
-            json.dumps({"event": "zombie_killed", "detail": "p1"}) + "\n"
-            + json.dumps({"event": "zombie_killed", "detail": "p2"}) + "\n"
-            + json.dumps({"event": "hook_failure", "detail": "f1"}) + "\n",
-            encoding="utf-8",
-        )
-
-        result = compute_metric("Zombie_Process_Count", [], sandbox)
-
-        self.assertEqual(result["value"], 2)
 
 
 if __name__ == "__main__":

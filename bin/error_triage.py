@@ -40,7 +40,21 @@ from typing import Callable
 # ---------------------------------------------------------------------------
 
 ERROR_STATUSES = frozenset({"error"})
-MIN_ERROR_SAMPLE = 10
+MIN_ERROR_SAMPLE = 10  # sessions (was records; the guard always meant 10 INDEPENDENT samples)
+
+# session_id values that are PLACEHOLDERS, not identities (mirrors aggregate._PLACEHOLDER_SIDS;
+# lockstep-asserted by the drift test). Placeholder-sid records count individually.
+_PLACEHOLDER_SIDS = frozenset({"local-session"})
+
+
+def _real_sid(r: dict) -> str | None:
+    """The record's session_id when it is a genuine identity, else None
+    (mirrors aggregate._real_sid — the bin must stay stdlib-only at import time,
+    so the helper is duplicated rather than imported)."""
+    sid = r.get("session_id")
+    if not sid or sid in _PLACEHOLDER_SIDS:
+        return None
+    return sid
 # Mirrors METRIC_CONFIG["Error_Rate"]["fail"] in agentica_core/insights.py. Error_Rate is not
 # calibration-overlaid today so this static default is correct. A clone for a calibration-eligible
 # metric must pass the live threshold via the mechanism's `args` (e.g. --fail-threshold) rather than
@@ -51,15 +65,40 @@ _STATE_PATH = Path(__file__).resolve().parents[1] / "state" / "error_triage.json
 
 
 def error_rate_stats(records: list[dict]) -> tuple[float | None, int, int]:
-    """(rate_pct | None, error_count, total). rate is None (uncalibrated) when
-    total < MIN_ERROR_SAMPLE — the min-sample guard that stops a false FAIL on noise.
+    """(rate_pct | None, error_sessions, total_sessions). SESSION-counted: a session
+    with ANY error-status record is one error session; records with no real session_id
+    (absent or placeholder) count individually. Record counting diluted the rate ~6x —
+    the claude SessionEnd emitter re-emits one session as up to 28 rows, so a success
+    session outvoted error sessions 28:1 in the denominator (2026-07-12 redesign).
+    rate is None (uncalibrated) when total sessions < MIN_ERROR_SAMPLE — the min-sample
+    guard that stops a false FAIL on noise — or when the window carries no evidence the
+    error channel is wired (Error_Rate REPLACE, 2026-07-08 audit): an error-status
+    record or any record stamped with the emitter's exit_code field. An all-"success"
+    window from an emitter that has never reported an error is unfalsifiable, not a
+    measured 0%.
 
     The rate is rounded to 1 decimal to MATCH the kernel reducer (aggregate.r_error_rate),
     so the bin's breach_confirmed gate and the dashboard grade on the identical value. A clone
     for a metric whose kernel reducer does NOT round must compare on the raw value instead."""
-    total = len(records)
-    errors = sum(1 for r in records if str(r.get("status", "")).lower() in ERROR_STATUSES)
+    sids: set = set()
+    err_sids: set = set()
+    loose_total = loose_errors = 0
+    for r in records:
+        is_err = str(r.get("status", "")).lower() in ERROR_STATUSES
+        sid = _real_sid(r)
+        if sid:
+            sids.add(sid)
+            if is_err:
+                err_sids.add(sid)
+        else:
+            loose_total += 1
+            if is_err:
+                loose_errors += 1
+    total = len(sids) + loose_total
+    errors = len(err_sids) + loose_errors
     if total < MIN_ERROR_SAMPLE:
+        return None, errors, total
+    if errors == 0 and not any("exit_code" in r for r in records):
         return None, errors, total
     return round(100 * errors / total, 1), errors, total
 
@@ -69,7 +108,11 @@ def _signature(rec: dict) -> tuple[str, str, str]:
     The message is truncated to 80 chars — deliberately lossy: a clone whose discriminating
     detail lives past char 80 (or in a field other than `error`) must widen this key."""
     platform = str(rec.get("platform") or "unknown")
-    msg = str(rec.get("error") or "").strip().splitlines()[0][:80] if rec.get("error") else "(no message)"
+    # Strip first, THEN test: a truthy-but-whitespace error field (e.g. "   " or "\n")
+    # would pass a `if rec.get("error")` guard but yield "".splitlines() == [] and
+    # raise IndexError on [0]. Grade a whitespace-only message as "(no message)".
+    err = str(rec.get("error") or "").strip()
+    msg = err.splitlines()[0][:80] if err else "(no message)"
     exit_code = str(rec.get("exit_code")) if rec.get("exit_code") is not None else "?"
     return (platform, msg, exit_code)
 
@@ -88,7 +131,10 @@ def triage(
     """Build the deterministic Error_Rate triage report from already-loaded records.
 
     Pure given its inputs. breach_confirmed is the re-measure/verify gate: True only when
-    the window is calibrated (>= MIN_ERROR_SAMPLE records) AND the rate is at/above FAIL.
+    the window is calibrated (>= MIN_ERROR_SAMPLE sessions) AND the rate is at/above FAIL.
+    Report `total`/`error_count` are SESSION counts (see error_rate_stats); signature
+    counts stay record-level — grouping wants every error exemplar, and the claude
+    emitter (the re-emit source) never writes error rows, so re-emits can't inflate them.
     """
     rate, errors, total = error_rate_stats(records)
     calibrated = rate is not None
@@ -123,6 +169,7 @@ def triage(
         "generated_at": now_fn(),
         "metric": "metric:bow:Error_Rate",
         "window_days": window_days,
+        "unit": "sessions",
         "total": total,
         "error_count": errors,
         "error_rate": rate,
@@ -171,7 +218,7 @@ def _format_report(report: dict) -> str:
     rate_s = f"{rate}%" if rate is not None else "uncalibrated"
     lines = [
         f"Error Triage — {report['generated_at']}  (window {report['window_days']}d)",
-        f"Error rate: {rate_s}  ({report['error_count']}/{report['total']} records)  "
+        f"Error rate: {rate_s}  ({report['error_count']}/{report['total']} sessions)  "
         f"verdict: {report['verdict'].upper()}",
     ]
     if report["top_signature"]:

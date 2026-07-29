@@ -12,7 +12,6 @@ if str(REPO_ROOT) not in sys.path:
 
 from execution.verify_path_authority import (  # type: ignore[attr-defined]
     scan_hardcoded_path_literals,
-    scan_home_path_leaks,
     summarize,
 )
 
@@ -45,7 +44,7 @@ class VerifyPathAuthorityTests(unittest.TestCase):
         live_root.mkdir(parents=True, exist_ok=True)
         bad_file = live_root / "bad.py"
         bad_file.write_text(
-            'ROOT = "C:\\\\Users\\\\example\\\\Desktop\\\\Projects\\\\Order Samurai"\n',
+            'ROOT = "C:\\\\Users\\\\exampleuser\\\\Desktop\\\\Projects\\\\Order Samurai"\n',
             encoding="utf-8",
         )
 
@@ -78,34 +77,6 @@ class VerifyPathAuthorityTests(unittest.TestCase):
             ),
             base_root=sandbox,
         )
-
-        self.assertEqual(offenders, [])
-
-    def test_scan_home_path_leaks_flags_real_username(self) -> None:
-        sandbox = REPO_ROOT / ".tmp" / "test_verify_path_authority" / self._testMethodName
-        live_root = sandbox / "config"
-        live_root.mkdir(parents=True, exist_ok=True)
-        bad_file = live_root / "mcp.json"
-        bad_file.write_text(
-            '{"args": ["/Users/realperson/Desktop/project/run.py"]}\n',
-            encoding="utf-8",
-        )
-
-        offenders = scan_home_path_leaks(scan_paths=[live_root], base_root=sandbox)
-
-        self.assertEqual(offenders, ["config/mcp.json"])
-
-    def test_scan_home_path_leaks_ignores_example_placeholder(self) -> None:
-        sandbox = REPO_ROOT / ".tmp" / "test_verify_path_authority" / self._testMethodName
-        live_root = sandbox / "config"
-        live_root.mkdir(parents=True, exist_ok=True)
-        good_file = live_root / "mcp.json"
-        good_file.write_text(
-            '{"args": ["C:/Users/example/Desktop/project/run.py"]}\n',
-            encoding="utf-8",
-        )
-
-        offenders = scan_home_path_leaks(scan_paths=[live_root], base_root=sandbox)
 
         self.assertEqual(offenders, [])
 

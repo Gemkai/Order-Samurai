@@ -30,19 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-SAMURAI_ROOT_ENV = os.environ.get("SAMURAI_ROOT")
-if SAMURAI_ROOT_ENV:
-    SAMURAI_ROOT_DIR = Path(SAMURAI_ROOT_ENV).expanduser()
-else:
-    # Default: use ~/.samurai if it exists or if ~/.claude does not
-    samurai_default = Path.home() / ".samurai"
-    claude_default = Path.home() / ".claude"
-    if samurai_default.exists() or not claude_default.exists():
-        SAMURAI_ROOT_DIR = samurai_default
-    else:
-        SAMURAI_ROOT_DIR = claude_default
-
-DEFAULT_REPORT_PATH = SAMURAI_ROOT_DIR / "data" / "policy_enforcement_audit.json"
+DEFAULT_REPORT_PATH = Path.home() / ".claude" / "data" / "policy_enforcement_audit.json"
 
 # Timeout for any future subprocess calls — unused in the pure-Python reader
 # implementation but kept as a named constant per the reference pattern.
@@ -50,20 +38,20 @@ SCAN_TIMEOUT_S = 30
 
 # Globs that enumerate policy files from known agent-OS locations.
 POLICY_GLOBS = [
-    str(SAMURAI_ROOT_DIR / "safety" / "*.json"),
-    str(SAMURAI_ROOT_DIR / "data" / "*allowlist*.json"),
-    str(SAMURAI_ROOT_DIR / "data" / "*baseline*.json"),
-    str(SAMURAI_ROOT_DIR / "data" / "*threshold*.json"),
-    str(SAMURAI_ROOT_DIR / "data" / "*rules*.json"),
-    str(SAMURAI_ROOT_DIR / "data" / "*policies*.json"),
+    "~/.claude/safety/*.json",
+    "~/.claude/data/*allowlist*.json",
+    "~/.claude/data/*baseline*.json",
+    "~/.claude/data/*threshold*.json",
+    "~/.claude/data/*rules*.json",
+    "~/.claude/data/*policies*.json",
 ]
 
 # Directories to search for readers of each policy file.
 SEARCH_DIRS = [
-    str(SAMURAI_ROOT_DIR / "scripts"),
-    str(SAMURAI_ROOT_DIR / "hooks"),
-    str(SAMURAI_ROOT_DIR / "execution"),
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),  # Repository root
+    os.path.expanduser("~/.claude/scripts"),
+    os.path.expanduser("~/.claude/hooks"),
+    os.path.expanduser("~/.claude/execution"),
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
 ]
 
 # Dependency/build/VCS dirs to prune from the os.walk — they never contain
