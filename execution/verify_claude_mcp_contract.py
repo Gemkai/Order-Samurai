@@ -14,8 +14,8 @@ Checks, all bounded and read-only against `claude_runtime_target.runtime_root()`
   (scripts/launch_mcp_server.py, scripts/mcp_server_registry.py,
   scripts/sync_mcp_config.py) — missing = WARN, never crash
 - `mcp.json` parses and is well-formed; a server entry embedding a literal
-  absolute Claude-home path (~/.claude forms, the
-  ~/.claude literal) = FAIL — that is exactly the drift a
+  absolute Claude-home path (C:\\Users\\someone\\.claude forms, the
+  /Users/someone/.claude literal) = FAIL — that is exactly the drift a
   generated, launcher-backed config is supposed to prevent
 - disabled-by-policy is distinguished from enabled-but-broken: a server marked
   disabled whose required activation env is unset is correctly gated (OK), NOT a
@@ -24,8 +24,9 @@ Checks, all bounded and read-only against `claude_runtime_target.runtime_root()`
   machine-readable enabled/disabled or env-activation metadata, an honor-system
   OK row says so rather than fabricating a check.
 
-NEVER re.compile a path literal — the Windows forms contain \\U sequences that
-crash `re`; substring-match via `_literal_in` (mirrors verify_no_stale_paths).
+Absolute-home detection is pattern-based (claude_runtime_target.pinned_home_paths)
+rather than a literal list: a literal carrying this machine's own home was
+rewritten by the public exporter into the portable form it exists to accept.
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ if str(ROOT_DIR) not in sys.path:
 from execution.claude_runtime_target import (
     ANTI_DRIFT_POLICY_PATH,
     ANTI_SPRAWL_POLICY_PATH,
+    pinned_home_paths,
     runtime_root,
 )
 
@@ -61,14 +63,11 @@ MCP_CONFIG_RELPATH = "mcp.json"
 # or the registry rather than an ad-hoc absolute path.
 LAUNCHER_TOKENS = ("launch_mcp_server", "mcp_server_registry")
 
-# Literal absolute Claude-home forms in both slash directions. _literal_in also
-# matches the JSON doubled-backslash variant of each backslash form. A portable
-# self-reference (Path.home() / ".claude", "~/.claude") contains none of these.
-FORBIDDEN_HOME_LITERALS = (
-    r"~/.claude",
-    "C:/Users/example/.claude",
-    "~/.claude",
-)
+#: Pattern-matched over ANY user's home rather than listed as literals, one of
+#: which was this machine's own: the exporter rewrites "/Users/<owner>/.claude"
+#: to "~/.claude", which put the portable form on the denylist and inverted this
+#: check in the public tree. See claude_runtime_target.pinned_home_paths.
+FORBIDDEN_RUNTIME_DIRS = (".claude",)
 
 
 def _load_json(path: Path) -> tuple[dict | None, str | None]:
@@ -99,13 +98,6 @@ def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
     return counts, 1 if counts["FAIL"] else 0
 
 
-def _literal_in(content: str, literal: str) -> bool:
-    # JSON escapes backslashes (C:\\Users\\...), so a single-backslash literal
-    # must also be matched in its doubled form or config drift slips through.
-    # NEVER re.compile these literals — the Windows forms contain \U sequences
-    # that crash re.
-    forms = (literal, literal.replace("\\", "\\\\")) if "\\" in literal else (literal,)
-    return any(form in content for form in forms)
 
 
 def find_rule(payload: dict, rule_id: str) -> dict | None:
@@ -156,7 +148,7 @@ def is_launcher_backed(cfg: dict) -> bool:
 
 def literal_home_hits(cfg: dict) -> list[str]:
     blob = json.dumps(cfg)
-    return sorted({lit for lit in FORBIDDEN_HOME_LITERALS if _literal_in(blob, lit)})
+    return pinned_home_paths(blob, *FORBIDDEN_RUNTIME_DIRS)
 
 
 def has_activation_metadata(mcp_payload: dict, servers: dict) -> bool:

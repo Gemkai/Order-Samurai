@@ -21,33 +21,24 @@ if str(ROOT_DIR) not in sys.path:
 
 from execution.claude_runtime_target import (  # type: ignore[import-not-found]  # noqa: E402
     ANTI_DRIFT_POLICY_PATH,
+    pinned_home_paths,
     runtime_root,
 )
 
-# Absolute Claude-home path literals a portable command must never pin. Matched
-# as plain substrings (never re.compile — the Windows forms carry \U escapes).
-PINNED_HOME_LITERALS = (
-    r"~/.claude",
-    r"~/.claude",
-    "C:/Users/example/.claude",
-    "~/.claude",
-)
+#: Runtime homes a portable command must never pin, POSIX-spelled. The matcher
+#: (claude_runtime_target.pinned_home_paths) is a pattern over any user's home,
+#: not a literal list containing this machine's — see the note beside it: the
+#: exporter scrubbed the literal into "~/.claude" and inverted this check.
+PINNED_RUNTIME_DIRS = (".claude",)
 
 
 def _make_result(status: str, label: str, detail: str) -> dict[str, str]:
     return {"status": status, "label": label, "detail": detail}
 
 
-def _literal_in(needle: str, haystack: str) -> bool:
-    """Substring match tolerant of JSON's doubled-backslash encoding."""
-    return needle in haystack or needle.replace("\\", "\\\\") in haystack
-
-
 def _pinned_home(text: str) -> str | None:
-    for lit in PINNED_HOME_LITERALS:
-        if _literal_in(lit, text):
-            return lit
-    return None
+    hits = pinned_home_paths(text, *PINNED_RUNTIME_DIRS)
+    return hits[0] if hits else None
 
 
 def _hook_commands(settings: dict) -> list[str]:

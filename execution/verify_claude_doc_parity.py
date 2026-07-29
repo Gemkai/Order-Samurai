@@ -32,6 +32,7 @@ if str(ROOT_DIR) not in sys.path:
 from execution.claude_runtime_target import (
     BACKLOG_PATH,
     REPORT_PATH,
+    is_standalone_distribution,
     SCORECARD_PATH,
     runtime_root,
 )
@@ -165,12 +166,20 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
                 )
             )
 
-    # Enforcement-pack docs live in THIS repo and must not vanish.
+    # Enforcement-pack docs live in THIS repo and must not vanish — except in a
+    # standalone distribution, where the exporter deliberately never ships the
+    # internal hardening report. Absent-by-design is not the same finding as
+    # absent-by-rot, so it does not get the same status.
+    standalone = is_standalone_distribution()
     for path in (REPORT_PATH, BACKLOG_PATH):
         rel = path.resolve().relative_to(ROOT_DIR.resolve()).as_posix()
         label = f"doc_parity.repo.{rel}"
         if path.is_file():
             results.append(_make_result("OK", label, f"enforcement-pack doc present: {rel}"))
+        elif standalone:
+            results.append(
+                _make_result("OK", label, f"not shipped in a standalone distribution: {rel}")
+            )
         else:
             results.append(
                 _make_result("FAIL", label, f"enforcement-pack doc missing: {rel}")

@@ -6,9 +6,9 @@ import { createServer } from 'http'
 import { spawn, spawnSync, type ChildProcess } from 'child_process'
 import fs from 'fs'
 import path from 'path'
-import { DojoStateManager, PILLAR_SLUGS, ORDER_SAMURAI_ROOT, GOVERNANCE_ROOT, WID_PAYLOAD_PATH } from './state.js'
+import { DojoStateManager, PILLAR_SLUGS, ORDER_SAMURAI_ROOT, GOVERNANCE_ROOT, WID_PAYLOAD_PATH, VERDICT_RECORD_SCHEMA_PATH } from './state.js'
 import { AutoRemediationEngine } from './dojo.js'
-import { ReflexEngine, REFLEX_MAX_TURNS, type ReflexEntry } from './reflex-engine.js'
+import { ReflexEngine, REFLEX_MAX_TURNS, checkWarnOnly, type ReflexEntry } from './reflex-engine.js'
 import type { PillarSlug, RoninStatus, ServerMsg, ClientMsg, DojoState, VerdictRecord } from './types.js'
 
 const PORT = 3001
@@ -416,6 +416,19 @@ app.post('/api/reflex/verdicts', requireLocalTrusted, (req, res) => {
     if (reflexReady !== undefined && typeof reflexReady !== 'boolean') {
       return res.status(400).json({ error: 'reflex_ready must be boolean when present', received: v })
     }
+    // A2: full-schema check, WARN-ONLY, layered ON TOP of the 400 gate above — never
+    // replacing it. The gate is a network boundary; downgrading it to warn-only to
+    // satisfy "reject nothing yet" would be a regression. This only measures what the
+    // gate never looked at (reasoning, evidence), so enforcement can later flip on
+    // evidence rather than on assumption.
+    // No `instance` — this is a network-supplied body ("never log request bodies").
+    // The violating field paths plus reflex_id/cycle_id are enough to trace it back.
+    checkWarnOnly('verdict_record', VERDICT_RECORD_SCHEMA_PATH, v, {
+      sink: 'POST /api/reflex/verdicts',
+      observer: 'server:verdict_post',
+      reflex_id: (v as Record<string, unknown>)['reflex_id'],
+      cycle_id: (v as Record<string, unknown>)['cycle_id'],
+    })
     verdicts.push(v as VerdictRecord)
   }
 

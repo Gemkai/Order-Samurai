@@ -7,8 +7,12 @@ Desktop layout), landing on a directory that does not exist. The import then
 silently failed and the fallback wrote reflex-engine events to a dead
 `~/Desktop/Agentica OS/...` path that no consumer reads.
 
-Since the script now lives at <repo>/Governance/Order Samurai/bin/, the real
-Governance dir is exactly three parents up.
+The replacement was a fixed `parents[2]`, correct for
+<repo>/Governance/Order Samurai/bin/ and wrong for the flat public export, where
+the pack sits at the root and three hops land OUTSIDE the distribution — the
+same dead-end failure one layout over. The dir is now found by MARKER (walk up
+for agentica_core/telemetry.py), so this test asserts the property that matters
+in BOTH trees rather than a hop count that can only describe one.
 """
 import sys
 from pathlib import Path

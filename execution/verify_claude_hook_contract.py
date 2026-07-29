@@ -17,17 +17,17 @@ CLAUDE_RUNTIME_ROOT for tests/sandboxes):
      resolves to a file that exists. A command referencing a hook file absent
      on disk = FAIL.
   3. live hook commands stay portable: a command that embeds a literal absolute
-     Claude-home path (~/.claude in slash+escaping forms, or the
-     literal ~/.claude) = FAIL. Portable ~ / $HOME /
+     Claude-home path (C:\\Users\\someone\\.claude in slash+escaping forms, or the
+     literal /Users/someone/.claude) = FAIL. Portable ~ / $HOME /
      Path.home() / relative forms are fine.
 
 Consumes config/claude_anti_drift_policy.json (the rule it enforces) and, for
 context, config/claude_promotion_policy.json (the generated-config-integration
 promotion gate).
 
-Path literals are NEVER re.compile'd — the Windows forms contain \\U escapes
-that crash re; `_literal_in` (ported from execution/verify_no_stale_paths.py)
-substring-matches and also matches the JSON doubled-backslash form.
+Absolute-home detection is pattern-based (claude_runtime_target.pinned_home_paths)
+rather than a literal list: a literal carrying this machine's own home was
+rewritten by the public exporter into the portable form it exists to accept.
 """
 
 from __future__ import annotations
@@ -44,6 +44,7 @@ if str(ROOT_DIR) not in sys.path:
 from execution.claude_runtime_target import (
     ANTI_DRIFT_POLICY_PATH,
     PROMOTION_POLICY_PATH,
+    pinned_home_paths,
     runtime_root,
 )
 
@@ -58,13 +59,11 @@ GENERATOR_ARTIFACTS = ("scripts/hook_registry.py", "scripts/sync_settings_config
 
 SETTINGS_FILENAME = "settings.json"
 
-# Literal absolute Claude-home forms in both slash directions. _literal_in also
-# matches the JSON/source doubled-backslash variant of each backslash form.
-FORBIDDEN_HOME_LITERALS = (
-    r"~/.claude",
-    "C:/Users/example/.claude",
-    "~/.claude",
-)
+#: Pattern-matched over ANY user's home rather than listed as literals, one of
+#: which was this machine's own: the exporter rewrites "/Users/<owner>/.claude"
+#: to "~/.claude", which put the portable form on the denylist and inverted this
+#: check in the public tree. See claude_runtime_target.pinned_home_paths.
+FORBIDDEN_RUNTIME_DIRS = (".claude",)
 
 # Suffixes that mark a hook-script reference inside a command string.
 SCRIPT_SUFFIXES = ("py", "js", "sh", "ts", "mjs", "cjs")
@@ -104,13 +103,6 @@ def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
     return counts, 1 if counts["FAIL"] else 0
 
 
-def _literal_in(content: str, literal: str) -> bool:
-    # JSON and source files escape backslashes (C:\\Users\\...), so a
-    # single-backslash literal must also be matched in its doubled form or drift
-    # slips through. NEVER re.compile these literals — the Windows forms contain
-    # \\U sequences that crash re.
-    forms = (literal, literal.replace("\\", "\\\\")) if "\\" in literal else (literal,)
-    return any(form in content for form in forms)
 
 
 def find_hook_contract_rule(payload: dict) -> dict | None:
@@ -222,12 +214,12 @@ def missing_hook_scripts(commands: list[str], root: Path) -> list[str]:
 
 
 def hook_command_literal_offenders(
-    commands: list[str], literals: tuple[str, ...] = FORBIDDEN_HOME_LITERALS
+    commands: list[str], runtime_dirs: tuple[str, ...] = FORBIDDEN_RUNTIME_DIRS
 ) -> list[str]:
     """Hook commands embedding a literal absolute Claude-home path."""
     offenders: set[str] = set()
     for command in commands:
-        hits = sorted({literal for literal in literals if _literal_in(command, literal)})
+        hits = pinned_home_paths(command, *runtime_dirs)
         if hits:
             excerpt = command if len(command) <= 80 else command[:77] + "..."
             offenders.add(f"{excerpt} ({', '.join(hits)})")

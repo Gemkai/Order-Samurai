@@ -1931,3 +1931,56 @@ export class ReflexEngine extends EventEmitter {
     })
   }
 }
+
+/** A1/A2 agent-output contracts: validate an artifact against its JSON Schema and
+ *  WARN, never reject. Ported from the live Governance engine so this fork enforces
+ *  the SAME cross-language contract the Python half does — the two halves silently
+ *  enforcing different contracts is exactly what test_agent_output_schemas exists to
+ *  catch. The 400 gate in server.ts is a network boundary and stays; this is layered
+ *  on top of it, measuring only what the gate never looked at.
+ *
+ *  Compiled validators are cached per schema path: ajv.compile is the expensive part
+ *  and the schemas are build artifacts, not live state. */
+const _validators = new Map<string, Ajv.ValidateFunction | null>()
+
+export function checkWarnOnly(
+  artifact: string, schemaPath: string, instance: unknown, context: Record<string, unknown> = {},
+): boolean {
+  let validate = _validators.get(schemaPath)
+  if (validate === undefined) {
+    try {
+      validate = new Ajv({ allErrors: true }).compile(
+        JSON.parse(fs.readFileSync(schemaPath, 'utf8')) as object,
+      )
+    } catch (err) {
+      // ajv 6.15.0 is draft-07 ONLY. A schema re-authored as 2020-12 throws HERE and
+      // nowhere in the Python tests (jsonschema 4.26 accepts 2020-12) — so name that
+      // cause explicitly instead of swallowing the compile error.
+      console.error(
+        `[schema] ${artifact} failed to compile under ajv 6 (draft-07 only — is $schema ` +
+        `set to 2020-12?): ${String(err)}`,
+      )
+      validate = null
+    }
+    _validators.set(schemaPath, validate)
+  }
+  if (!validate || validate(instance)) return false
+
+  const detail = new Ajv().errorsText(validate.errors)
+  console.warn(`[schema] schema_violation ${artifact}: ${detail}`)
+  try {
+    fs.appendFileSync(
+      path.join(ORDER_SAMURAI_ROOT, 'state', 'schema_violations.jsonl'),
+      JSON.stringify({
+        event: 'schema_violation',
+        ts: new Date().toISOString(),
+        schema: artifact,
+        violations: [detail],
+        ...context,
+      }) + '\n', 'utf8',
+    )
+  } catch {
+    // Observability must never block the path it observes.
+  }
+  return true
+}

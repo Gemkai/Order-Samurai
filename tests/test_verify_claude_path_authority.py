@@ -31,53 +31,53 @@ class VerifyClaudePathAuthorityTests(unittest.TestCase):
     def test_scan_flags_literal_mac_claude_home_in_scripts(self) -> None:
         sandbox = self._sandbox()
         (sandbox / "scripts" / "drifted.py").write_text(
-            'HUB_ROOT = "~/.claude/data"\n', encoding="utf-8"
+            'HUB_ROOT = "/Users/someone/.claude/data"\n', encoding="utf-8"
         )
 
         offenders, missing = vpa.scan_path_literals(root=sandbox, literals=LITERALS)
 
         self.assertEqual(missing, [])
-        self.assertEqual(offenders, ["scripts/drifted.py (~/.claude)"])
+        self.assertEqual(offenders, ["scripts/drifted.py (/Users/someone/.claude)"])
 
     def test_scan_flags_windows_single_backslash_form_in_hooks(self) -> None:
         sandbox = self._sandbox()
         (sandbox / "hooks" / "drifted_hook.py").write_text(
-            'ROOT = r"~/.claude"\n', encoding="utf-8"
+            'ROOT = r"C:\\Users\\someone\\.claude"\n', encoding="utf-8"
         )
 
         offenders, _ = vpa.scan_path_literals(root=sandbox, literals=LITERALS)
 
-        self.assertEqual(offenders, ["hooks/drifted_hook.py (~/.claude)"])
+        self.assertEqual(offenders, ["hooks/drifted_hook.py (C:\\Users\\someone\\.claude)"])
 
     def test_scan_flags_windows_doubled_backslash_form_in_json(self) -> None:
         sandbox = self._sandbox()
         (sandbox / "safety" / "drifted.json").write_text(
-            '{"root": "C:\\\\Users\\\\example\\\\.claude\\\\hooks"}\n', encoding="utf-8"
+            '{"root": "C:\\\\Users\\\\someone\\\\.claude\\\\hooks"}\n', encoding="utf-8"
         )
 
         offenders, _ = vpa.scan_path_literals(root=sandbox, literals=LITERALS)
 
-        self.assertEqual(offenders, ["safety/drifted.json (~/.claude)"])
+        self.assertEqual(offenders, ["safety/drifted.json (C:\\Users\\someone\\.claude)"])
 
     def test_scan_flags_windows_forward_slash_form(self) -> None:
         sandbox = self._sandbox()
         (sandbox / "orchestration" / "drifted.sh").write_text(
-            'ROOT="C:/Users/example/.claude"\n', encoding="utf-8"
+            'ROOT="C:/Users/someone/.claude"\n', encoding="utf-8"
         )
 
         offenders, _ = vpa.scan_path_literals(root=sandbox, literals=LITERALS)
 
-        self.assertEqual(offenders, ["orchestration/drifted.sh (C:/Users/example/.claude)"])
+        self.assertEqual(offenders, ["orchestration/drifted.sh (C:/Users/someone/.claude)"])
 
     def test_scan_flags_absolute_antigravity_reference(self) -> None:
         sandbox = self._sandbox()
         (sandbox / "llm" / "bridge.py").write_text(
-            'AG = "~/.gemini/antigravity/config.json"\n', encoding="utf-8"
+            'AG = "/Users/someone/.gemini/antigravity/config.json"\n', encoding="utf-8"
         )
 
         offenders, _ = vpa.scan_path_literals(root=sandbox, literals=LITERALS)
 
-        self.assertEqual(offenders, ["llm/bridge.py (~/.gemini/antigravity)"])
+        self.assertEqual(offenders, ["llm/bridge.py (/Users/someone/.gemini/antigravity)"])
 
     def test_portable_home_references_pass(self) -> None:
         sandbox = self._sandbox()
@@ -96,7 +96,7 @@ class VerifyClaudePathAuthorityTests(unittest.TestCase):
     def test_allowlisted_path_authority_may_anchor_the_home(self) -> None:
         sandbox = self._sandbox()
         (sandbox / "scripts" / "runtime_paths.py").write_text(
-            'CLAUDE_HOME = "~/.claude"\n', encoding="utf-8"
+            'CLAUDE_HOME = "/Users/someone/.claude"\n', encoding="utf-8"
         )
 
         offenders, _ = vpa.scan_path_literals(
@@ -120,7 +120,7 @@ class VerifyClaudePathAuthorityTests(unittest.TestCase):
         vendored = sandbox / "scripts" / "node_modules" / "pkg"
         vendored.mkdir(parents=True, exist_ok=True)
         (vendored / "vendored.js").write_text(
-            'const root = "~/.claude";\n', encoding="utf-8"
+            'const root = "/Users/someone/.claude";\n', encoding="utf-8"
         )
 
         offenders, _ = vpa.scan_path_literals(root=sandbox, literals=LITERALS)
@@ -131,7 +131,7 @@ class VerifyClaudePathAuthorityTests(unittest.TestCase):
         sandbox = self._sandbox()
         big = (sandbox / "scripts" / "big.py")
         big.write_bytes(
-            b'ROOT = "~/.claude"\n' + b"#" * (vpa.MAX_FILE_BYTES + 1)
+            b'ROOT = "/Users/someone/.claude"\n' + b"#" * (vpa.MAX_FILE_BYTES + 1)
         )
 
         offenders, _ = vpa.scan_path_literals(root=sandbox, literals=LITERALS)
@@ -141,7 +141,7 @@ class VerifyClaudePathAuthorityTests(unittest.TestCase):
     def test_non_text_extension_is_skipped(self) -> None:
         sandbox = self._sandbox()
         (sandbox / "scripts" / "blob.bin").write_text(
-            "~/.claude\n", encoding="utf-8"
+            "/Users/someone/.claude\n", encoding="utf-8"
         )
 
         offenders, _ = vpa.scan_path_literals(root=sandbox, literals=LITERALS)
@@ -151,12 +151,12 @@ class VerifyClaudePathAuthorityTests(unittest.TestCase):
     def test_extensionless_small_file_is_scanned(self) -> None:
         sandbox = self._sandbox()
         (sandbox / "scripts" / "launcher").write_text(
-            "#!/bin/sh\ncd ~/.claude\n", encoding="utf-8"
+            "#!/bin/sh\ncd /Users/someone/.claude\n", encoding="utf-8"
         )
 
         offenders, _ = vpa.scan_path_literals(root=sandbox, literals=LITERALS)
 
-        self.assertEqual(offenders, ["scripts/launcher (~/.claude)"])
+        self.assertEqual(offenders, ["scripts/launcher (/Users/someone/.claude)"])
 
     def test_run_checks_passes_on_clean_sandbox_via_env_override(self) -> None:
         sandbox = self._sandbox()
@@ -173,7 +173,7 @@ class VerifyClaudePathAuthorityTests(unittest.TestCase):
     def test_run_checks_fails_on_offender_and_warns_on_missing_surfaces(self) -> None:
         sandbox = self._sandbox("scripts")
         (sandbox / "scripts" / "drifted.py").write_text(
-            'HUB_ROOT = "~/.claude"\n', encoding="utf-8"
+            'HUB_ROOT = "/Users/someone/.claude"\n', encoding="utf-8"
         )
 
         with mock.patch.dict(os.environ, {"CLAUDE_RUNTIME_ROOT": str(sandbox)}):

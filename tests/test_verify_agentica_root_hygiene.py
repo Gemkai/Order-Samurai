@@ -120,7 +120,15 @@ class VerifyAgenticaRootHygieneTests(unittest.TestCase):
         untracked scratch dir, ...) turned the whole suite red for a non-defect.
         The suite asserts the invariant that must always hold; doctor owns the
         drift nudge.
+
+        Skipped where there is no live repo to validate: the public export ships
+        this pack standalone, and the root resolver returns None there rather
+        than guessing at a fixed parent-hop. Asserting against "the live repo
+        root" in a tree that has none is not a weaker check, it is a different
+        question with no subject.
         """
+        if AGENTICA_REPO_ROOT is None:
+            self.skipTest("standalone distribution — no Agentica repo root to validate")
         results = run_checks()
         counts, exit_code = summarize(results)
         self.assertEqual(exit_code, 0, results)

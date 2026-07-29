@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Iterable, Iterator
@@ -27,7 +28,11 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from execution.claude_runtime_target import ANTI_DRIFT_POLICY_PATH, runtime_root
+from execution.claude_runtime_target import (  # noqa: E402
+    ANTI_DRIFT_POLICY_PATH,
+    pinned_home_paths,
+    runtime_root,
+)
 
 PATH_AUTHORITY_RULE_ID = "single-path-authority"
 EXPECTED_VERIFIER = "execution/verify_claude_path_authority.py"
@@ -45,19 +50,14 @@ SKIP_DIR_NAMES = frozenset(
 TEXT_SUFFIXES = {".py", ".md", ".json", ".sh", ".js", ".ts"}
 MAX_FILE_BYTES = 1_000_000
 
-# Literal absolute Claude-home forms in both slash directions. _literal_in also
-# matches the JSON/source doubled-backslash variant of each backslash form.
-FORBIDDEN_HOME_LITERALS = (
-    r"~/.claude",
-    "C:/Users/example/.claude",
-    "~/.claude",
-)
-# Antigravity-owned absolute forms (cross-runtime coupling from live code).
-FORBIDDEN_ANTIGRAVITY_LITERALS = (
-    r"C:\Users\example\.gemini\antigravity",
-    "C:/Users/example/.gemini/antigravity",
-    "~/.gemini/antigravity",
-)
+#: Runtime homes that must never appear as an ABSOLUTE path in the scanned
+#: surfaces, POSIX-spelled. These were tuples of literal paths carrying this
+#: machine's own home until 2026-07-29; the public exporter rewrote
+#: "/Users/<owner>/.claude" to "~/.claude", turning a denylist entry into the
+#: portable form this verifier exists to accept. See the matcher's note in
+#: claude_runtime_target. A leading "." marks a runtime dir (pattern-matched
+#: over any user's home); anything else is matched as a plain literal.
+FORBIDDEN_RUNTIME_DIRS = (".claude", ".gemini/antigravity")
 
 
 def _load_json(path: Path) -> tuple[dict | None, str | None]:
@@ -96,12 +96,19 @@ def find_path_authority_rule(payload: dict) -> dict | None:
 
 
 def forbidden_literals(policy_payload: dict) -> tuple[str, ...]:
-    """Constants plus whatever runtime root the policy itself declares."""
-    literals = list(FORBIDDEN_HOME_LITERALS) + list(FORBIDDEN_ANTIGRAVITY_LITERALS)
+    """The forbidden runtime dirs, plus an ABSOLUTE root the policy declares.
+
+    The declared root used to be appended unconditionally. It must not be: the
+    exporter scrubs the policy's own `targetRuntimeRoot` to "~/.claude", so a
+    verbatim append put the portable form on the denylist and inverted the scan
+    in the public tree. An absolute declared root is still worth forbidding —
+    including one outside /Users and /home, which the pattern cannot know about.
+    """
+    entries: list[str] = list(FORBIDDEN_RUNTIME_DIRS)
     declared_root = str(policy_payload.get("targetRuntimeRoot") or "").strip()
-    if declared_root:
-        literals.append(declared_root)
-    return tuple(dict.fromkeys(literals))
+    if declared_root and (declared_root.startswith("/") or re.match(r"^[A-Za-z]:", declared_root)):
+        entries.append(declared_root)
+    return tuple(dict.fromkeys(entries))
 
 
 def default_allowlist(rule: dict) -> frozenset[str]:
@@ -122,10 +129,23 @@ def default_allowlist(rule: dict) -> frozenset[str]:
 def _literal_in(content: str, literal: str) -> bool:
     # JSON and source files escape backslashes (C:\\Users\\...), so a
     # single-backslash literal must also be matched in its doubled form or
-    # config drift slips through. NEVER re.compile these literals — the Windows
-    # forms contain \U sequences that crash re.
+    # config drift slips through. NEVER re.compile a raw literal — the Windows
+    # forms contain \U sequences that crash re; the runtime-dir entries go
+    # through the pre-built patterns in claude_runtime_target instead.
     forms = (literal, literal.replace("\\", "\\\\")) if "\\" in literal else (literal,)
     return any(form in content for form in forms)
+
+
+def _hits_in(content: str, entries: tuple[str, ...]) -> list[str]:
+    """Offending absolute paths in `content`, one canonical spelling each.
+
+    A leading "." marks a runtime dir matched by pattern over ANY user's home;
+    anything else is an explicit absolute root matched literally.
+    """
+    dirs = tuple(e for e in entries if e.startswith("."))
+    hits = set(pinned_home_paths(content, *dirs)) if dirs else set()
+    hits.update(e for e in entries if not e.startswith(".") and _literal_in(content, e))
+    return sorted(hits)
 
 
 def _is_text_like(path: Path) -> bool:
@@ -180,7 +200,7 @@ def scan_path_literals(
                 content = file_path.read_text(encoding="utf-8", errors="ignore")
             except OSError:
                 continue
-            hits = sorted({literal for literal in literals if _literal_in(content, literal)})
+            hits = _hits_in(content, literals)
             if hits:
                 offenders.append(f"{rel} ({', '.join(hits)})")
     return sorted(set(offenders)), missing_surfaces

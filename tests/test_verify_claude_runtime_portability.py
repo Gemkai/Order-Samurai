@@ -41,7 +41,7 @@ class VerifyClaudeRuntimePortabilityTests(unittest.TestCase):
 
     def test_pinned_home_command_fails(self) -> None:
         self._write("settings.json", {"hooks": {"PreToolUse": [
-            {"hooks": [{"command": "python C:\\\\Users\\\\example\\\\.claude\\\\scripts\\\\x.py"}]}]}})
+            {"hooks": [{"command": "python C:\\\\Users\\\\someone\\\\.claude\\\\scripts\\\\x.py"}]}]}})
         self._write("mcp.json", {"mcpServers": {}})
         results = vp.run_checks(runtime_root_dir=self.sandbox)
         pinned = self._labels(results)["runtime_portability.pinned-home-commands"]

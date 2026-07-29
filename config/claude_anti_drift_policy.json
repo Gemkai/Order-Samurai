@@ -21,7 +21,11 @@
       "expectedPackArtifacts": [
         "config/claude_anti_drift_policy.json"
       ],
-      "verifier": "execution/verify_claude_path_authority.py"
+      "verifier": "execution/verify_claude_path_authority.py",
+      "allowedBridges": [
+        "scripts/parity_drift_check.sh"
+      ],
+      "allowedBridgesRationale": "parity_drift_check.sh compares this Mac against the Windows host over SMB (/Volumes/Users/<user>/.claude). Naming the REMOTE machine's absolute path is the tool's purpose, not runtime drift, and it degrades to status UNREACHABLE when the share is unmounted. Surfaced 2026-07-29 when the literal denylist became a pattern over any user's home; the old literal list only knew this machine's own home and never saw it."
     },
     {
       "id": "generated-settings-from-hook-registry",

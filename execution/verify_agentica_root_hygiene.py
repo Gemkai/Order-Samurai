@@ -25,6 +25,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from execution.claude_runtime_target import agentica_repo_root
 from execution.verify_claude_root_hygiene import (
     _load_json,
     _make_result,
@@ -46,8 +47,8 @@ AGENTICA_ROOT_CLASSIFICATIONS = {
 
 CLASSIFIED_SECTIONS = ("directories", "files")
 
-# execution/ -> Order Samurai -> Governance -> AgenticaOS
-AGENTICA_REPO_ROOT = Path(__file__).resolve().parents[3]
+#: None in a standalone distribution — see agentica_repo_root().
+AGENTICA_REPO_ROOT = agentica_repo_root()
 AGENTICA_ROOT_HYGIENE_POLICY_PATH = ROOT_DIR / "config" / "agentica_root_hygiene_policy.json"
 
 
@@ -78,6 +79,21 @@ def run_checks(
 ) -> list[dict[str, str]]:
     results: list[dict[str, str]] = []
     target_root = root if root is not None else AGENTICA_REPO_ROOT
+
+    if target_root is None:
+        # No Agentica repo above this tree — the public export ships the pack
+        # standalone. Say so and check nothing, rather than measuring whichever
+        # directory a fixed parent-hop happened to land on. Decided BEFORE the
+        # policy is read: there is no repo to hold that policy accountable to.
+        results.append(
+            _make_result(
+                "OK",
+                "root_hygiene.agentica.not-applicable",
+                "no Agentica repo root above this tree (standalone distribution); "
+                "repo-layout hygiene is not measured here",
+            )
+        )
+        return results
 
     payload, policy_error = _load_json(policy_path)
     if policy_error:

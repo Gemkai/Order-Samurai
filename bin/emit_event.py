@@ -14,12 +14,29 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Resolve agentica_core on the import path without requiring an install.
-# This script lives at:   <repo>/Governance/Order Samurai/bin/emit_event.py
-# telemetry.py lives at:  <repo>/Governance/agentica_core/telemetry.py
-# so the Governance dir is exactly three parents up.
+# Resolve agentica_core on the import path without requiring an install, by
+# MARKER rather than by depth.
+#
+#   live tree:      <repo>/Governance/Order Samurai/bin/emit_event.py
+#                   -> agentica_core is 3 parents up, under Governance/
+#   public export:  <root>/bin/emit_event.py   (the pack is flattened to the root)
+#                   -> agentica_core is 1 parent up
+#
+# A fixed `parents[2]` describes only the first. In the export it resolved to a
+# directory OUTSIDE the distribution entirely, so the import failed and the
+# fallback wrote reflex-engine events to a path no consumer reads — the same
+# silent-dead-end this file's own docstring records from the pre-relocation era,
+# reintroduced by a hard-coded depth.
 # ---------------------------------------------------------------------------
-_GOVERNANCE = Path(__file__).resolve().parents[2]
+def _resolve_governance() -> Path:
+    here = Path(__file__).resolve()
+    for candidate in here.parents:
+        if (candidate / "agentica_core" / "telemetry.py").is_file():
+            return candidate
+    return here.parents[2]  # nothing found: keep the historical guess for the error path
+
+
+_GOVERNANCE = _resolve_governance()
 if str(_GOVERNANCE) not in sys.path:
     sys.path.insert(0, str(_GOVERNANCE))
 

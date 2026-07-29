@@ -29,7 +29,7 @@ PORTABLE_COMMAND = (
 
 # Same dispatch but pinned to a literal absolute Claude-home path (non-portable).
 LITERAL_HOME_COMMAND = (
-    'python -u "~/.claude/hooks/foo.py"'
+    'python -u "/Users/someone/.claude/hooks/foo.py"'
 )
 
 
@@ -102,7 +102,7 @@ class VerifyClaudeHookContractTests(unittest.TestCase):
         offenders = vhc.hook_command_literal_offenders([LITERAL_HOME_COMMAND])
 
         self.assertEqual(len(offenders), 1)
-        self.assertIn("~/.claude", offenders[0])
+        self.assertIn("/Users/someone/.claude", offenders[0])
 
     def test_literal_offenders_ignore_portable_command(self) -> None:
         offenders = vhc.hook_command_literal_offenders([PORTABLE_COMMAND])
@@ -155,7 +155,7 @@ class VerifyClaudeHookContractTests(unittest.TestCase):
         by_label = self._labels(results)
         self.assertEqual(by_label["claude-hook-contract.hook-portability"]["status"], "FAIL")
         self.assertEqual(by_label["claude-hook-contract.hook-scripts"]["status"], "OK")
-        self.assertIn("~/.claude", by_label["claude-hook-contract.hook-portability"]["detail"])
+        self.assertIn("/Users/someone/.claude", by_label["claude-hook-contract.hook-portability"]["detail"])
 
     def test_missing_runtime_root_warns_without_crash(self) -> None:
         absent = self.sandbox / "does-not-exist"

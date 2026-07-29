@@ -31,6 +31,22 @@ export const WID_PAYLOAD_PATH: string =
 export const WID_PAYLOAD_SCHEMA_PATH: string =
   path.join(GOVERNANCE_ROOT, 'schema', 'wid_payload.schema.json')
 
+// Agent-output contracts (A1). These MUST stay draft-07: reflex-engine validates
+// them with ajv 6, which rejects a 2020-12 $schema outright, while Python
+// jsonschema 4.26 accepts 2020-12 happily. Get the draft wrong and every Python
+// test passes while the TS side dies at boot — that asymmetry is why the draft is
+// pinned in the schema files' own comments too.
+export const SENSEI_LEDGER_ROW_SCHEMA_PATH: string =
+  path.join(GOVERNANCE_ROOT, 'schema', 'sensei_ledger_row.schema.json')
+export const REMEDIATION_RESULT_SCHEMA_PATH: string =
+  path.join(GOVERNANCE_ROOT, 'schema', 'remediation_result.schema.json')
+export const SCOUT_FINDING_SCHEMA_PATH: string =
+  path.join(GOVERNANCE_ROOT, 'schema', 'scout_finding.schema.json')
+// The POST /api/reflex/verdicts wire shape. Named for the VerdictRecord type it
+// validates, NOT for the ledger's `rival_verdict` string field — different objects.
+export const VERDICT_RECORD_SCHEMA_PATH: string =
+  path.join(GOVERNANCE_ROOT, 'schema', 'verdict_record.schema.json')
+
 export const PILLAR_SLUGS: PillarSlug[] = ['bow', 'sword', 'brush', 'arts']
 
 function isValidDojoState(s: unknown): s is DojoState {

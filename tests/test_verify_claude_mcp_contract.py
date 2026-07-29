@@ -82,7 +82,7 @@ class VerifyClaudeMcpContractTests(unittest.TestCase):
         self._write_scripts()
         drifted = {
             "command": "python",
-            "args": ["~/.claude/scripts/launch_mcp_server.py", "drifted"],
+            "args": ["/Users/someone/.claude/scripts/launch_mcp_server.py", "drifted"],
             "env": {},
             "disabled": False,
         }
@@ -98,7 +98,7 @@ class VerifyClaudeMcpContractTests(unittest.TestCase):
         self._write_scripts()
         # Embed the Windows form literally (json.dumps will re-escape it).
         drifted = {
-            "command": r"~/.claude\scripts\launch_mcp_server.py",
+            "command": r"C:\Users\someone\.claude\scripts\launch_mcp_server.py",
             "args": ["drifted"],
             "env": {},
             "disabled": False,
@@ -109,7 +109,7 @@ class VerifyClaudeMcpContractTests(unittest.TestCase):
 
         row = self._by_label(results)["claude-mcp-contract.launcher-backed"]
         self.assertEqual(row["status"], "FAIL")
-        self.assertIn(r"~/.claude", row["detail"])
+        self.assertIn(r"C:\Users\someone\.claude", row["detail"])
 
     def test_disabled_server_with_unset_activation_env_is_reported_ok(self) -> None:
         self._write_scripts()
