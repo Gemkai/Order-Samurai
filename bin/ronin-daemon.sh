@@ -4,7 +4,7 @@
 # MAX_CONSECUTIVE_FAILS consecutive failures.
 #
 # Usage:
-#   MEDITATION_STOP file          — place in repo root to halt gracefully
+#   state/MEDITATION_STOP file    — place in state/ to halt gracefully
 #   bin/ronin promote       — approve backlog proposals so daemon can continue
 #
 # Env var defaults (override via meditation.env or shell export):
@@ -246,7 +246,10 @@ consecutive_fails=0
 while :; do
 
     # ── 1. Stop-file gate ────────────────────────────────────────────────────
-    if [ -f MEDITATION_STOP ]; then
+    # "${STATE_DIR}/", not bare/cwd-relative: cwd is $REPO_DIR here, so the bare
+    # form resolved to a repo-root path that has never existed — the daemon would
+    # never have halted on the real flag. state/ is where STEP A writes it.
+    if [ -f "${STATE_DIR}/MEDITATION_STOP" ]; then
         log "MEDITATION_STOP present — halting daemon."
         break
     fi

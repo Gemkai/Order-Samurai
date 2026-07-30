@@ -80,6 +80,12 @@ def test_absent_queue_still_bootstraps_without_a_quarantine_file(tmp_path):
 
     data = json.loads((tmp_path / "state" / "hitl_queue.json").read_text(encoding="utf-8"))
     assert [i["id"] for i in data["items"]] == [qid]
-    assert list((tmp_path / "state").glob("hitl_queue*")) == [
-        tmp_path / "state" / "hitl_queue.json"
-    ], "bootstrap must not leave a quarantine artifact behind"
+    # The guarded artifact is the QUARANTINE copy — a bootstrap that moved a "corrupt" queue
+    # aside would mean the absent-file path had been misread as a failed read. Asserted by name
+    # rather than by "nothing else exists": the write lock's .lock sidecar is a legitimate
+    # neighbour, and a glob broad enough to catch it fails for a reason unrelated to recovery.
+    assert not list((tmp_path / "state").glob("hitl_queue.corrupt*")), \
+        "bootstrap must not leave a quarantine artifact behind"
+    assert sorted(p.name for p in (tmp_path / "state").glob("hitl_queue*")) == [
+        "hitl_queue.json", "hitl_queue.json.lock",
+    ]

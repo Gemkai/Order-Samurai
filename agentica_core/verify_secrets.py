@@ -75,7 +75,7 @@ def scan_path(root: Path) -> list[dict]:
     else:
         files = [p for p in root.rglob("*")
                  if p.is_file()
-                 and p.suffix.lower() in TEXT_EXTENSIONS
+                 and (p.suffix.lower() in TEXT_EXTENSIONS or p.name.startswith(".env"))
                  and not any(part in EXCLUDE_DIRS for part in p.parts)
                  and p.name != _THIS.name]  # never scan this scanner (its own patterns would match)
     for path in files:

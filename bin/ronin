@@ -14,7 +14,11 @@ BIN_DIR="$REPO_DIR/bin"
 
 DAEMON_SCRIPT="$BIN_DIR/ronin-daemon.sh"
 PID_FILE="$STATE_DIR/daemon.pid"
-STOP_FILE="$REPO_DIR/MEDITATION_STOP"
+# state/, not the repo root: the overnight prompt's STEP A resolves the bare
+# `MEDITATION_STOP` through the runner's PATH_HEADER to $STATE_DIR, so state/ is
+# where the flag is actually created and honored (and what .gitignore covers).
+# The old $REPO_DIR path never existed, so `arm` rm'd nothing and `status` lied.
+STOP_FILE="$STATE_DIR/MEDITATION_STOP"
 LEDGER_FILE="$STATE_DIR/budget_ledger.json"
 PROPOSED_FILE="$STATE_DIR/PROPOSED_BACKLOG.json"
 STATE_FILE="$STATE_DIR/MEDITATION_STATE.json"

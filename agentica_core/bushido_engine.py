@@ -27,6 +27,8 @@ Stdlib only; no external dependencies.
 """
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import os
 import uuid
@@ -35,6 +37,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+from .atomic import file_write_lock
 
 
 # ── Public enums ──────────────────────────────────────────────────────────────
@@ -308,6 +312,34 @@ def _atomic_write_json(path: Path, data: dict) -> None:
             pass
 
 
+def _under_queue_lock(fn):
+    """Serialise one load-mutate-write of hitl_queue.json across processes.
+
+    Every function below loads the queue, mutates it and writes it back. `_atomic_write_json`
+    makes each write indivisible, which stops a torn READ; it does nothing about a lost UPDATE.
+    Four processes touch this file — the reflex engine (via route_work_item), the sensei cycle's
+    self-harness delivery, its rival-verdict recorder, and the held-out rotation check — so two
+    of them loading the same bytes and writing back silently keeps only the second, and what is
+    dropped is a human's pending approval.
+
+    A decorator rather than a `with` inside each body: the lock has to cover the load as well as
+    the write, and wrapping whole bodies would reindent four functions of live routing code for
+    no behavioural gain. NOT re-entrant (flock blocks a second open() from the same process), so
+    these four must never nest — route_work_item calls _consume_approval and enqueue_hitl in
+    sequence, never one inside the other.
+    """
+    signature = inspect.signature(fn)
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        bound = signature.bind(*args, **kwargs)
+        repo_root = bound.arguments["repo_root"]
+        with file_write_lock(Path(repo_root) / "state" / "hitl_queue.json"):
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
 def _load_queue(repo_root: Path) -> dict:
     path = Path(repo_root) / "state" / "hitl_queue.json"
     try:
@@ -337,6 +369,7 @@ def _load_queue(repo_root: Path) -> dict:
         }
 
 
+@_under_queue_lock
 def enqueue_hitl(work_item: WorkItem, tier: Tier, repo_root: Path) -> str:
     """Insert into hitl_queue.json. Idempotent on _approval_key under "pending".
 
@@ -387,6 +420,7 @@ def enqueue_hitl(work_item: WorkItem, tier: Tier, repo_root: Path) -> str:
     return new_id
 
 
+@_under_queue_lock
 def _consume_approval(work_item: WorkItem, repo_root: Path) -> str | None:
     """If an `approved` entry matches this work item's key, mark it `executing`.
 
@@ -422,6 +456,7 @@ def _consume_approval(work_item: WorkItem, repo_root: Path) -> str | None:
     return None
 
 
+@_under_queue_lock
 def mark_complete(queue_id: str, repo_root: Path, failed: bool = False) -> bool:
     """Mark a queue item `done` (or `failed`). Called by SENSEI step F or by the
     TS Reflex Engine in _afterRun(). Returns True iff the item was found.
@@ -453,6 +488,7 @@ def mark_complete(queue_id: str, repo_root: Path, failed: bool = False) -> bool:
 _REVIEW_ACTIONS = {"approve", "reject", "expire"}
 
 
+@_under_queue_lock
 def review_hitl(queue_id: str, repo_root: Path, action: str, reason: str = "") -> bool:
     """Transition a `pending` HITL item to `approved`, `rejected`, or `expired`.
 

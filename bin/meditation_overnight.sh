@@ -47,22 +47,16 @@ TOOL_QUALITY_MAX_TOOL_USES="${TOOL_QUALITY_MAX_TOOL_USES:-20}" \
 tmo 600s python3 "$MAIN_DIR/bin/tool_quality_scout.py" >/dev/null 2>&1 \
   || echo "[meditation] tool_quality_scout skipped (nonzero exit or timeout)"
 
-# Self-harness substrate scouts (M2/M5, Research/SELF_HARNESS_EVOLUTION_PLAN.md) — same contract
-# as tool_quality_scout above: absolute main-tree path, time-boxed, non-fatal. The weakness miner
-# makes ~2 local-LLM calls per failed run (bounded); the trust annotator is pure-deterministic.
-tmo 600s python3 "$MAIN_DIR/bin/weakness_mining_scout.py" >/dev/null 2>&1 \
-  || echo "[meditation] weakness_mining_scout skipped (nonzero exit or timeout)"
 tmo 300s python3 "$MAIN_DIR/bin/tool_trust_annotator.py" >/dev/null 2>&1 \
   || echo "[meditation] tool_trust_annotator skipped (nonzero exit or timeout)"
 
-# Self-harness round (M4) — DARK BY DEFAULT. Runs only when SELF_HARNESS_ENABLED=true is set in
-# meditation.env; the script additionally enforces its own budget-ledger and 20h-spacing guards,
-# never applies anything (delivery = HITL entry + proposed-surface file for human review), and a
-# no-op costs one eval-suite pass. Absolute main-tree path for the same reason as the scouts.
-if [ "${SELF_HARNESS_ENABLED:-false}" = "true" ]; then
-  tmo 900s python3 "$MAIN_DIR/bin/self_harness_cycle.py" \
-    || echo "[meditation] self_harness_cycle skipped (nonzero exit or timeout)"
-fi
+# The self-harness loop USED to run here (weakness_mining_scout, heldout_rotation, and the M4
+# round itself). It moved to the sensei cycle's `self_harness` transition
+# (Governance/api/src/sensei-orchestrator.ts) when this runner was halted by owner decision
+# (state/MEDITATION_STOP, 2026-07-30): a loop whose only carrier is a permanently disabled
+# LaunchAgent is not dark, it is dead, and the two read identically from the output.
+# Deliberately NOT left here as a second carrier — two schedules for one weekly loop is how a
+# cadence guard gets bypassed by the job nobody remembered was still wired.
 
 # Worktree isolation (default ON). When MEDITATION_WORKTREE=1 the whole cycle runs in a
 # dedicated git worktree instead of switching the MAIN working tree — so it can run
@@ -296,7 +290,11 @@ $(cat "$PROMPT_FILE")"
 cycle=0
 spend_total=0   # running daily spend (USD) for DAILY_BUDGET_USD enforcement
 while :; do
-  [ -f "$MAIN_DIR/MEDITATION_STOP" ] && { log "MEDITATION_STOP present — halting."; break; }
+  # $STATE_DIR, not $MAIN_DIR: STEP A resolves the bare `MEDITATION_STOP` through
+  # PATH_HEADER to $STATE_DIR, so that is where the flag is created and honored.
+  # $STATE_DIR also honors MEDITATION_STATE_DIR, so a worktree run reads the
+  # main-tree flag rather than a disposable copy. $MAIN_DIR/ never existed.
+  [ -f "$STATE_DIR/MEDITATION_STOP" ] && { log "MEDITATION_STOP present — halting."; break; }
   now=$(date +%s)
   [ "$now" -ge "$DEADLINE" ] && { log "Deadline reached — halting."; break; }
   cycle=$((cycle+1))

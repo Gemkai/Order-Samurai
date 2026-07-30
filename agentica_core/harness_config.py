@@ -56,6 +56,15 @@ def _check_bounds(key: str, value: Any, spec: dict) -> None:
         cap = spec.get("max_chars")
         if cap is not None and len(value) > cap:
             raise ValueError(f"harness surface key {key!r}: {len(value)} chars > max_chars {cap}")
+        # A text knob has to survive the round trip through surface.env, which is one line per
+        # key read by two runtimes. Newlines truncate it; a single quote breaks the shell quoting
+        # that lets the value contain spaces at all. Both are rejected at the READ, not just at
+        # the proposal gate, so a hand-edited surface cannot smuggle in a value the env file
+        # would silently render differently for TS than for Python.
+        if "\n" in value:
+            raise ValueError(f"harness surface key {key!r}: text values must be a single line")
+        if "'" in value:
+            raise ValueError(f"harness surface key {key!r}: text values may not contain \"'\"")
 
 
 def load_surface(path: Optional[Path] = None) -> dict:
@@ -129,6 +138,16 @@ def as_env_lines(path: Optional[Path] = None) -> list[str]:
 
     The TS engine and shell-sourced env files cannot import this module; `bin/render_surface_env.py`
     writes these lines to `harness/surface.env` so both runtimes read one declaration.
+
+    Text values are wrapped in single quotes so a clause containing spaces survives a sourcing
+    shell (`VAR=a b` runs `b`). The wrapping is trivially reversible because `_check_bounds`
+    already refuses a text value containing a single quote — the reader strips one leading and
+    one trailing `'`, and there is no escaping dialect for the two runtimes to disagree about.
     """
     data = load_surface(path)
-    return [f"{_ENV_PREFIX}{k.upper()}={v['value']}" for k, v in sorted(data["values"].items())]
+    out = []
+    for key, spec in sorted(data["values"].items()):
+        raw = spec["value"]
+        rendered = f"'{raw}'" if spec.get("type") == "text" else raw
+        out.append(f"{_ENV_PREFIX}{key.upper()}={rendered}")
+    return out

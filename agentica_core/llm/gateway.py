@@ -660,6 +660,8 @@ class LLMGateway:
                 response.raise_for_status()
                 response_json = response.json()
                 text = response_json["choices"][0]["message"]["content"]
+                if not text:
+                    raise RuntimeError("OpenAI returned an empty/null content payload.")
                 self._log_langfuse_generation(
                     name="openai-direct-call",
                     prompt=prompt,
@@ -733,6 +735,8 @@ class LLMGateway:
 
                 payload = response.json()
                 text = payload["choices"][0]["message"]["content"]
+                if not text:
+                    raise RuntimeError("OpenRouter returned an empty/null content payload.")
                 self._log_langfuse_generation(
                     name="openrouter-call",
                     prompt=prompt,

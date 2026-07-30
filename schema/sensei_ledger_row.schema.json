@@ -46,7 +46,7 @@
       "enum": ["CONFIRMED", "REFUTED", "SUSPECT", null]
     },
     "action_taken": {
-      "description": "What the cycle actually did. verdict_post_failed is written by sensei_writeback when the POST fails after the row was planned as verdict_posted — the ledger never claims a post that didn't happen. `heartbeat` is the explicit no-op: one row appended by a cycle that produced no verdicts and no post-audit rows, so ledger freshness measures LIVENESS (did the loop run) and cannot be satisfied by silence. It carries rival_verdict:null, so the rival-verdicts-flowing check still measures verdicts only.",
+      "description": "What the cycle actually did. verdict_post_failed is written by sensei_writeback when the POST fails after the row was planned as verdict_posted — the ledger never claims a post that didn't happen. `heartbeat` is the explicit no-op: one row appended by a cycle that produced no verdicts and no post-audit rows, so ledger freshness measures LIVENESS (did the loop run) and cannot be satisfied by silence. It carries rival_verdict:null, so the rival-verdicts-flowing check still measures verdicts only. `surface_proposal_verified` is the self-harness transition's row: rival adversarially checked a pending harness-surface proposal and the verdict was attached to its HITL item. Its reflex_id is the HITL item id, not a metric id, and its verdict is ADVISORY — never POSTed to the reflex engine, because there is no reflex to suppress; a human still approves or rejects the edit.",
       "type": "string",
       "enum": [
         "verdict_posted",
@@ -55,7 +55,8 @@
         "escalated_backlog",
         "post_audit",
         "phantom",
-        "heartbeat"
+        "heartbeat",
+        "surface_proposal_verified"
       ]
     },
     "human_flag": {

@@ -83,7 +83,14 @@ def _host_resolves(url: str) -> bool:
 
 def _npx_package_present(pkg: str) -> bool:
     """Best-effort: is the npx package already installed (no `npx` execution)?"""
-    pkg = pkg.lstrip("-").split("@")[0] if not pkg.startswith("@") else pkg.rsplit("@", 1)[0]
+    if pkg.startswith("@"):
+        # scoped package: only strip a version if there's an "@" after the
+        # scope separator (e.g. "@scope/name@1.2.3") — a bare scoped package
+        # with no version pin (e.g. "@scope/name") has just the one leading
+        # "@", and rsplit-ing on it would collapse the name to "".
+        pkg = pkg.rsplit("@", 1)[0] if "@" in pkg[1:] else pkg
+    else:
+        pkg = pkg.lstrip("-").split("@")[0]
     candidates = [
         HOME / ".npm" / "_npx",  # npx cache root — scan below
     ]
