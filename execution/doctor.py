@@ -93,8 +93,31 @@ def _run_meditation_timestamp_checks() -> list[dict]:
                         "detail": f"{baselined_seen} acknowledged-lost item(s) excluded via "
                                   f"state/calibration_lost_baseline.json"})
     if not results:
-        results.append({"status": "OK", "label": "meditation-timestamps",
-                        "detail": "all done/doing backlog items carry calibration timestamps"})
+        # An empty done/doing set satisfies "all of them carry timestamps" trivially,
+        # so the old unconditional OK read GREEN while the sample rate was zero —
+        # indistinguishable from a healthy cycle. Observed 2026-07-29: 9 backlog
+        # items, all todo, cycle 0, calibration frozen, and this row said OK.
+        # Report the population the claim is made over, so "nothing to check" can
+        # never again be mistaken for "checked and healthy".
+        timed = sum(1 for i in backlog
+                    if i.get("status") in ("done", "doing")
+                    and (i.get("started_at") or i.get("completed_at")))
+        if timed:
+            results.append({"status": "OK", "label": "meditation-timestamps",
+                            "detail": f"all {timed} done/doing backlog item(s) carry "
+                                      f"calibration timestamps"})
+        else:
+            # Deliberately OK, not WARN. The condition is real and worth reading, but
+            # doctor's WARN count feeds the meditation cycle's own A-prime gate
+            # (halt when current > baseline) — so raising it here would halt the very
+            # cycle that produces the missing samples. That circular shape is the bug
+            # this row was rewritten to expose, not one to add. The honesty belongs in
+            # the DETAIL: it states the zero instead of implying health.
+            results.append({"status": "OK", "label": "meditation-timestamps.no-samples",
+                            "detail": f"nothing to stamp: 0 done/doing items among "
+                                      f"{len(backlog)} backlog item(s), so 0 calibration "
+                                      f"samples are accruing and the Agent-Time-Saved "
+                                      f"coefficients cannot advance toward their threshold"})
     return results
 
 
