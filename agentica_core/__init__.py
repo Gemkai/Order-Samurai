@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from .adapter import (
     AmbiguousPlatform,
+    ExecutionCapability,
     PlatformAdapter,
     PlatformUnavailable,
     list_platforms,
@@ -20,12 +21,13 @@ from .telemetry import (
     TelemetryValidationError,
     append_entry,
     append_event,
+    count_dangerous_tool_invocations,
     normalize_entry,
     validate_entry,
     validate_event,
     validate_metric,
 )
-from .types import VerifierResult
+from .core_types import VerifierResult
 from .verifiers import load_verifiers, run_all as run_verifiers, summarize as summarize_verifiers
 from .emit import build_record, emit
 
@@ -34,6 +36,7 @@ from .emit import build_record, emit
 
 __all__ = [
     "AmbiguousPlatform",
+    "ExecutionCapability",
     "PlatformAdapter",
     "PlatformUnavailable",
     "list_platforms",
@@ -43,6 +46,7 @@ __all__ = [
     "TelemetryValidationError",
     "append_entry",
     "append_event",
+    "count_dangerous_tool_invocations",
     "normalize_entry",
     "validate_entry",
     "validate_event",

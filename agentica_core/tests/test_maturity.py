@@ -130,3 +130,40 @@ def test_observe_seed_with_ungraded_mechanism_becomes_dry_run_graded():
     assert out["maturity"] == m.DRY_RUN_GRADED
     assert out["reflex_ready"] is False
     assert out["mechanism_status"] == m.MECH_UNGRADED
+
+
+# ---------------------------------------------------------------------------
+# Skill-ineffective demotion (2026-07-26 audit W3: skill-only metrics never
+# demoted on evidence — a 0/20 skill kept auto-firing forever)
+# ---------------------------------------------------------------------------
+
+def test_skill_only_metric_demotes_after_zero_success_over_min_fires():
+    eff = {"foo": {"total_runs": m._SKILL_INEFFECTIVE_MIN_RUNS, "success_count": 0,
+                   "success_rate": 0.0, "cooldown_multiplier": 3}}
+    out = m.resolve_maturity("X_Metric",
+                             metric_config=_metric("foo", with_mechanism=False),
+                             efficacy=eff)
+    assert out["maturity"] == m.OBSERVE
+    assert out["reflex_ready"] is False
+    assert out["demoted_by"] == "skill_ineffective"
+    assert out["mechanism_status"] == m.MECH_NONE
+
+
+def test_skill_only_metric_below_min_fires_keeps_seed():
+    eff = {"foo": {"total_runs": m._SKILL_INEFFECTIVE_MIN_RUNS - 1, "success_count": 0,
+                   "success_rate": 0.0, "cooldown_multiplier": 0.25}}
+    out = m.resolve_maturity("X_Metric",
+                             metric_config=_metric("foo", with_mechanism=False),
+                             efficacy=eff)
+    assert out["maturity"] == m.APPLY
+    assert "demoted_by" not in out
+
+
+def test_skill_only_metric_with_one_genuine_success_keeps_seed():
+    eff = {"foo": {"total_runs": 12, "success_count": 1,
+                   "success_rate": 0.083, "cooldown_multiplier": 3}}
+    out = m.resolve_maturity("X_Metric",
+                             metric_config=_metric("foo", with_mechanism=False),
+                             efficacy=eff)
+    assert out["maturity"] == m.APPLY
+    assert "demoted_by" not in out

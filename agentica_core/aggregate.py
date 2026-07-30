@@ -1368,6 +1368,13 @@ def _estimated_cost_savings(records: list[dict], repo_root: Path | None = None) 
             "val": round(val, 2),
             "week_delta": round(week_delta, 2),
             "calibrated": calibrated,
+            # calibrated=False above says "not measured"; this says "and it never will be".
+            # Without the distinction the UI rendered "EST · UNCALIBRATED — not yet calibrated
+            # against measured samples" on a metric that has no samples to await, and
+            # resolveHero read that as untrustworthy — so the brush hero fell back to
+            # Cost_Per_Task every week. Unlike the arts hero (which sets calibrated=True),
+            # this one keeps False and lets the flag carry the honesty.
+            "estimate_by_design": True,
             "data_gap": data_gap
         }
     except Exception as e:

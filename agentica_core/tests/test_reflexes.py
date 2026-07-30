@@ -24,15 +24,16 @@ def test_sigma_tier_flat_history_no_fire():
 
 def test_build_reflexes_metric_fallback_and_target():
     pillars = {
-        "sword": {"Vulnerability": {"Vulnerability_MTTR": {"val": "6", "is_simulated": False,
+        "sword": {"Vulnerability": {"Open_CVEs": {"val": "6", "is_simulated": False,
                                                   "history": [], "mitigation_command": "/codebase-cleanup-deps-audit"}}},
         "bow": {}, "brush": {}, "arts": {},
     }
-    category_scores = {"sword": {"flags": [{"name": "Vulnerability_MTTR", "val": "6", "grade": "F"}]},
+    category_scores = {"sword": {"flags": [{"name": "Open_CVEs", "val": "6", "grade": "F"}]},
                        "bow": {"flags": []}, "brush": {"flags": []}, "arts": {"flags": []}}
     by_project = {"RepoA": {"has_data": True, "scores": {"sword": 30, "bow": 100, "brush": 100, "arts": 100}}}
-    out = reflexes.build_reflexes(pillars, category_scores, by_project,
-                                  nudges_path=reflexes.Path("does-not-exist"), state_path=reflexes.Path("nope"))
+    out, _advisory = reflexes.build_reflexes(pillars, category_scores, by_project,
+                                             nudges_path=reflexes.Path("does-not-exist"),
+                                             state_path=reflexes.Path("nope"))
     metric = [r for r in out if r["source"] == "metric"]
     assert len(metric) == 1
     r = metric[0]
@@ -43,18 +44,21 @@ def test_build_reflexes_metric_fallback_and_target():
 
 
 def test_build_reflexes_uses_failure_platforms_as_target():
+    # failure_platforms rides on Governance_Pass_Rate since the Verifier_Failures
+    # consolidation (2026-07-08 audit) — the targeting mechanism is unchanged.
     pillars = {
-        "bow": {"Governance": {"Verifier_Failures": {
-            "val": "4", "is_simulated": False, "history": [],
+        "bow": {"Governance": {"Governance_Pass_Rate": {
+            "val": "50.0", "is_simulated": False, "history": [],
             "failure_platforms": ["antigravity"],
             "mitigation_command": "python -m agentica_core.doctor antigravity",
         }}},
         "sword": {}, "brush": {}, "arts": {},
     }
-    category_scores = {"bow": {"flags": [{"name": "Verifier_Failures", "val": "4", "grade": "F"}]},
+    category_scores = {"bow": {"flags": [{"name": "Governance_Pass_Rate", "val": "50.0", "grade": "F"}]},
                        "sword": {"flags": []}, "brush": {"flags": []}, "arts": {"flags": []}}
-    out = reflexes.build_reflexes(pillars, category_scores, {},
-                                  nudges_path=reflexes.Path("does-not-exist"), state_path=reflexes.Path("nope"))
+    out, _advisory = reflexes.build_reflexes(pillars, category_scores, {},
+                                             nudges_path=reflexes.Path("does-not-exist"),
+                                             state_path=reflexes.Path("nope"))
     metric = [r for r in out if r["source"] == "metric"][0]
     assert metric["target"] == "antigravity"
     assert "doctor antigravity" in metric["message"]
@@ -64,16 +68,20 @@ def test_non_remediable_metrics_generate_no_metric_reflex():
     # SENSEI-3/4: a breaching metric whose config says auto_remediable=False must not
     # produce a metric reflex on either the sigma or the threshold-fallback path — a
     # CRITICAL card routing to a skill that can't move the metric is a misrouted
-    # channel. (Fallback_Recovery_Rate is advisory in METRIC_CONFIG.)
+    # channel. (Faithfulness_Score is advisory in METRIC_CONFIG.)
     pillars = {
-        "bow": {"Activity": {"Fallback_Recovery_Rate": {
+        "arts": {"Output Quality": {"Faithfulness_Score": {
             "val": "40", "is_simulated": False, "history": [40, 40, 40, 40, 40, 90],
         }}},
-        "arts": {}, "sword": {}, "brush": {},
+        "bow": {}, "sword": {}, "brush": {},
     }
-    category_scores = {"bow": {"flags": [{"name": "Fallback_Recovery_Rate", "val": "40", "grade": "F"}]},
-                       "arts": {"flags": []}, "sword": {"flags": []}, "brush": {"flags": []}}
-    out = reflexes.build_reflexes(pillars, category_scores, {},
-                                  nudges_path=reflexes.Path("does-not-exist"),
-                                  state_path=reflexes.Path("nope"))
+    category_scores = {"arts": {"flags": [{"name": "Faithfulness_Score", "val": "40", "grade": "F"}]},
+                       "bow": {"flags": []}, "sword": {"flags": []}, "brush": {"flags": []}}
+    out, advisory = reflexes.build_reflexes(pillars, category_scores, {},
+                                            nudges_path=reflexes.Path("does-not-exist"),
+                                            state_path=reflexes.Path("nope"))
     assert [r for r in out if r["source"] == "metric"] == []
+    # ...but it is ROUTED, not dropped: it leaves on the advisory channel so
+    # investigation-only consumers (sensei) can still see it. Dropping it entirely
+    # starved the 6-hourly cycle for 8 days (2026-07-19 -> 2026-07-29).
+    assert [r["id"] for r in advisory] == ["metric:arts:Faithfulness_Score"]

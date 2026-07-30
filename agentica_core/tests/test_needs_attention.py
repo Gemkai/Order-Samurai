@@ -78,3 +78,22 @@ def test_threshold_audit_records_added_and_removed(tmp_path):
         audit_path=audit, snapshot_path=snap, now="t1")
     kinds = {(c["metric"], c["change"]) for c in changes}
     assert ("A", "removed") in kinds and ("B", "added") in kinds
+
+
+def test_threshold_audit_captures_dir_flip(tmp_path):
+    """Flipping dir inverts what counts as a violation — the exact invisible edit
+    the audit trail exists to prevent. Must be logged, not silently re-baselined."""
+    audit = tmp_path / "threshold_audit.jsonl"
+    snap = tmp_path / "threshold_snapshot.json"
+    threshold_audit.audit_threshold_changes(
+        {"Error_Rate": {"dir": "lower", "warn": 2, "fail": 5}},
+        audit_path=audit, snapshot_path=snap, now="t0")
+
+    flipped = {"Error_Rate": {"dir": "higher", "warn": 2, "fail": 5}}
+    changes = threshold_audit.audit_threshold_changes(
+        flipped, audit_path=audit, snapshot_path=snap, now="t1")
+    assert len(changes) == 1
+    c = changes[0]
+    assert c["metric"] == "Error_Rate" and c["change"] == "threshold"
+    assert c["old"]["dir"] == "lower" and c["new"]["dir"] == "higher"
+    assert audit.exists()

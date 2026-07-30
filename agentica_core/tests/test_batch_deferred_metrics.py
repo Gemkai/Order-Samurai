@@ -57,13 +57,15 @@ class BatchDeferredMetrics(unittest.TestCase):
         self.assertNotIn("Fake_Urgent", out)
 
     def test_known_expectations(self):
-        # Representative members / non-members from THIS pack's METRIC_CONFIG.
         b = set(batch_deferred_metrics())
-        self.assertIn("Doc_Parity_Issues", b)        # code-modifying, no mechanism
+        # Representative members (code-modifying, no mechanism) and non-members.
+        self.assertIn("Doc_Parity_Issues", b)
+        self.assertIn("Open_CVEs", b)              # security-adjacent but batched (user decision)
         self.assertIn("Governance_Pass_Rate", b)
-        self.assertNotIn("Secrets_Detected", b)       # has secret_scrub mechanism
-        self.assertNotIn("Chain_Depth_Avg", b)        # has chain_depth_audit mechanism
-        self.assertNotIn("Avg_Session_Turns", b)      # readonly diagnostic
+        self.assertNotIn("Secrets_Detected", b)    # has secret_scrub mechanism
+        self.assertNotIn("Chain_Depth_Avg", b)     # has chain_depth_audit mechanism
+        self.assertNotIn("Avg_Session_Turns", b)   # readonly diagnostic
+        self.assertNotIn("Token_Execution_Density", b)  # auto_remediable=False
 
 
 if __name__ == "__main__":

@@ -81,10 +81,12 @@ def test_call_llm_unknown_task_returns_none():
 
 def test_all_backends_carry_explicit_timeout():
     # Release It! hard rule: every remote call has an explicit timeout.
+    # Keyless run -> Ollama is the backend that fires; it must carry the shared
+    # local timeout (local_guards.LOCAL_TIMEOUT_SEC), not the 30s cloud timeout.
     with patch.object(model_router.urllib.request, "urlopen") as urlopen:
         urlopen.return_value = _http_response(_openai_chat_body("hi"))
         model_router.call_llm("sys", "user")
-    assert urlopen.call_args.kwargs.get("timeout") == model_router._TIMEOUT_S
+    assert urlopen.call_args.kwargs.get("timeout") == model_router.LOCAL_TIMEOUT_SEC
 
 
 # ------------------------------------------------ ollama-specific guards
@@ -133,3 +135,31 @@ def test_ollama_task_selects_documented_model():
 def test_claude_and_gemini_return_none_without_keys():
     assert model_router._call_claude("s", "u", "analysis", 100, 0.0) is None
     assert model_router._call_gemini("s", "u", "analysis", 100, 0.0) is None
+
+
+# ------------------------------------------------------- local_only (fail closed)
+
+def test_call_llm_local_only_routes_to_ollama_despite_cloud_keys(monkeypatch):
+    # Cloud keys present -> the default chain would try Claude first. local_only
+    # must skip every cloud backend and go straight to Ollama.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    with patch.object(model_router.urllib.request, "urlopen") as urlopen:
+        urlopen.return_value = _http_response(_openai_chat_body("local only"))
+        out = model_router.call_llm("sys", "user", local_only=True)
+    assert out == "local only"
+    assert urlopen.call_count == 1
+    assert "/v1/chat/completions" in urlopen.call_args.args[0].full_url
+
+
+def test_call_llm_local_only_fails_closed_when_ollama_down(monkeypatch):
+    # Sensitive prompts must NEVER fail over to cloud: with Ollama down and
+    # cloud keys available, local_only returns None after exactly one attempt.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    with patch.object(
+        model_router.urllib.request, "urlopen", side_effect=OSError("down")
+    ) as urlopen:
+        assert model_router.call_llm("sys", "user", local_only=True) is None
+    assert urlopen.call_count == 1
+    assert "/v1/chat/completions" in urlopen.call_args.args[0].full_url

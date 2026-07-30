@@ -19,9 +19,10 @@ def test_health_is_continuous_and_bounded():
 
 
 def test_protective_activity_not_graded():
-    # Gate_Fires is informational — huge values must NOT flag or score.
-    # Secret_Scrubs no longer exists (RETIRED 2026-07-19, dead emitter); the
-    # assert stays as a regression guard against a graded re-add.
+    # Guardrail_Blocks is informational — huge values must NOT flag or score.
+    # Gate_Fires / Secret_Scrubs no longer exist (Secret_Scrubs RETIRED 2026-07-19,
+    # dead emitter); the asserts stay as regression guards against graded re-adds.
+    assert "Guardrail_Blocks" not in insights.METRIC_RULES
     assert "Gate_Fires" not in insights.METRIC_RULES
     assert "Secret_Scrubs" not in insights.METRIC_RULES
 
@@ -31,10 +32,9 @@ def test_no_weighted_mean_score_key():
     # or letter grade — status is the rollup, flags carry per-metric grades.
     pillars = {"bow": {}, "sword": {
         "g": {
-            "Vulnerability_MTTR": {"val": "6", "is_simulated": False},
+            "Open_CVEs": {"val": "6", "is_simulated": False},
             "Boundary_Violations": {"val": "0", "is_simulated": False},
             "Secrets_Detected": {"val": "0", "is_simulated": False},
-            "Security_Scorecard": {"val": "95", "is_simulated": False},
         }}, "brush": {}, "arts": {}}
     sc = insights.annotate(pillars)["sword"]
     assert "score" not in sc
@@ -42,9 +42,9 @@ def test_no_weighted_mean_score_key():
     assert "score_delta" not in sc
     # Status rollup carries the signal: 1 breaching metric can't be averaged away.
     assert sc["rollup"]["worst"] in ("HIGH", "CRITICAL")
-    assert sc["rollup"]["passing"] == 3
-    assert sc["rollup"]["graded"] == 4
-    assert any(f["name"] == "Vulnerability_MTTR" for f in sc["flags"])
+    assert sc["rollup"]["passing"] == 2
+    assert sc["rollup"]["graded"] == 3
+    assert any(f["name"] == "Open_CVEs" for f in sc["flags"])
 
 
 def test_cumulative_metric_rate_normalized_by_sessions():
@@ -182,3 +182,85 @@ def test_trajectory_suppressed_for_plateaued_metric():
         )
     finally:
         store.unlink(missing_ok=True)
+
+
+def test_graded_metric_pillar_map_matches_registry():
+    """Drift guard for the S4 coverage fix: every graded metric (METRIC_RULES key)
+    must have a pillar placement, and the map must not carry keys for metrics that
+    are no longer graded — otherwise Instrumentation_Coverage's registry-based
+    denominator silently drifts from the real registry."""
+    assert set(insights._GRADED_METRIC_PILLARS) == set(insights.METRIC_RULES)
+
+
+def test_instrumentation_coverage_counts_absent_metrics_as_dark():
+    """Audit S4 regression: a pillar with one live graded envelope out of a
+    registry of many graded metrics must NOT report 100% coverage — absent-source
+    metrics (no envelope at all) count against the denominator."""
+    pillars = {
+        "bow": {"Activity": {"Error_Rate": {"val": "1.0", "is_simulated": False}}},
+        "sword": {}, "brush": {}, "arts": {},
+    }
+    scores = insights.annotate(pillars)
+    bow_registry = sum(1 for pks in insights._GRADED_METRIC_PILLARS.values() if "bow" in pks)
+    assert bow_registry > 1
+    assert scores["bow"]["graded_count"] == 1
+    assert scores["bow"]["total_gradeable"] == bow_registry
+    assert scores["bow"]["coverage_pct"] == round(100 / bow_registry, 1)
+
+
+def test_append_snapshot_dedups_and_carries_week_key(tmp_path):
+    # Regression for the 2026-07-26 audit: the old bare append let concurrent
+    # refreshers write byte-identical duplicate rows (biasing calibrate
+    # percentiles), and live rows lacked the `week` key backfill rows carry,
+    # leaving two schemas in one file.
+    import json
+    from agentica_core import insights
+
+    store = tmp_path / "metrics_history.jsonl"
+    ts = "2026-07-26T18:00:00+00:00"
+    vals = {"brush/Token Efficiency/Cost_Per_Task": 11.28}
+
+    insights.append_snapshot(store, ts, vals)
+    insights.append_snapshot(store, ts, vals)  # identical concurrent write — dropped
+    insights.append_snapshot(store, "2026-07-26T18:05:00+00:00", vals)  # new ts — kept
+
+    rows = [json.loads(l) for l in store.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 2  # duplicate was dropped
+    assert all(r["week"] == "2026-W30" for r in rows)  # same schema as backfill rows
+    assert rows[0]["values"] == vals
+
+
+def test_24h_clause_surfaces_graded_metric_among_newly_tracked(tmp_path):
+    # A newly tracked GRADED metric (Error_Rate has a dir rule) must win the
+    # "now tracking" slot over ungraded ones. The graded-first filter used to
+    # look up "error_rate" against the CamelCase METRIC_CONFIG keys, so it
+    # matched nothing and the graded metric was dropped by insertion order.
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    store = tmp_path / "metrics_history.jsonl"
+    rows = [
+        {"ts": (now - timedelta(hours=30)).isoformat(),
+         "values": {"bow/Ops/Tool_Calls": 5}},
+        {"ts": (now - timedelta(hours=1)).isoformat(),
+         "values": {"bow/Ops/Tool_Calls": 5,
+                    "bow/Ops/Session_Count": 4,        # ungraded (no dir)
+                    "bow/Ops/Wiki_Article_Count": 10,  # ungraded (not in config)
+                    "bow/Ops/Error_Rate": 2.5}},       # graded (dir: lower)
+    ]
+    store.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+    clause = insights._24h_clause("bow", store)
+    assert "now tracking" in clause
+    assert "error rate" in clause, clause
+
+
+def test_one_detected_secret_must_not_grade_pass():
+    """Secrets_Detected shipped with warn==fail==1: under the documented _health
+    contract (at/inside warn -> 100) one leaked secret graded a perfect 100/PASS
+    and never flagged — while two secrets floored to 0. Any detected secret must
+    grade below the flag threshold (h < 60) so it surfaces in needs_attention;
+    zero secrets stays a perfect score."""
+    rule = insights.METRIC_RULES["Secrets_Detected"]
+    assert insights._health(0, rule) == 100.0
+    assert insights._health(1, rule) < 60.0

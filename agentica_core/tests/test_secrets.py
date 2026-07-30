@@ -34,6 +34,13 @@ def test_run_checks_flags_planted_secret(tmp_path):
     assert any("leak.py" in r["detail"] for r in results)
 
 
+def test_run_checks_flags_secret_in_bare_dotenv_file(tmp_path):
+    (tmp_path / ".env").write_text(f'GEMINI_KEY={"AIzaSy" + "z" * 33}\n', encoding="utf-8")
+    results = vs.run_checks(roots=[tmp_path])
+    assert any(r["status"] == "FAIL" for r in results)
+    assert any(".env" in r["detail"] for r in results)
+
+
 def test_run_checks_clean_dir_is_ok(tmp_path):
     (tmp_path / "fine.py").write_text("x = 1  # nothing secret here\n", encoding="utf-8")
     results = vs.run_checks(roots=[tmp_path])

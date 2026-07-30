@@ -5,6 +5,7 @@ import pytest
 from agentica_core import (
     TelemetryValidationError,
     append_entry,
+    count_dangerous_tool_invocations,
     normalize_entry,
     validate_entry,
     validate_metric,
@@ -111,3 +112,33 @@ def test_append_entry_rejects_invalid_and_writes_nothing(tmp_path):
     with pytest.raises(TelemetryValidationError):
         append_entry({"bogus": 1}, path=target)
     assert not target.exists()
+
+
+def test_count_dangerous_tool_invocations_returns_zero_when_log_absent(tmp_path):
+    missing = tmp_path / "hook_timings.jsonl"
+    assert count_dangerous_tool_invocations(path=missing) == 0
+
+
+def test_count_dangerous_tool_invocations_counts_only_blocked_guardrails_hits(tmp_path):
+    target = tmp_path / "hook_timings.jsonl"
+    records = [
+        {"ts": "t1", "hook": "guardrails", "event": "PreToolUse", "status": "blocked", "exit_code": 2},
+        {"ts": "t2", "hook": "guardrails", "event": "PreToolUse", "status": "ok", "exit_code": 0},
+        {"ts": "t3", "hook": "loop-breaker", "event": "PostToolUse", "status": "blocked", "exit_code": 2},
+        {"ts": "t4", "hook": "guardrails", "event": "PreToolUse", "status": "blocked", "exit_code": 2},
+    ]
+    target.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+    # Only the two "guardrails" records with a real block (status/exit_code) count —
+    # the ok guardrails record and the unrelated loop-breaker block are excluded.
+    assert count_dangerous_tool_invocations(path=target) == 2
+
+
+def test_count_dangerous_tool_invocations_ignores_malformed_lines(tmp_path):
+    target = tmp_path / "hook_timings.jsonl"
+    target.write_text(
+        "not json\n"
+        + json.dumps({"hook": "guardrails", "status": "blocked", "exit_code": 2}) + "\n"
+        + "\n",
+        encoding="utf-8",
+    )
+    assert count_dangerous_tool_invocations(path=target) == 1

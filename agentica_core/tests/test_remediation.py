@@ -131,8 +131,10 @@ def test_efficacy_note_mentions_correlation(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# efficacy — attempt counting + fire-time before/after events (§A1)
+# efficacy dedup — keyed on snapshot windows, not values
 # ---------------------------------------------------------------------------
+# Error_Rate (dir=lower) is remediated by /investigate per insights.REMEDIATION.
+# Flagged means health < 40, i.e. value at/past the fail threshold.
 
 def _write_history(path: Path, rows: list[tuple[str, float]]) -> None:
     lines = [json.dumps({"ts": ts, "values": {"bow/Activity/Error_Rate": v}}) for ts, v in rows]
@@ -143,6 +145,54 @@ def _flagged_value() -> float:
     from agentica_core import insights
     return float(insights.METRIC_RULES["Error_Rate"]["fail"]) * 2
 
+
+def test_efficacy_counts_repeat_uses_in_distinct_windows_with_equal_values(monkeypatch, tmp_path):
+    monkeypatch.setattr(rem, "_EXEC_LOG", tmp_path / "no_exec_log.jsonl")
+    hist = tmp_path / "hist.jsonl"
+    bad = _flagged_value()
+    # Two separate flag → use → recover cycles with IDENTICAL before/after values.
+    _write_history(hist, [
+        ("2026-01-01T00:00:00+00:00", bad),
+        ("2026-01-02T00:00:00+00:00", 0.0),
+        ("2026-01-03T00:00:00+00:00", bad),
+        ("2026-01-04T00:00:00+00:00", 0.0),
+    ])
+    records = [
+        _make_record("2026-01-01T12:00:00+00:00", ["investigate"]),
+        _make_record("2026-01-03T12:00:00+00:00", ["investigate"]),
+    ]
+    result = rem.efficacy(history_path=hist, records=records)
+    ev = [e for e in result["events"] if e["metric"] == "Error_Rate"]
+    assert len(ev) == 2  # value-keyed dedup used to collapse these into one
+
+
+def test_efficacy_attributes_window_to_reflex_when_exec_log_and_telemetry_both_record_it(monkeypatch, tmp_path):
+    # One physical reflex-engine-fired run lands in exec_log (actor=reflex) AND in the
+    # headless session's telemetry (actor=human). It must count ONCE, attributed to reflex.
+    exec_log = tmp_path / "exec_log.jsonl"
+    exec_log.write_text(json.dumps({
+        "timestamp": "2026-01-01T12:00:00+00:00",
+        "skill": "investigate",
+        "status": "done",
+        "source": "reflex_engine",
+    }) + "\n", encoding="utf-8")
+    monkeypatch.setattr(rem, "_EXEC_LOG", exec_log)
+    hist = tmp_path / "hist.jsonl"
+    bad = _flagged_value()
+    _write_history(hist, [
+        ("2026-01-01T00:00:00+00:00", bad),
+        ("2026-01-02T00:00:00+00:00", 0.0),
+    ])
+    records = [_make_record("2026-01-01T12:00:05+00:00", ["investigate"])]  # telemetry echo
+    result = rem.efficacy(history_path=hist, records=records)
+    ev = [e for e in result["events"] if e["metric"] == "Error_Rate"]
+    assert len(ev) == 1
+    assert ev[0]["actor"] == "reflex"
+
+
+# ---------------------------------------------------------------------------
+# efficacy — attempt counting + fire-time before/after events (§A1)
+# ---------------------------------------------------------------------------
 
 def _exec_row(ts: str, status: str, skill: str = "investigate", **extra) -> dict:
     return {"timestamp": ts, "skill": skill, "status": status,
@@ -193,7 +243,7 @@ def test_efficacy_builds_event_from_fire_time_measurement_without_snapshots(monk
     ev = [e for e in result["events"] if e["metric"] == "Error_Rate"]
     assert len(ev) == 1
     assert ev[0]["outcome"] == "improved"  # Error_Rate dir=lower, 5.0 -> 1.0
-    assert ev[0]["actor"] == "ronin"
+    assert ev[0]["actor"] == "reflex"
     assert ev[0]["before"] == 5.0 and ev[0]["after"] == 1.0
     assert result["applied"] == 1 and result["improved"] == 1
 
@@ -247,3 +297,19 @@ def test_efficacy_skips_fire_time_row_without_metric_rule(monkeypatch, tmp_path)
     assert result["attempted"] == 1  # still an attempt, just not judgeable
 
 
+def test_efficacy_dedupes_repeat_uses_within_the_same_snapshot_window(monkeypatch, tmp_path):
+    monkeypatch.setattr(rem, "_EXEC_LOG", tmp_path / "no_exec_log.jsonl")
+    hist = tmp_path / "hist.jsonl"
+    bad = _flagged_value()
+    _write_history(hist, [
+        ("2026-01-01T00:00:00+00:00", bad),
+        ("2026-01-02T00:00:00+00:00", 0.0),
+    ])
+    # Two sessions log the same use inside one snapshot window — count once.
+    records = [
+        _make_record("2026-01-01T11:00:00+00:00", ["investigate"]),
+        _make_record("2026-01-01T12:00:00+00:00", ["investigate"]),
+    ]
+    result = rem.efficacy(history_path=hist, records=records)
+    ev = [e for e in result["events"] if e["metric"] == "Error_Rate"]
+    assert len(ev) == 1

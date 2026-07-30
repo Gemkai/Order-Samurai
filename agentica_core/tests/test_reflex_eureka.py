@@ -112,6 +112,23 @@ def test_analyze_gotcha_classification(tmp_path):
     assert "GOTCHA" in out.read_text()
 
 
+def test_analyze_zero_pct_effective_is_gotcha(tmp_path):
+    # 0/5 improvement rate (0%) is the WORST offender — a skill that NEVER resolves
+    # its metric — and must classify as GOTCHA, not be silently excluded because a
+    # falsy 0.0 rate falls through to the `or 1` fallback in the classifier filter.
+    entries = [
+        {"source": "reflex_engine", "reflex_id": "metric:arts:Slop_Density",
+         "skill": "humanizer", "improved": False, "timestamp": f"2026-01-0{i+1}T00:00:00Z"}
+        for i in range(5)
+    ]
+    log = _write_log(tmp_path, entries)
+    out = tmp_path / "findings.md"
+    result = eur.analyze(log, out)
+    assert result["gotchas"] == 1
+    assert result["rules"] == 0
+    assert result["context"] == 0
+
+
 def test_analyze_rule_classification(tmp_path):
     # 8/10 improvement rate (80%) >= 70% → RULE
     entries = [

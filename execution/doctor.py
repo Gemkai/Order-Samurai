@@ -226,6 +226,64 @@ def _run_local_llm_checks() -> list[dict]:
                        f"{', '.join(m for m in models[:3] if m)})"}]
 
 
+def _run_exec_chain_checks() -> list[dict]:
+    """FAIL when exec_log.jsonl's tamper-evident hash chain does not recompute.
+
+    exec_log.jsonl is the "verified means ran" record: the reflex engine writes its
+    own improved/metric_after verdicts there and rival post-audits them later. Each
+    row is chained (seq + prev_hash + entry_hash) so editing a past verdict breaks
+    every hash after it. That only detects anything if something WALKS the chain --
+    a chained-but-never-verified ledger is a producer orphan. This is that walk.
+
+    The chain logic has ONE implementation (Governance/api/src/hash-chain.ts); this
+    shells out to it rather than re-deriving the hash in Python, which would drift
+    (Anti-Pattern #2). A missing node/tsx toolchain WARNs -- it means the check could
+    not run, which is not the same claim as "the ledger is intact".
+    """
+    import json
+    import subprocess
+
+    api_dir = Path(__file__).resolve().parents[2] / "api"
+    if not (api_dir / "src" / "verify-chain-cli.ts").exists():
+        return [{"status": "WARN", "label": "exec-chain",
+                 "detail": f"verifier missing at {api_dir}/src/verify-chain-cli.ts -- "
+                           f"exec_log tamper-evidence is unverified"}]
+    try:
+        proc = subprocess.run(
+            ["npx", "tsx", "src/verify-chain-cli.ts"],
+            cwd=str(api_dir), capture_output=True, text=True, timeout=60,
+        )
+    except FileNotFoundError:
+        return [{"status": "WARN", "label": "exec-chain",
+                 "detail": "npx not on PATH -- exec_log tamper-evidence is unverified "
+                           "(install Node, then re-run doctor)"}]
+    except subprocess.TimeoutExpired:
+        return [{"status": "WARN", "label": "exec-chain",
+                 "detail": "chain verification timed out after 60s -- exec_log "
+                           "tamper-evidence is unverified"}]
+
+    try:
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return [{"status": "WARN", "label": "exec-chain",
+                 "detail": f"chain verifier returned unparseable output "
+                           f"(exit {proc.returncode}): {proc.stderr.strip()[:200]}"}]
+
+    chained, unchained = result.get("chained", 0), result.get("unchained", 0)
+    if not result.get("ok"):
+        return [{"status": "FAIL", "label": "exec-chain",
+                 "detail": f"exec_log hash chain BROKEN at seq {result.get('brokenAtSeq')}: "
+                           f"{result.get('reason')} -- a past remediation verdict was edited "
+                           f"after it was written; inspect state/exec_log.jsonl from that row"}]
+    if chained == 0:
+        return [{"status": "OK", "label": "exec-chain",
+                 "detail": f"no chained rows yet ({unchained} pre-migration row(s)); "
+                           f"chaining starts at the next reflex run"}]
+    return [{"status": "OK", "label": "exec-chain",
+             "detail": f"exec_log hash chain intact ({chained} chained row(s) verified, "
+                       f"{unchained} pre-migration)"}]
+
+
 def _run_claude_telemetry_checks(max_age_hours: float = 48.0,
                                  source: "Path | None" = None,
                                  now=None) -> list[dict]:
@@ -359,6 +417,12 @@ def main() -> int:
     for result in claude_tel_results:
         print(f"[{result['status']}] {result['label']}: {result['detail']}")
 
+    # GATE, not spectator: a broken chain means a past remediation verdict was edited
+    # after the fact, which invalidates every efficacy number derived from it.
+    exec_chain_results = _run_exec_chain_checks()
+    for result in exec_chain_results:
+        print(f"[{result['status']}] {result['label']}: {result['detail']}")
+
     # Claude architecture score — the enforcement pack's live verdict on the
     # ~/.claude runtime, folded in as a GATE (a zeroed category FAILs doctor).
     # This is the "100/100 becomes continuously enforced, not a one-time
@@ -393,10 +457,16 @@ def main() -> int:
     claude_tel_fail = sum(1 for r in claude_tel_results if r["status"] == "FAIL")
     claude_tel_ok = sum(1 for r in claude_tel_results if r["status"] == "OK")
 
-    total_ok = path_counts["OK"] + stale_counts["OK"] + live_source_counts["OK"] + runtime_counts["OK"] + root_counts["OK"] + agentica_root_counts["OK"] + archive_counts["OK"] + telemetry_counts["OK"] + meditation_ts_ok + local_llm_ok + schema_clean_ok + claude_tel_ok + claude_arch_counts["OK"]
-    total_warn = path_counts["WARN"] + stale_counts["WARN"] + live_source_counts["WARN"] + runtime_counts["WARN"] + root_counts["WARN"] + agentica_root_counts["WARN"] + archive_counts["WARN"] + telemetry_counts["WARN"] + meditation_ts_warn + local_llm_warn + schema_clean_warn + claude_arch_counts["WARN"]
-    total_fail = path_counts["FAIL"] + stale_counts["FAIL"] + live_source_counts["FAIL"] + runtime_counts["FAIL"] + root_counts["FAIL"] + agentica_root_counts["FAIL"] + archive_counts["FAIL"] + telemetry_counts["FAIL"] + claude_tel_fail + claude_arch_counts["FAIL"]
-    exit_code = 1 if path_exit or stale_exit or live_source_exit or runtime_exit or root_exit or agentica_root_exit or archive_exit or telemetry_exit or claude_tel_fail or claude_arch_exit else 0
+    # exec-chain is a gating family like claude-telemetry: FAIL (broken chain) feeds
+    # the exit code, WARN (verifier could not run) does not.
+    exec_chain_fail = sum(1 for r in exec_chain_results if r["status"] == "FAIL")
+    exec_chain_warn = sum(1 for r in exec_chain_results if r["status"] == "WARN")
+    exec_chain_ok = sum(1 for r in exec_chain_results if r["status"] == "OK")
+
+    total_ok = path_counts["OK"] + stale_counts["OK"] + live_source_counts["OK"] + runtime_counts["OK"] + root_counts["OK"] + agentica_root_counts["OK"] + archive_counts["OK"] + telemetry_counts["OK"] + meditation_ts_ok + local_llm_ok + schema_clean_ok + claude_tel_ok + exec_chain_ok + claude_arch_counts["OK"]
+    total_warn = path_counts["WARN"] + stale_counts["WARN"] + live_source_counts["WARN"] + runtime_counts["WARN"] + root_counts["WARN"] + agentica_root_counts["WARN"] + archive_counts["WARN"] + telemetry_counts["WARN"] + meditation_ts_warn + local_llm_warn + schema_clean_warn + exec_chain_warn + claude_arch_counts["WARN"]
+    total_fail = path_counts["FAIL"] + stale_counts["FAIL"] + live_source_counts["FAIL"] + runtime_counts["FAIL"] + root_counts["FAIL"] + agentica_root_counts["FAIL"] + archive_counts["FAIL"] + telemetry_counts["FAIL"] + claude_tel_fail + exec_chain_fail + claude_arch_counts["FAIL"]
+    exit_code = 1 if path_exit or stale_exit or live_source_exit or runtime_exit or root_exit or agentica_root_exit or archive_exit or telemetry_exit or claude_tel_fail or exec_chain_fail or claude_arch_exit else 0
 
     print("--------------------")
     print(f"Summary: OK={total_ok} WARN={total_warn} FAIL={total_fail}")

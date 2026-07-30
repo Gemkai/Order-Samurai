@@ -5,7 +5,6 @@ guards (CLAUDE.md "Local LLM Routing"): a local call must set max_tokens >= 512,
 fall back to the reasoning/thinking field when a thinking model returns empty
 content, carry an explicit timeout, and treat unparseable output as failure.
 """
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -84,16 +83,24 @@ def test_normalize_openrouter_anthropic_alias(gateway):
     )
 
 
-# --------------------------------------------------------- tier classing
+# ------------------------------------------------ no silent safety stubs
 
-def test_classify_model_tier(gateway):
-    from agentica_core.llm.gateway import LOCAL_MODEL
-    assert gateway._classify_model_tier(LOCAL_MODEL, "PREMIUM") == "LOCAL"
-    assert gateway._classify_model_tier("google/gemma-2-9b-it:free", "PREMIUM") == "FREE"
-    assert gateway._classify_model_tier("gemini-2.5-flash", "PREMIUM") == "FAST"
-    assert gateway._classify_model_tier("anthropic/claude-3.5-sonnet", "FAST") == "PREMIUM"
-    assert gateway._classify_model_tier("gemini-2.5-pro", "FAST") == "PREMIUM"
-    assert gateway._classify_model_tier("some-other-model", "FAST") == "FAST"
+def test_gateway_has_no_silent_safety_stub_imports():
+    """Audit W2 regression guard: the gateway must never carry safety controls
+    (PII scrubber, guardrails, nuclear option, telemetry) behind ImportError
+    fallbacks that silently no-op. The enforced privacy control is local_only /
+    pinned-chain routing; anything stronger must fail loud, not pretend."""
+    import inspect
+    from agentica_core.llm import gateway as gateway_module
+
+    src = inspect.getsource(gateway_module)
+    # The module docstring documents the removal by name — drop everything through
+    # its closing quotes before scanning (robust to reflowing/indenting the text).
+    if src.lstrip().startswith('"""'):
+        src = src.split('"""', 2)[2]
+    for banned in ("scrub_text", "AIGuardrails", "NuclearOption", "log_execution",
+                   "from safety.", "from execution."):
+        assert banned not in src, f"silent safety stub reintroduced: {banned}"
 
 
 # --------------------------------------------------------- json parsing
@@ -127,33 +134,6 @@ def test_parse_legacy_content_without_required_keys(gateway):
 def test_parse_legacy_content_missing_required_key_raises(gateway):
     with pytest.raises(Exception):
         gateway._parse_legacy_content('{"a": 1}', required_json_keys=["a", "b"])
-
-
-# ---------------------------------------------------- tool-call shaping
-
-def test_normalize_tool_calls_list(gateway):
-    count, names = gateway._normalize_tool_calls(["grep", "read"], [])
-    assert (count, names) == (2, ["grep", "read"])
-
-
-def test_normalize_tool_calls_dict(gateway):
-    count, names = gateway._normalize_tool_calls({"grep": 1, "read": 2}, [])
-    assert count == 2
-    assert set(names) == {"grep", "read"}
-
-
-def test_normalize_tool_calls_count_with_latency_names(gateway):
-    latencies = [{"tool": "bash", "ms": 5}, {"not_tool": "x"}]
-    count, names = gateway._normalize_tool_calls(3, latencies)
-    assert count == 3
-    assert names == ["bash"]
-
-
-def test_normalize_tool_calls_garbage_falls_back_to_names(gateway):
-    latencies = [{"tool": "bash"}]
-    count, names = gateway._normalize_tool_calls("not-a-number", latencies)
-    assert count == 1
-    assert names == ["bash"]
 
 
 # ------------------------------------------- _call_local (Ollama guards)
@@ -221,3 +201,81 @@ def test_call_local_json_format_flag(gateway):
         post.return_value = _ollama_response({"content": "{}"})
         gateway._call_local("hi", response_schema={"type": "object"})
     assert post.call_args.kwargs["json"].get("format") == "json"
+
+
+# ---------------------------------------------------------------- local_only
+
+def test_generate_text_local_only_uses_local_backend(gateway):
+    with patch("agentica_core.llm.gateway.requests.post") as post:
+        post.return_value = _ollama_response({"content": "private ok"})
+        out = gateway.generate_text("hi", local_only=True, return_metadata=True)
+    assert out["text"] == "private ok"
+    assert out["fallback_index"] == 0
+    assert post.call_count == 1
+    assert "11434" in post.call_args.args[0]
+
+
+def test_generate_text_local_only_strips_cloud_models_from_chain(gateway):
+    # A cloud-heavy requested chain is filtered down to bare Ollama tags.
+    with patch("agentica_core.llm.gateway.requests.post") as post:
+        post.return_value = _ollama_response({"content": "ok"})
+        out = gateway.generate_text(
+            "hi",
+            model_chain=[
+                "gemini-2.5-flash",
+                "anthropic/claude-3.5-sonnet",
+                "google/gemma-2-9b-it:free",
+                "gemma4:12b",
+            ],
+            local_only=True,
+            return_metadata=True,
+        )
+    assert out["model"] == "gemma4:12b"
+    assert post.call_count == 1
+
+
+def test_generate_text_local_only_fails_closed_when_local_down(gateway):
+    # Ollama down -> the call raises; it must never fail over to a cloud model.
+    with patch(
+        "agentica_core.llm.gateway.requests.post", side_effect=OSError("conn refused")
+    ) as post:
+        with pytest.raises(OSError):
+            gateway.generate_text("hi", local_only=True)
+    assert post.call_count == 1
+
+
+# --------------------------------------------- _call_openai / _call_openrouter
+
+def _openai_style_response(content) -> MagicMock:
+    resp = MagicMock()
+    resp.json.return_value = {"choices": [{"message": {"content": content}}]}
+    resp.raise_for_status.return_value = None
+    resp.status_code = 200
+    return resp
+
+
+def test_call_openai_returns_content(gateway):
+    gateway.openai_key = "test-key"
+    with patch("agentica_core.llm.gateway.requests.post") as post:
+        post.return_value = _openai_style_response("hello world")
+        assert gateway._call_openai("gpt-4o", "hi") == "hello world"
+
+
+def test_call_openai_null_content_is_failure_not_success(gateway):
+    # A tool-call-only (or content-filtered) OpenAI response carries
+    # message.content = null, not a missing key. Unlike _call_gemini and
+    # _call_local, this must not be treated as a valid answer — it must raise
+    # so generate_text's fallback chain moves to the next model, matching the
+    # empty-response guard the other two providers already enforce.
+    gateway.openai_key = "test-key"
+    with patch("agentica_core.llm.gateway.requests.post") as post:
+        post.return_value = _openai_style_response(None)
+        with pytest.raises(Exception):
+            gateway._call_openai("gpt-4o", "hi")
+
+
+def test_call_openrouter_null_content_is_failure_not_success(gateway):
+    with patch("agentica_core.llm.gateway.requests.post") as post:
+        post.return_value = _openai_style_response(None)
+        with pytest.raises(Exception):
+            gateway._call_openrouter("hi")
