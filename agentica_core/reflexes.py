@@ -12,10 +12,16 @@ from pathlib import Path
 from . import insights
 from .maturity import resolve_maturity
 
-# Nudge catalog + fired-state (the real Give-a-Nudge install). Graceful if absent.
-# Post-move canonical location is ~/.claude/nudges.json; override with NUDGE_JSON_PATH.
-_NUDGES_JSON = Path(os.environ.get("NUDGE_JSON_PATH", str(Path.home() / ".claude" / "nudges.json")))
-_NUDGE_STATE = Path.home() / ".claude" / "nudge-state.json"
+_samurai_home = Path(os.environ.get("SAMURAI_HOME", Path.home() / ".samurai"))
+_nudge_override = os.environ.get("NUDGE_JSON_PATH")
+if _nudge_override:
+    _NUDGES_JSON = Path(_nudge_override)
+elif (_samurai_home / "nudges.json").is_file():
+    _NUDGES_JSON = _samurai_home / "nudges.json"
+else:
+    _NUDGES_JSON = Path.home() / ".claude" / "nudges.json"
+
+_NUDGE_STATE = _samurai_home / "nudge-state.json" if (_samurai_home / "nudge-state.json").is_file() else Path.home() / ".claude" / "nudge-state.json"
 _REFLEX_ENGINE_STATE = Path(os.environ.get("ORDER_SAMURAI_ROOT",
     str(Path(__file__).resolve().parents[1] / "Order Samurai"))) / "state" / "reflex_engine_state.json"
 

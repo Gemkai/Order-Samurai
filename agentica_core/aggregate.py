@@ -48,9 +48,12 @@ from .verifiers import load_verifiers, run_all
 
 _THIS = Path(__file__).resolve()
 PILLARS = ("bow", "sword", "brush", "arts")
-# per-platform architecture scorecard (weighted category rubric)
+_SCORECARD_DIR = Path(__file__).resolve().parent.parent / "config"
 _SCORECARDS = {
-    "claude": _THIS.parents[2] / "Governance" / "Order Samurai" / "config" / "architecture_scorecard.json",
+    "default": _SCORECARD_DIR / "architecture_scorecard.json" if (_SCORECARD_DIR / "architecture_scorecard.json").exists() else _SCORECARD_DIR / "claude_architecture_scorecard.json",
+    "claude": _SCORECARD_DIR / "claude_architecture_scorecard.json",
+    "codex": _SCORECARD_DIR / "codex_architecture_scorecard.json" if (_SCORECARD_DIR / "codex_architecture_scorecard.json").exists() else _SCORECARD_DIR / "architecture_scorecard.json",
+    "gemini": _SCORECARD_DIR / "gemini_architecture_scorecard.json" if (_SCORECARD_DIR / "gemini_architecture_scorecard.json").exists() else _SCORECARD_DIR / "architecture_scorecard.json",
 }
 
 

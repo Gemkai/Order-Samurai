@@ -15,7 +15,8 @@ from pathlib import Path
 
 _OS_ROOT = Path(os.environ.get("ORDER_SAMURAI_ROOT",
     str(Path(__file__).resolve().parents[2] / "Order Samurai")))
-_RUNTIME_DATA = Path.home() / ".claude" / "data"
+_samurai_data = Path(os.environ.get("SAMURAI_HOME", Path.home() / ".samurai")) / "data"
+_RUNTIME_DATA = _samurai_data if _samurai_data.is_dir() else Path.home() / ".claude" / "data"
 
 
 def _read_json(path: Path):
