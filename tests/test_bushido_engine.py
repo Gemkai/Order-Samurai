@@ -33,6 +33,7 @@ from agentica_core.bushido_engine import (  # noqa: E402
     load_skill_metadata,
     mark_complete,
     resolve_ronin_mode,
+    review_hitl,
     skill_to_work_item,
 )
 
@@ -476,6 +477,84 @@ def test_mark_complete_failed(tmp_repo):
 
 def test_mark_complete_unknown_returns_false(tmp_repo):
     assert mark_complete("hitl-does-not-exist", tmp_repo) is False
+
+
+# ── review_hitl ────────────────────────────────────────────────────────────────
+
+def _enqueue_pending(tmp_repo, **overrides):
+    wi = WorkItem(
+        skill=overrides.pop("skill", "simplify"), source="reflex", pillar="arts",
+        blast_radius=BlastRadius.REPO, reversible=True, **overrides,
+    )
+    return enqueue_hitl(wi, Tier.QUEUE, tmp_repo)
+
+
+def test_review_hitl_approve_sets_status_and_timestamp(tmp_repo):
+    qid = _enqueue_pending(tmp_repo)
+    assert review_hitl(qid, tmp_repo, "approve") is True
+
+    data = json.loads((tmp_repo / "state" / "hitl_queue.json").read_text())
+    matched = [i for i in data["items"] if i["id"] == qid][0]
+    assert matched["status"] == "approved"
+    assert matched["approved_at"] is not None
+
+
+def test_review_hitl_reject_records_reason(tmp_repo):
+    qid = _enqueue_pending(tmp_repo)
+    assert review_hitl(qid, tmp_repo, "reject", reason="stale, superseded") is True
+
+    data = json.loads((tmp_repo / "state" / "hitl_queue.json").read_text())
+    matched = [i for i in data["items"] if i["id"] == qid][0]
+    assert matched["status"] == "rejected"
+    assert matched["rejected_at"] is not None
+    assert matched["rejected_reason"] == "stale, superseded"
+
+
+def test_review_hitl_expire_records_reason(tmp_repo):
+    qid = _enqueue_pending(tmp_repo)
+    assert review_hitl(qid, tmp_repo, "expire", reason="content-free probe artifact") is True
+
+    data = json.loads((tmp_repo / "state" / "hitl_queue.json").read_text())
+    matched = [i for i in data["items"] if i["id"] == qid][0]
+    assert matched["status"] == "expired"
+    assert matched["expired_at"] is not None
+    assert matched["expired_reason"] == "content-free probe artifact"
+
+
+def test_review_hitl_unknown_id_returns_false(tmp_repo):
+    assert review_hitl("hitl-does-not-exist", tmp_repo, "approve") is False
+
+
+def test_review_hitl_does_not_redecide_already_approved(tmp_repo):
+    """A settled item must not be re-reviewed — this is the guard that stops
+    the queue from silently rubber-stamping a decision that already happened."""
+    qid = _enqueue_pending(tmp_repo)
+    assert review_hitl(qid, tmp_repo, "approve") is True
+    assert review_hitl(qid, tmp_repo, "reject", reason="changed my mind") is False
+
+    data = json.loads((tmp_repo / "state" / "hitl_queue.json").read_text())
+    matched = [i for i in data["items"] if i["id"] == qid][0]
+    assert matched["status"] == "approved"  # untouched by the second call
+    assert matched["rejected_reason"] is None
+
+
+def test_review_hitl_invalid_action_raises(tmp_repo):
+    qid = _enqueue_pending(tmp_repo)
+    with pytest.raises(ValueError):
+        review_hitl(qid, tmp_repo, "frobnicate")
+
+
+def test_review_hitl_writes_audit_event(tmp_repo):
+    qid = _enqueue_pending(tmp_repo, skill="wiki")
+    review_hitl(qid, tmp_repo, "expire", reason="gating metric now reads 0")
+
+    events_path = tmp_repo / "state" / "autonomic_events.jsonl"
+    lines = [json.loads(ln) for ln in events_path.read_text().splitlines() if ln.strip()]
+    review_events = [e for e in lines if e.get("event") == "hitl_review"]
+    assert len(review_events) == 1
+    assert review_events[0]["action"] == "expire"
+    assert review_events[0]["queue_id"] == qid
+    assert review_events[0]["skill"] == "wiki"
 
 
 # ── approval_tier override (allowlist) ────────────────────────────────────────

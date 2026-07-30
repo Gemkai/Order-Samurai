@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "Calibration Policy",
+  "description": "The bar a coefficient must clear before a hero metric may report calibrated=True. Governed policy: it decides when an estimate is allowed to call itself measured, so it belongs in config/ under review, not in machine-written state. It lived in state/calibration_coefficients.json until 2026-07-29, mixed in with the sample_count/benchmark_min data the reducers WRITE — that file is gitignored (.gitignore: 'Governance/Order Samurai/state/*.json'), so the threshold vanished on a fresh clone and fell through to the _CALIBRATION_MIN_SAMPLES=20 constant, silently raising the bar on any machine that had not been hand-edited.",
+  "_precedence": "aggregate.py prefers THIS file, then a legacy calibration_threshold block inside calibration_coefficients.json, then the _CALIBRATION_MIN_SAMPLES constant. Config wins over state deliberately: state is machine-written, so letting it override a governed value would let a reducer quietly re-raise its own bar. The path is resolved as a sibling of the coefficients file's state/ dir, which keeps tmp_path test fixtures isolated from this policy.",
+  "calibration_threshold": {
+    "samples": 5,
+    "weeks": 4,
+    "_samples_note": "Lowered 10 -> 5 on 2026-07-29 by owner decision. 10 samples PER KIND was unreachable by construction: the meditation cycle works ~4 items per cycle across 4 pillars, and the whole proposal pipeline (28 items, 11 blocked on missing emitters) could not supply 10 completed items of any single kind. At 10 the bow hero (Estimated_Agent_Time_Saved) could only ever calibrate via the `weeks` fallback, never via samples. TRADE-OFF ACCEPTED: a benchmark_min averaged over 5 durations is noisier than over 10; `calibrated_via` still records which route was taken, so a 5-sample calibration stays distinguishable after the fact.",
+    "_weeks_note": "Block-wide time fallback: once real samples of ANY kind have been collecting for this many weeks, each kind with at least one sample calibrates from what it has. A kind with zero samples keeps its seed benchmark — the gate means 'the group measured long enough', never 'invent an average from nothing'."
+  }
+}

@@ -775,8 +775,10 @@ def _calibrate_coefficients(backlog: list[dict], coef_path: Path):
                 if earliest_start is None or start < earliest_start:
                     earliest_start = start
                 
-    thresholds = coef.get("calibration_threshold", {})
-    sample_threshold = thresholds.get("samples", 20)
+    # Config-first: see _calibration_threshold. The write gate and the display gate
+    # MUST read the same value or the dashboard shows a bar the calculation ignores.
+    thresholds = _calibration_threshold(coef, coef_path)
+    sample_threshold = thresholds.get("samples", _CALIBRATION_MIN_SAMPLES)
     week_threshold = thresholds.get("weeks")
 
     # Time-bounded fallback: once real samples (of ANY kind) have been collecting
@@ -1148,14 +1150,43 @@ def _kill_chains_open(records: list[dict], repo_root: Path | None = None) -> dic
 _CALIBRATION_MIN_SAMPLES = 20  # fallback only; real bar is calibration_threshold.samples
 
 
-def _calibration_min_samples(coef_data: dict) -> int:
-    """Display-gate bar = the single calibration_threshold.samples from
-    calibration_coefficients.json — the SAME value the write gate
-    (_calibrate_coefficients) uses. Unifies the two so the dashboard never hides a
-    threshold that disagrees with the calculation. Falls back to the constant only
-    when no coef/threshold is present."""
+def _calibration_threshold(coef_data: dict, coef_path: Path | None = None) -> dict:
+    """The governed calibration bar, resolved config-first.
+
+    Order: config/calibration_policy.json, then a legacy `calibration_threshold`
+    block inside calibration_coefficients.json, then {} (callers apply their own
+    constant default).
+
+    Config wins over state on purpose. The threshold decides when an estimate may
+    call itself measured, which is policy — but it used to live inside the state
+    file the reducers WRITE, and that file is gitignored, so on a fresh clone the
+    bar silently reverted to the _CALIBRATION_MIN_SAMPLES constant. Letting state
+    override config would also let a reducer quietly re-raise its own bar.
+
+    The path is a sibling of the coefficients file's `state/` dir rather than a
+    module constant, so a tmp_path fixture resolves to its own (absent) config and
+    keeps honouring the threshold it wrote inline.
+    """
+    if coef_path is not None:
+        policy = coef_path.parent.parent / "config" / "calibration_policy.json"
+        try:
+            block = json.loads(policy.read_text(encoding="utf-8")).get("calibration_threshold")
+            if isinstance(block, dict):
+                return block
+        except (OSError, ValueError):
+            pass
+    block = coef_data.get("calibration_threshold")
+    return block if isinstance(block, dict) else {}
+
+
+def _calibration_min_samples(coef_data: dict, coef_path: Path | None = None) -> int:
+    """Display-gate bar = the SAME calibration_threshold.samples the write gate
+    (_calibrate_coefficients) uses, so the dashboard never hides a threshold that
+    disagrees with the calculation. Falls back to the constant only when neither
+    the config policy nor a legacy state block supplies one."""
     try:
-        return int(coef_data.get("calibration_threshold", {}).get("samples", _CALIBRATION_MIN_SAMPLES))
+        return int(_calibration_threshold(coef_data, coef_path)
+                   .get("samples", _CALIBRATION_MIN_SAMPLES))
     except (TypeError, ValueError):
         return _CALIBRATION_MIN_SAMPLES
 
@@ -1217,7 +1248,7 @@ def _estimated_agent_time_saved(records: list[dict], repo_root: Path | None = No
         # Bow structurally un-calibratable). With no contributing items the value is
         # a real 0 but nothing is measured, so it stays uncalibrated and the hero
         # falls back to the measured Complexity-Weighted Throughput.
-        min_samples = _calibration_min_samples(coef_data)
+        min_samples = _calibration_min_samples(coef_data, coef_path)
         week_kinds = {item.get("kind", "skill") for item in week_done_items(this_week)}
         calibrated = bool(week_kinds) and all(
             _coef_block_calibrated({k: ops_coef.get(k, {})}, min_samples) for k in week_kinds

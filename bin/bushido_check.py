@@ -21,6 +21,14 @@ Completion mode:
     python bin/bushido_check.py --complete <queue_id> [--failed]
 
     Exit: 0 if item was found and updated, 1 if not found, 3 on error.
+
+Review mode (the human decision this queue exists for):
+    python bin/bushido_check.py --approve <queue_id> [--reason "..."]
+    python bin/bushido_check.py --reject <queue_id> --reason "..."
+    python bin/bushido_check.py --expire <queue_id> --reason "..."
+
+    Only acts on an item still `pending`; already-decided items are untouched.
+    Exit: 0 if item was found and reviewed, 1 if not found/not pending, 3 on error.
 """
 from __future__ import annotations
 
@@ -51,6 +59,7 @@ try:
         decide,
         mark_complete,
         resolve_ronin_mode,
+        review_hitl,
         skill_to_work_item,
     )
 except Exception as e:  # noqa: BLE001
@@ -120,6 +129,14 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Completion mode: mark this queue item done. Use with --failed for failures.")
     p.add_argument("--failed", action="store_true",
                    help="With --complete: mark the item as failed instead of done.")
+    p.add_argument("--approve", dest="approve", metavar="QUEUE_ID", default=None,
+                   help="Review mode: approve a pending queue item.")
+    p.add_argument("--reject", dest="reject", metavar="QUEUE_ID", default=None,
+                   help="Review mode: reject a pending queue item. Requires --reason.")
+    p.add_argument("--expire", dest="expire", metavar="QUEUE_ID", default=None,
+                   help="Review mode: expire a pending queue item. Requires --reason.")
+    p.add_argument("--reason", default="",
+                   help="With --approve/--reject/--expire: the human's stated reason.")
     p.add_argument("--ronin-override", choices=["true", "false"], default=None,
                    help="Force ronin mode on/off for this call (testing).")
     return p
@@ -138,6 +155,24 @@ def _decision_exit_code(tier: Tier) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+
+    # ── Review mode ───────────────────────────────────────────────────────────
+    review = [(a, v) for a, v in (("approve", args.approve), ("reject", args.reject),
+                                   ("expire", args.expire)) if v]
+    if len(review) > 1:
+        parser.error("only one of --approve/--reject/--expire may be given at a time")
+    if review:
+        action, queue_id = review[0]
+        if action in ("reject", "expire") and not args.reason:
+            parser.error(f"--reason is required with --{action}")
+        try:
+            ok = review_hitl(queue_id, REPO_ROOT, action, reason=args.reason)
+        except Exception as e:  # noqa: BLE001
+            sys.stderr.write(f"bushido_check: review_hitl failed: {e}\n")
+            sys.stderr.write(traceback.format_exc())
+            return 3
+        print(json.dumps({"reviewed": ok, "queue_id": queue_id, "action": action}))
+        return 0 if ok else 1
 
     # ── Completion mode ──────────────────────────────────────────────────────
     if args.complete:

@@ -450,6 +450,80 @@ def mark_complete(queue_id: str, repo_root: Path, failed: bool = False) -> bool:
     return False
 
 
+_REVIEW_ACTIONS = {"approve", "reject", "expire"}
+
+
+def review_hitl(queue_id: str, repo_root: Path, action: str, reason: str = "") -> bool:
+    """Transition a `pending` HITL item to `approved`, `rejected`, or `expired`.
+
+    The state-transition writer the queue never had (audit finding: `pending`
+    could only ever be entered, never left, other than via `_consume_approval`
+    finding a pre-existing `approved` row — which nothing wrote). Only acts on
+    items still `pending`; an already-approved/executing/done/rejected/expired
+    item is untouched (returns False) so this cannot silently re-decide a
+    settled item. Every call is audit-logged to autonomic_events.jsonl.
+    """
+    if action not in _REVIEW_ACTIONS:
+        raise ValueError(f"action must be one of {sorted(_REVIEW_ACTIONS)}, got {action!r}")
+
+    queue_path = Path(repo_root) / "state" / "hitl_queue.json"
+    try:
+        data = json.loads(queue_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+
+    items = data.get("items", [])
+    if not isinstance(items, list):
+        return False
+
+    now = datetime.now(timezone.utc).isoformat()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if item.get("id") != queue_id or item.get("status") != "pending":
+            continue
+        if action == "approve":
+            item["status"] = "approved"
+            item["approved_at"] = now
+        elif action == "reject":
+            item["status"] = "rejected"
+            item["rejected_at"] = now
+            item["rejected_reason"] = reason
+        else:  # expire
+            item["status"] = "expired"
+            item["expired_at"] = now
+            item["expired_reason"] = reason
+        data["updated_at"] = now
+        _atomic_write_json(queue_path, data)
+        _emit_review(item, action, reason, repo_root)
+        return True
+    return False
+
+
+def _emit_review(item: dict, action: str, reason: str, repo_root: Path) -> None:
+    """Audit line for every review action, mirroring `_emit_decision`'s stream
+    and never-raise contract — a broken audit write must not break the review."""
+    try:
+        event: dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event": "hitl_review",
+            "action": action,
+            "queue_id": item.get("id"),
+            "skill": item.get("skill"),
+            "detail": f"{item.get('skill') or '?'} -> {action}" + (f": {reason}" if reason else ""),
+        }
+        if item.get("pillar"):
+            event["pillar"] = item["pillar"]
+        if item.get("metric_id"):
+            event["metric_id"] = item["metric_id"]
+        path = Path(repo_root) / "state" / "autonomic_events.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(event) + "\n")
+    except Exception:
+        pass
+
+
 # ── Decision audit log ────────────────────────────────────────────────────────
 
 def _emit_decision(
