@@ -25,7 +25,7 @@ from agentica_core.schema_guard import (  # noqa: E402
 
 UTC = datetime.timezone.utc
 OSR = pathlib.Path(os.environ.get("ORDER_SAMURAI_ROOT",
-                                  str(pathlib.Path.home() / "AgenticaOS/Governance/Order Samurai")))
+                                  str(pathlib.Path(__file__).resolve().parents[1])))
 API = os.environ.get("REFLEX_API", "http://localhost:3001/api/reflex/verdicts")
 ARMED = os.environ.get("SENSEI_ARM") == "1"
 LEDGER = OSR / "state/SENSEI_LEDGER.jsonl"

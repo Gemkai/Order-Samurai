@@ -1,8 +1,8 @@
-"""Verify the Agentica-OS repo-root hygiene policy against the live repo root.
+"""Verify the Agentica-Framework repo-root hygiene policy against the live repo root.
 
 Third root-hygiene surface, alongside verify_root_hygiene (Order Samurai root)
 and verify_claude_root_hygiene (~/.claude runtime root): validates
-config/agentica_root_hygiene_policy.json against the AgenticaOS repo root —
+config/agentica_root_hygiene_policy.json against the Agentica-Framework repo root —
 classification vocabulary, required entries, and unclassified top-level
 entries. Unclassified entries WARN (drift pressure), missing required entries
 FAIL.
