@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "platform": "antigravity",
+  "targetRoot": "~/.gemini/antigravity",
+  "description": "Antigravity SDK / Agentica surface matrix for Order Samurai local agent governance.",
+  "surfaceRoles": [
+    "runtime_root",
+    "telemetry_record",
+    "brain",
+    "data"
+  ],
+  "surfaces": [
+    {
+      "path": ".",
+      "role": "runtime_root",
+      "owner": "Antigravity runtime",
+      "discoverabilityContract": "runtime home exists and is not silently substituted"
+    },
+    {
+      "path": "telemetry/telemetry.jsonl",
+      "role": "telemetry_record",
+      "owner": "Data layer via Antigravity emitter",
+      "discoverabilityContract": "append-only canonical Agentica telemetry"
+    },
+    {
+      "path": "brain",
+      "role": "brain",
+      "owner": "Antigravity runtime",
+      "discoverabilityContract": "session memory and artifacts store"
+    }
+  ],
+  "boundaryInvariants": [
+    "Antigravity telemetry must validate against the canonical agentica.1 schema.",
+    "Antigravity runtime surfaces must resolve under ~/.gemini/antigravity."
+  ]
+}
