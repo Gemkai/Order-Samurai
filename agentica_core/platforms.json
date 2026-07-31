@@ -5,7 +5,7 @@
     "claude": {
       "runtime_root": "~/.claude",
       "telemetry_source": "~/.claude/telemetry/telemetry.jsonl",
-      "surface_matrix": "{governance}/Order Samurai/config/claude_surface_matrix.json",
+      "surface_matrix": "{governance}/config/claude_surface_matrix.json",
       "verifiers": "agentica_core.providers.claude_verifiers:get_verifiers"
     },
     "codex": {
@@ -13,6 +13,18 @@
       "telemetry_source": "~/.codex/telemetry/telemetry.jsonl",
       "surface_matrix": "{governance}/platform_surfaces/codex_surface_matrix.json",
       "verifiers": "agentica_core.providers.codex_verifiers:get_verifiers"
+    },
+    "gemini": {
+      "runtime_root": "~/.gemini",
+      "telemetry_source": "~/.gemini/telemetry/telemetry.jsonl",
+      "surface_matrix": "{governance}/platform_surfaces/gemini_surface_matrix.json",
+      "verifiers": "agentica_core.providers.gemini_verifiers:get_verifiers"
+    },
+    "antigravity": {
+      "runtime_root": "~/.gemini/antigravity",
+      "telemetry_source": "~/.gemini/antigravity/telemetry/telemetry.jsonl",
+      "surface_matrix": "{governance}/platform_surfaces/antigravity_surface_matrix.json",
+      "verifiers": "agentica_core.providers.antigravity_verifiers:get_verifiers"
     }
   }
 }

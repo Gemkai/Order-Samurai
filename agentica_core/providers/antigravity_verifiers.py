@@ -1,8 +1,7 @@
-"""Codex platform verifier provider.
+"""Antigravity platform verifier provider.
 
-Codex telemetry is already present in the Agentica dashboard. This provider gives it
-the missing governance layer: resolve the tracked surface matrix, check core runtime
-surfaces, and validate recent telemetry records against the canonical schema.
+Antigravity SDK / Agentica telemetry governance: resolve the tracked surface matrix,
+check core runtime surfaces, and validate recent telemetry records against the canonical schema.
 """
 from __future__ import annotations
 
@@ -30,33 +29,33 @@ def _surface_path(runtime_root: Path, raw: str) -> Path:
 
 def run_checks() -> list[VerifierResult]:
     profile = os.environ.get("ORDER_SAMURAI_AUDIT_PROFILE", "baseline").lower()
-    platform = resolve_platform("codex")
+    platform = resolve_platform("antigravity")
     root = platform.runtime_root
     results: list[VerifierResult] = []
 
     if not root.exists():
         if profile == "full":
-            results.append(_result("FAIL", "codex-runtime-root", f"missing runtime root: {root}"))
+            results.append(_result("FAIL", "antigravity-runtime-root", f"missing runtime root: {root}"))
         else:
-            results.append(_result("WARN", "codex-runtime-root", f"runtime root not yet created: {root}"))
+            results.append(_result("WARN", "antigravity-runtime-root", f"runtime root not yet created: {root}"))
         return results
 
-    results.append(_result("OK", "codex-runtime-root", f"runtime root exists: {root}"))
+    results.append(_result("OK", "antigravity-runtime-root", f"runtime root exists: {root}"))
 
     matrix_path = platform.surface_matrix
     if not matrix_path.exists():
         return [
-            _result("FAIL", "codex_surface_matrix.json", f"missing surface matrix: {matrix_path}")
+            _result("FAIL", "antigravity_surface_matrix.json", f"missing surface matrix: {matrix_path}")
         ]
 
     try:
         matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
     except ValueError as exc:
-        return [_result("FAIL", "codex_surface_matrix.json", f"invalid JSON: {exc}")]
+        return [_result("FAIL", "antigravity_surface_matrix.json", f"invalid JSON: {exc}")]
 
     surfaces = matrix.get("surfaces")
     if not isinstance(surfaces, list) or not surfaces:
-        results.append(_result("FAIL", "codex_surface_matrix.json", "surfaces must be a non-empty list"))
+        results.append(_result("FAIL", "antigravity_surface_matrix.json", "surfaces must be a non-empty list"))
     else:
         missing = []
         escaped = []
@@ -70,25 +69,25 @@ def run_checks() -> list[VerifierResult]:
             if not target.exists():
                 missing.append(raw)
         if escaped:
-            results.append(_result("FAIL", "codex-surfaces-contained", f"surface(s) escape runtime root: {', '.join(escaped)}"))
+            results.append(_result("FAIL", "antigravity-surfaces-contained", f"surface(s) escape runtime root: {', '.join(escaped)}"))
         else:
-            results.append(_result("OK", "codex-surfaces-contained", "all relative surfaces stay under the Codex runtime root"))
+            results.append(_result("OK", "antigravity-surfaces-contained", "all relative surfaces stay under the Antigravity runtime root"))
         if missing:
-            results.append(_result("WARN", "codex-surfaces-resolve", f"missing optional/runtime surface(s): {', '.join(missing)}"))
+            results.append(_result("WARN", "antigravity-surfaces-resolve", f"missing optional/runtime surface(s): {', '.join(missing)}"))
         else:
-            results.append(_result("OK", "codex-surfaces-resolve", "all declared Codex surfaces resolve"))
+            results.append(_result("OK", "antigravity-surfaces-resolve", "all declared Antigravity surfaces resolve"))
 
     telemetry = platform.telemetry_source
     if not telemetry.exists():
         if profile == "full":
-            results.append(_result("FAIL", "codex-telemetry", f"missing telemetry source: {telemetry}"))
+            results.append(_result("FAIL", "antigravity-telemetry", f"missing telemetry source: {telemetry}"))
         else:
-            results.append(_result("WARN", "codex-telemetry", f"telemetry source not yet created: {telemetry}"))
+            results.append(_result("WARN", "antigravity-telemetry", f"telemetry source not yet created: {telemetry}"))
         return results
 
     lines = [line.strip() for line in telemetry.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip()]
     if not lines:
-        results.append(_result("WARN", "codex-telemetry", "telemetry source exists but has no records yet"))
+        results.append(_result("WARN", "antigravity-telemetry", "telemetry source exists but has no records yet"))
         return results
 
     bad = 0
@@ -96,13 +95,13 @@ def run_checks() -> list[VerifierResult]:
     for line in lines[-25:]:
         checked += 1
         try:
-            validate_entry(normalize_entry(json.loads(line), platform="codex"))
+            validate_entry(normalize_entry(json.loads(line), platform="antigravity"))
         except Exception:
             bad += 1
     if bad:
-        results.append(_result("FAIL", "codex-telemetry-schema", f"{bad}/{checked} recent records failed canonical schema validation"))
+        results.append(_result("FAIL", "antigravity-telemetry-schema", f"{bad}/{checked} recent records failed canonical schema validation"))
     else:
-        results.append(_result("OK", "codex-telemetry-schema", f"{checked} recent records validate against agentica.1"))
+        results.append(_result("OK", "antigravity-telemetry-schema", f"{checked} recent records validate against agentica.1"))
 
     return results
 

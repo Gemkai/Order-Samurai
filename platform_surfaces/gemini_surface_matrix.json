@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "platform": "gemini",
+  "targetRoot": "~/.gemini",
+  "description": "Gemini CLI surface matrix for Order Samurai local agent governance.",
+  "surfaceRoles": [
+    "runtime_root",
+    "telemetry_record",
+    "skills",
+    "config"
+  ],
+  "surfaces": [
+    {
+      "path": ".",
+      "role": "runtime_root",
+      "owner": "Gemini runtime",
+      "discoverabilityContract": "runtime home exists and is not silently substituted"
+    },
+    {
+      "path": "telemetry/telemetry.jsonl",
+      "role": "telemetry_record",
+      "owner": "Data layer via Gemini emitter",
+      "discoverabilityContract": "append-only canonical Agentica telemetry"
+    },
+    {
+      "path": "config",
+      "role": "config",
+      "owner": "Gemini runtime",
+      "discoverabilityContract": "runtime config and plugin manifests"
+    }
+  ],
+  "boundaryInvariants": [
+    "Gemini telemetry must validate against the canonical agentica.1 schema.",
+    "Gemini runtime surfaces must resolve under ~/.gemini."
+  ]
+}
