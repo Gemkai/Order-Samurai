@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -115,6 +116,9 @@ class VerifyClaudeSurfaceGovernanceTests(unittest.TestCase):
 
         self.assertEqual(check_compat_ownership(payload=payload), [])
 
+    @mock.patch.dict(
+        os.environ, {"ORDER_SAMURAI_AUDIT_PROFILE": "full"}
+    )  # asserts the opinionated tier; baseline is the shipped default
     def test_run_checks_fails_when_runtime_surface_is_missing(self) -> None:
         root = self._make_root()
         matrix_path = self._write_matrix(
@@ -204,6 +208,9 @@ class VerifyClaudeSurfaceGovernanceTests(unittest.TestCase):
         self.assertIn("existence checks skipped", row["detail"])
         self.assertEqual(summarize(results)[1], 0)
 
+    @mock.patch.dict(
+        os.environ, {"ORDER_SAMURAI_AUDIT_PROFILE": "full"}
+    )  # asserts the opinionated tier; baseline is the shipped default
     def test_run_checks_honors_claude_runtime_root_env_when_no_root_given(self) -> None:
         root = self._make_root()
         os.environ["CLAUDE_RUNTIME_ROOT"] = str(root)

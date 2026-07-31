@@ -58,10 +58,15 @@ def index_truth_separation_rules(*, payload: dict) -> dict[str, dict]:
 
 
 def _resolve_surface_root(*, payload: dict, repo_root: Path) -> Path:
-    """A surface matrix may scope its entries to an external target root."""
+    """A surface matrix may scope its entries to an external target root.
+
+    Declared roots are portable (``~/.claude``) rather than this machine's
+    absolute home, so ``~`` MUST be expanded: an unexpanded ``~/.claude`` is a
+    relative path that never exists, which reports the whole registry as drift.
+    """
     target = payload.get("targetRoot") or payload.get("targetRuntimeRoot")
     if target:
-        return Path(str(target))
+        return Path(str(target)).expanduser()
     return repo_root
 
 

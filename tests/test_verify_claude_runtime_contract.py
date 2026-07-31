@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import shutil
 import sys
+import os
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -31,6 +33,9 @@ class VerifyClaudeRuntimeContractTests(unittest.TestCase):
     def _labels(self, results: list[dict]) -> dict:
         return {r["label"]: r for r in results}
 
+    @mock.patch.dict(
+        os.environ, {"ORDER_SAMURAI_AUDIT_PROFILE": "full"}
+    )  # asserts the opinionated tier; baseline is the shipped default
     def test_missing_required_artifacts_fails(self) -> None:
         # Empty sandbox: no required artifacts present.
         results = vc.run_checks(runtime_root_dir=self.sandbox)

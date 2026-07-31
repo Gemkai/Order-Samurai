@@ -4,6 +4,7 @@ import os
 import shutil
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -75,6 +76,9 @@ class VerifyClaudeDocParityTests(unittest.TestCase):
         self.assertEqual(len(runtime_rows), len(self.required_docs))
         self.assertEqual({row["status"] for row in runtime_rows}, {"OK"})
 
+    @mock.patch.dict(
+        os.environ, {"ORDER_SAMURAI_AUDIT_PROFILE": "full"}
+    )  # asserts the opinionated tier; baseline is the shipped default
     def test_missing_runtime_doc_fails_only_that_row(self) -> None:
         self._build_all_runtime_docs()
         # Drop exactly one required doc so a single runtime row goes FAIL.

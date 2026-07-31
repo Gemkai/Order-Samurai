@@ -26,6 +26,8 @@ if str(ROOT_DIR) not in sys.path:
 
 from execution.claude_runtime_target import (  # type: ignore[import-not-found]  # noqa: E402
     ANTI_DRIFT_POLICY_PATH,
+    BASELINE_PROFILE,
+    audit_profile,
     runtime_root,
 )
 
@@ -93,9 +95,16 @@ def run_checks(*, runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
     else:
         missing = [a for a in REQUIRED_RUNTIME_ARTIFACTS if not (runtime / a).exists()]
         if missing:
+            # REQUIRED_RUNTIME_ARTIFACTS describes this control plane's own
+            # artifacts (mcp.json, commands/doctor.md, CLAUDE.md, AGENTS.md). On
+            # the baseline profile the target is any Claude Code install, which has
+            # none of them by default — see claude_runtime_target.audit_profile.
+            baseline = audit_profile() == BASELINE_PROFILE
             results.append(_make_result(
-                "FAIL", "claude_runtime_contract.artifacts",
-                f"required runtime artifacts absent: {', '.join(missing)}"))
+                "WARN" if baseline else "FAIL", "claude_runtime_contract.artifacts",
+                f"runtime artifacts absent: {', '.join(missing)}"
+                + (" (baseline profile — not required of every install)"
+                   if baseline else " — required by this control plane")))
         else:
             results.append(_make_result(
                 "OK", "claude_runtime_contract.artifacts",

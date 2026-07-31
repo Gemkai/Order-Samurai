@@ -9,7 +9,8 @@ expired unreviewed. This script is the delivery layer, two modes on one reader:
              the 2026-07-19 nudge redesign). One AGGREGATED banner when the pending set changes,
              plus a 24h re-reminder while anything stays pending. Never one-banner-per-item.
              Scheduled: com.agentica.hitl-notifier (30 min).
-  --email    Daily digest email (pending + recently-expired-unreviewed). Transport: Resend API
+  --email    Daily digest email (pending + recently-expired-unreviewed). Recipient: HITL_DIGEST_TO,
+             REQUIRED — the mode exits 1 without sending when it is unset. Transport: Resend API
              when RESEND_API_KEY is set, else macOS Mail.app via osascript (values passed as
              argv — never string-interpolated into AppleScript). Once-per-day guard in state;
              --force overrides for testing. Scheduled: com.agentica.hitl-digest (08:00 daily).
@@ -201,6 +202,18 @@ def _send_mail_app(subject: str, body: str, to: str) -> bool:
 
 
 def do_email(force: bool) -> int:
+    # The recipient is deployment config, never a code default. It carried the
+    # author's own address until 2026-07-31, which shipped a personal identifier
+    # in the product and made a misconfigured install mail a stranger rather than
+    # report that it had no recipient. Fail loudly instead — a scheduled digest
+    # that silently mails nowhere is indistinguishable from a working one.
+    to = os.environ.get("HITL_DIGEST_TO", "").strip()
+    if not to:
+        print("hitl_alerts --email: HITL_DIGEST_TO is unset — no digest recipient "
+              "configured. Set it to the address that should receive the daily "
+              "HITL approval digest.", file=sys.stderr)
+        return 1
+
     state = _load_state()
     today = _now().date().isoformat()
     if not force and state.get("last_email_date") == today:
@@ -214,7 +227,6 @@ def do_email(force: bool) -> int:
         _save_state(state)
         return 0
 
-    to = os.environ.get("HITL_DIGEST_TO", "user@example.com")
     subject = (f"[Order Samurai] {len(pending)} approval(s) waiting"
                if pending else "[Order Samurai] HITL digest — queue clear")
     body = _digest_body(pending, expired)

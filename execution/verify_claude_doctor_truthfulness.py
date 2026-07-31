@@ -47,7 +47,9 @@ if str(ROOT_DIR) not in sys.path:
 
 from execution.claude_runtime_target import (
     ANTI_DRIFT_POLICY_PATH,
+    BASELINE_PROFILE,
     SURFACE_MATRIX_PATH,
+    audit_profile,
     runtime_root,
 )
 
@@ -378,12 +380,18 @@ def run_checks(
                     )
                 )
             elif compat_path and not (runtime / compat_path).exists():
+                # The compat shim is this control plane's own file. On the baseline
+                # profile the target is any Claude Code install, which never had one
+                # — see claude_runtime_target.audit_profile.
+                baseline = audit_profile() == BASELINE_PROFILE
                 results.append(
                     _make_result(
-                        "FAIL",
+                        "WARN" if baseline else "FAIL",
                         "doctor.compat_shim_present",
                         f"surface matrix declares doctor compat shim {compat_path} "
-                        "but it is absent under the runtime root",
+                        "but it is absent under the runtime root"
+                        + (" (baseline profile — not required of every install)"
+                           if baseline else ""),
                     )
                 )
             else:

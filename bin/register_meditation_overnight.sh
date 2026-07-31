@@ -15,7 +15,7 @@ set -euo pipefail
 LABEL="com.agentica.meditation-overnight"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 # Always the LIVE repo, never a worktree copy.
-OS_ROOT="${SAMURAI_HOME:-$(cd "$(dirname "$0")/.." && pwd)}"
+OS_ROOT="$HOME/AgenticaOS/Governance/Order Samurai"
 [ -f "$OS_ROOT/bin/meditation_overnight.sh" ] || { echo "missing $OS_ROOT/bin/meditation_overnight.sh" >&2; exit 1; }
 LOG_DIR="$HOME/Library/Logs/agentica"
 

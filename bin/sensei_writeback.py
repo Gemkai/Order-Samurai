@@ -12,7 +12,7 @@ Safety invariants (from the grill + local pre-review):
   verdict_post_failed) — the ledger never claims a post that didn't happen.
 - Backlog write is atomic (temp + os.replace); a crash can't truncate the JSON.
 """
-import json, os, sys, datetime, tempfile, pathlib, urllib.request
+import contextlib, json, os, sys, datetime, tempfile, pathlib, time, urllib.request
 
 # A2: warn-only schema validation at the ledger-append ingestion point. Imported,
 # never re-implemented (Anti-Pattern #2) — schema_guard owns the draft-07 loading
@@ -25,11 +25,14 @@ from agentica_core.schema_guard import (  # noqa: E402
 
 UTC = datetime.timezone.utc
 OSR = pathlib.Path(os.environ.get("ORDER_SAMURAI_ROOT",
-                                  str(pathlib.Path(__file__).resolve().parents[1])))
+                                  str(pathlib.Path.home() / "AgenticaOS/Governance/Order Samurai")))
 API = os.environ.get("REFLEX_API", "http://localhost:3001/api/reflex/verdicts")
 ARMED = os.environ.get("SENSEI_ARM") == "1"
 LEDGER = OSR / "state/SENSEI_LEDGER.jsonl"
 BACKLOG = OSR / "state/PROPOSED_BACKLOG.json"
+BACKLOG_LOCK = BACKLOG.with_name(BACKLOG.name + ".lock")
+LOCK_WAIT_S = float(os.environ.get("SENSEI_LOCK_WAIT_S", "10"))
+LOCK_STALE_S = float(os.environ.get("SENSEI_LOCK_STALE_S", "300"))
 
 data = json.load(open(sys.argv[1])) if len(sys.argv) > 1 else json.load(sys.stdin)
 posts = data.get("post_verdicts", []) or []
@@ -66,7 +69,55 @@ def append_ledger(final_rows):
     return violations
 
 
+@contextlib.contextmanager
+def backlog_lock():
+    """Serialize the backlog read-modify-write across concurrent sensei runs.
+
+    os.replace makes the *write* atomic, but read-compute-id-write is not: two runs
+    that read the same snapshot both derive the same next SENSEI-<n> and the second
+    os.replace discards the first run's items -- silent loss, no error. This wraps
+    the whole cycle so only one run holds it at a time.
+
+    os.mkdir is an atomic create-if-absent, which is why it is used here in place of
+    flock: lock semantics vary by filesystem, while mkdir's exclusivity does not.
+
+    A holder that dies mid-write would otherwise deadlock the mechanism forever, so a
+    lock older than LOCK_STALE_S is reclaimed. Waiting past LOCK_WAIT_S raises rather
+    than proceeding unlocked -- proceeding is the bug this exists to prevent.
+    """
+    deadline = time.monotonic() + LOCK_WAIT_S
+    while True:
+        try:
+            os.mkdir(BACKLOG_LOCK)
+            break
+        except FileExistsError:
+            try:
+                age = time.time() - os.stat(BACKLOG_LOCK).st_mtime
+            except FileNotFoundError:
+                continue            # holder released between our mkdir and our stat
+            if age > LOCK_STALE_S:
+                with contextlib.suppress(OSError):
+                    os.rmdir(BACKLOG_LOCK)
+                continue
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"backlog lock {BACKLOG_LOCK.name} held {age:.1f}s by another sensei "
+                    f"run; gave up after {LOCK_WAIT_S}s rather than risk losing entries")
+            time.sleep(0.05)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            os.rmdir(BACKLOG_LOCK)
+
+
 def append_backlog():
+    """Locked wrapper -- the read-modify-write below must never interleave."""
+    with backlog_lock():
+        return _append_backlog_locked()
+
+
+def _append_backlog_locked():
     # PROPOSED_BACKLOG.json on this system is an OBJECT {generated_at, note, items:[...]},
     # but was historically a bare list. Preserve whichever structure exists — writing a bare
     # list back over the object would drop generated_at/note and break the generator/readers.

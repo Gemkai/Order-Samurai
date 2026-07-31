@@ -36,6 +36,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
+from execution.claude_runtime_target import pinned_home_paths  # type: ignore[attr-defined]
 from execution.verify_root_hygiene import (  # type: ignore[attr-defined]
     validate_root_hygiene_policy,
 )
@@ -60,6 +61,17 @@ SURFACE_MATRICES = (
     "hub_surface_matrix.json",
 )
 
+#: The claude-side policies declaring their audit target at the top level.
+#: claude_architecture_scorecard.json nests its own at target.runtimeRoot and is
+#: therefore handled separately by every test that reads a declared root.
+CLAUDE_POLICIES_WITH_TOP_LEVEL_ROOT = (
+    "claude_anti_drift_policy.json",
+    "claude_anti_sprawl_policy.json",
+    "claude_root_hygiene_policy.json",
+    "claude_promotion_policy.json",
+    "claude_surface_matrix.json",
+)
+
 ARTIFACT_KEY_RE = re.compile(r"^(expected|required).*Artifacts$")
 
 
@@ -80,15 +92,37 @@ class PolicySanityTests(unittest.TestCase):
     def test_claude_policies_pin_a_runtime_root(self) -> None:
         # claude_architecture_scorecard nests its root at target.runtimeRoot;
         # the other claude files declare top-level targetRuntimeRoot.
-        for name in ("claude_anti_drift_policy.json", "claude_anti_sprawl_policy.json",
-                     "claude_root_hygiene_policy.json", "claude_promotion_policy.json",
-                     "claude_surface_matrix.json"):
+        for name in CLAUDE_POLICIES_WITH_TOP_LEVEL_ROOT:
             with self.subTest(policy=name):
                 root = load(name).get("targetRuntimeRoot")
                 self.assertIsInstance(root, str)
                 self.assertTrue(str(root).startswith(("/", "~")), f"not an absolute/~ path: {root!r}")
         scorecard_root = load("claude_architecture_scorecard.json").get("target", {}).get("runtimeRoot")
         self.assertTrue(scorecard_root and isinstance(scorecard_root, str))
+
+    def test_claude_policy_roots_are_portable_not_pinned_to_one_machine(self) -> None:
+        """A declared root must never name a specific user's home.
+
+        Until 2026-07-31 all six carried this build machine's own
+        "/Users/<owner>/.claude", so the shipped product resolved its audit
+        target to a path that exists on exactly one Mac, and the public export
+        depended on the scrubber rewriting it. "~/.claude" is the portable form
+        every consumer already expands (CLAUDE_RUNTIME_ROOT overrides it).
+        """
+        declared = {
+            name: load(name).get("targetRuntimeRoot")
+            for name in CLAUDE_POLICIES_WITH_TOP_LEVEL_ROOT
+        }
+        declared["claude_architecture_scorecard.json"] = (
+            load("claude_architecture_scorecard.json").get("target", {}).get("runtimeRoot")
+        )
+        for name, root in declared.items():
+            with self.subTest(policy=name):
+                self.assertEqual(
+                    pinned_home_paths(str(root), ".claude"),
+                    [],
+                    f"{name} pins a machine-specific home: {root!r}",
+                )
 
 
 class ScorecardFamilyTests(unittest.TestCase):

@@ -23,7 +23,12 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from execution.claude_runtime_target import ROOT_HYGIENE_POLICY_PATH, runtime_root
+from execution.claude_runtime_target import (
+    ROOT_HYGIENE_POLICY_PATH,
+    audit_profile,
+    required_sections,
+    runtime_root,
+)
 
 # The Claude-home classification vocabulary. Deliberately NOT the repo-root
 # vocabulary — execution.verify_root_hygiene.validate_root_hygiene_policy
@@ -105,12 +110,26 @@ def index_classified_entries(*, payload: dict) -> dict[str, str]:
     return declared
 
 
-def find_missing_required_entries(*, payload: dict, root: Path) -> list[tuple[str, str, str]]:
-    """Return (kind, entry, problem) for each requiredDirectories/requiredFiles miss."""
+def find_missing_required_entries(
+    *, payload: dict, root: Path, sections: tuple[str, str] | None = None
+) -> list[tuple[str, str, str]]:
+    """Return (kind, entry, problem) for each required directory/file miss.
+
+    By default the sections consulted follow the active audit profile — baseline
+    asserts only universal invariants, full adds this control plane's opinionated
+    layout. See claude_runtime_target.audit_profile.
+
+    `sections` pins them explicitly, which callers auditing a target we OWN must
+    do. verify_agentica_root_hygiene imports this function to check this repo's
+    own root; letting it inherit the profile would have it read
+    `baselineRequired*` keys that its policy does not define, silently returning
+    an empty list and turning a real check into a vacuous pass.
+    """
+    dirs_key, files_key = sections or required_sections()
     missing: list[tuple[str, str, str]] = []
     for kind, section, probe in (
-        ("directory", "requiredDirectories", Path.is_dir),
-        ("file", "requiredFiles", Path.is_file),
+        ("directory", dirs_key, Path.is_dir),
+        ("file", files_key, Path.is_file),
     ):
         for entry in payload.get(section) or []:
             normalized = _normalize_entry(entry)
@@ -254,6 +273,9 @@ def run_checks(
 def main() -> int:
     results = run_checks()
     counts, exit_code = summarize(results)
+    # Printed unconditionally: a run that silently asserted only the baseline tier
+    # would look identical to a strict one, which is how a weakened audit hides.
+    print(f"Profile: {audit_profile()}  Root: {runtime_root()}")
     for result in results:
         print(f"[{result['status']}] {result['name']}: {result['detail']}")
     print(f"Summary: OK={counts['OK']} WARN={counts['WARN']} FAIL={counts['FAIL']}")

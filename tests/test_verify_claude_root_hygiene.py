@@ -87,6 +87,9 @@ class VerifyClaudeRootHygieneTests(unittest.TestCase):
         self.assertEqual(failures[0]["name"], "root_hygiene.claude.vocabulary.live")
         self.assertIn("files classification 'live'", failures[0]["detail"])
 
+    @mock.patch.dict(
+        os.environ, {"ORDER_SAMURAI_AUDIT_PROFILE": "full"}
+    )  # asserts the opinionated tier; baseline is the shipped default
     def test_missing_required_directory_fails_under_its_declared_bucket(self) -> None:
         (self.root / "cache").mkdir()
         (self.root / "settings.json").write_text("{}", encoding="utf-8")
@@ -100,6 +103,9 @@ class VerifyClaudeRootHygieneTests(unittest.TestCase):
         self.assertIn("required directory missing", failures[0]["detail"])
         self.assertIn("commands", failures[0]["detail"])
 
+    @mock.patch.dict(
+        os.environ, {"ORDER_SAMURAI_AUDIT_PROFILE": "full"}
+    )  # asserts the opinionated tier; baseline is the shipped default
     def test_missing_required_file_fails_under_its_declared_bucket(self) -> None:
         (self.root / "commands").mkdir()
         (self.root / "cache").mkdir()
@@ -112,6 +118,9 @@ class VerifyClaudeRootHygieneTests(unittest.TestCase):
         self.assertEqual(failures[0]["name"], "root_hygiene.claude.required.generated_truth")
         self.assertIn("settings.json", failures[0]["detail"])
 
+    @mock.patch.dict(
+        os.environ, {"ORDER_SAMURAI_AUDIT_PROFILE": "full"}
+    )  # asserts the opinionated tier; baseline is the shipped default
     def test_required_directory_present_as_file_fails_as_wrong_type(self) -> None:
         (self.root / "commands").write_text("not a directory", encoding="utf-8")
         (self.root / "cache").mkdir()

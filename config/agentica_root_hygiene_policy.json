@@ -62,8 +62,7 @@
  "requiredFiles": [
   "AGENTS.md",
   "CLAUDE.md",
-  "README.md",
-  "STATE.md"
+  "README.md"
  ],
  "boundaryRules": []
 }
