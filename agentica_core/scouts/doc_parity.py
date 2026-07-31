@@ -35,7 +35,7 @@ def _changed_py_files() -> list[str]:
             "--diff-filter=AM",
             "--format=",
             # Scope to the Order Samurai subtree. REPO is a subdirectory of the
-            # enclosing monorepo, so `git -C REPO` resolves to that repo's
+            # enclosing AgenticaOS repo, so `git -C REPO` resolves to that repo's
             # toplevel and would otherwise count every .py changed repo-wide
             # (636 vs the 8 actually under Order Samurai). The `.` pathspec is
             # relative to REPO and limits the walk to this subtree.

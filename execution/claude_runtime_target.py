@@ -74,6 +74,48 @@ def runtime_root() -> Path:
     return Path(override).expanduser() if override else Path.home() / ".claude"
 
 
+#: Audit profiles. "baseline" asserts only what EVERY Claude Code install has;
+#: "full" additionally asserts this control plane's opinionated layout.
+BASELINE_PROFILE = "baseline"
+FULL_PROFILE = "full"
+_PROFILES = (BASELINE_PROFILE, FULL_PROFILE)
+
+
+def audit_profile() -> str:
+    """Which tier of requirements to assert. ORDER_SAMURAI_AUDIT_PROFILE selects.
+
+    Defaults to "baseline" ON PURPOSE. The requiredDirectories/requiredFiles
+    lists describe a MATURE control plane (hooks/, orchestration/, safety/,
+    skills-lock.json, subagent-lock.json, ...). Measured 2026-07-31: asserting
+    them against a clean Claude Code install produces 22 FAILs, all of which are
+    "required thing missing" and none of which is a defect -- the policy was a
+    portrait of the machine it was written on. A first run that is 22/22 wrong is
+    how an auditor loses its user, so the shipped default asserts only universal
+    invariants and the opinionated tier is opt-in.
+
+    Set ORDER_SAMURAI_AUDIT_PROFILE=full on a host that genuinely has this layout
+    (this repo's own machine does) to keep the strict audit. Verifiers print the
+    active profile so a weakened run is never silent.
+
+    An unrecognised value raises rather than silently downgrading: a typo'd
+    profile that quietly became "baseline" would disable the strict tier without
+    anyone noticing, which is the failure mode this whole contract guards.
+    """
+    raw = (os.environ.get("ORDER_SAMURAI_AUDIT_PROFILE") or BASELINE_PROFILE).strip().lower()
+    if raw not in _PROFILES:
+        raise ValueError(
+            f"ORDER_SAMURAI_AUDIT_PROFILE={raw!r} is not one of {_PROFILES}"
+        )
+    return raw
+
+
+def required_sections() -> tuple[str, str]:
+    """(directories_key, files_key) in a hygiene policy for the active profile."""
+    if audit_profile() == FULL_PROFILE:
+        return ("requiredDirectories", "requiredFiles")
+    return ("baselineRequiredDirectories", "baselineRequiredFiles")
+
+
 # ---------------------------------------------------------------------------
 # Absolute home-rooted runtime paths — the shared DENYLIST matcher.
 #

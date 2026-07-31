@@ -31,7 +31,9 @@ if str(ROOT_DIR) not in sys.path:
 
 from execution.claude_runtime_target import (
     BACKLOG_PATH,
+    BASELINE_PROFILE,
     REPORT_PATH,
+    audit_profile,
     is_standalone_distribution,
     SCORECARD_PATH,
     runtime_root,
@@ -158,11 +160,18 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
                 )
             )
         else:
+            # Same absent-by-design vs absent-by-rot distinction the pack docs get
+            # below: on the baseline profile the target is any Claude Code install,
+            # where CLAUDE.md / AGENTS.md / directives/ are simply not created yet.
+            # Calling that a failure is what made a clean install report 22/22 wrong.
+            baseline = audit_profile() == BASELINE_PROFILE
             results.append(
                 _make_result(
-                    "FAIL",
+                    "WARN" if baseline else "FAIL",
                     label,
-                    f"required runtime doc missing under {target_root}: {doc}",
+                    f"runtime doc absent under {target_root}: {doc}"
+                    + (" (baseline profile — not required of every install)" if baseline
+                       else " — required by this control plane"),
                 )
             )
 

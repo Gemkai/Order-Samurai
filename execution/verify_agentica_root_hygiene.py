@@ -1,8 +1,8 @@
-"""Verify the Agentica-Framework repo-root hygiene policy against the live repo root.
+"""Verify the Agentica-OS repo-root hygiene policy against the live repo root.
 
 Third root-hygiene surface, alongside verify_root_hygiene (Order Samurai root)
 and verify_claude_root_hygiene (~/.claude runtime root): validates
-config/agentica_root_hygiene_policy.json against the Agentica-Framework repo root —
+config/agentica_root_hygiene_policy.json against the AgenticaOS repo root —
 classification vocabulary, required entries, and unclassified top-level
 entries. Unclassified entries WARN (drift pressure), missing required entries
 FAIL.
@@ -146,7 +146,13 @@ def run_checks(
         )
         return results
 
-    missing_required = find_missing_required_entries(payload=payload, root=target_root)
+    # Pinned to the full sections on purpose: this verifier audits THIS repo's
+    # root, which we own, so the Claude-install baseline tier does not apply.
+    # Inheriting the profile would read baselineRequired* keys absent from this
+    # policy and silently pass everything.
+    missing_required = find_missing_required_entries(
+        payload=payload, root=target_root, sections=("requiredDirectories", "requiredFiles")
+    )
     if missing_required:
         for kind, entry, problem in missing_required:
             bucket = declared.get(entry, "undeclared")

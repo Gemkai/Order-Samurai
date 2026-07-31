@@ -2,7 +2,7 @@
   "version": 1,
   "name": "Claude Runtime Architecture Scorecard",
   "status": "runtime-verified-verifiers-pending",
-  "purpose": "Weighted architecture scoring contract for the audited Claude runtime control plane under ~/.claude.",
+  "purpose": "Weighted architecture scoring contract for the audited Claude runtime control plane under the operator's Claude home (~/.claude, or CLAUDE_RUNTIME_ROOT when set).",
   "target": {
     "runtimeRoot": "~/.claude",
     "sourceReport": "reports/2026-04-12-claude-architecture-hardening-report.md",

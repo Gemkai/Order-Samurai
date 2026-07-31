@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -135,6 +136,9 @@ class VerifyClaudeDoctorTruthfulnessTests(unittest.TestCase):
         self.assertEqual(len(entrypoint_rows), 1)
         self.assertEqual(entrypoint_rows[0]["status"], "OK")
 
+    @mock.patch.dict(
+        os.environ, {"ORDER_SAMURAI_AUDIT_PROFILE": "full"}
+    )  # asserts the opinionated tier; baseline is the shipped default
     def test_declared_compat_shim_absent_on_disk_fails(self) -> None:
         policy_path, matrix_path = self._write_configs(
             make_anti_drift_policy(), make_matrix()

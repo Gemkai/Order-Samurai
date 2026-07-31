@@ -99,10 +99,14 @@ def forbidden_literals(policy_payload: dict) -> tuple[str, ...]:
     """The forbidden runtime dirs, plus an ABSOLUTE root the policy declares.
 
     The declared root used to be appended unconditionally. It must not be: the
-    exporter scrubs the policy's own `targetRuntimeRoot` to "~/.claude", so a
-    verbatim append put the portable form on the denylist and inverted the scan
-    in the public tree. An absolute declared root is still worth forbidding —
-    including one outside /Users and /home, which the pattern cannot know about.
+    policy's own `targetRuntimeRoot` is the portable "~/.claude" (it was this
+    machine's absolute home until 2026-07-31, and the exporter scrubbed it to
+    the same portable form), so a verbatim append put the form this verifier
+    exists to ACCEPT onto the denylist and inverted the scan. An absolute
+    declared root is still worth forbidding — including one outside /Users and
+    /home, which the pattern cannot know about. Nothing is lost by skipping the
+    "~" form: FORBIDDEN_RUNTIME_DIRS already matches any user's home-rooted
+    .claude by pattern, which is strictly wider than the old literal.
     """
     entries: list[str] = list(FORBIDDEN_RUNTIME_DIRS)
     declared_root = str(policy_payload.get("targetRuntimeRoot") or "").strip()

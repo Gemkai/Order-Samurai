@@ -27,7 +27,12 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from execution.claude_runtime_target import SURFACE_MATRIX_PATH, runtime_root
+from execution.claude_runtime_target import (
+    BASELINE_PROFILE,
+    SURFACE_MATRIX_PATH,
+    audit_profile,
+    runtime_root,
+)
 from execution.verify_surface_governance import validate_surface_entries
 
 RUNTIME_ROLE = "runtime"
@@ -182,11 +187,18 @@ def run_checks(
     else:
         missing_runtime, missing_other = check_surface_existence(payload=payload, root=live_root)
         if missing_runtime:
+            # The declared runtime surfaces are this control plane's own scripts.
+            # On the baseline profile the target is any Claude Code install, which
+            # has none of them by design — see claude_runtime_target.audit_profile.
+            baseline = audit_profile() == BASELINE_PROFILE
             results.append(
                 _make_result(
-                    "FAIL",
+                    "WARN" if baseline else "FAIL",
                     "claude-surface-governance.existence",
-                    f"runtime surfaces missing under {live_root}: " + "; ".join(missing_runtime),
+                    f"runtime surfaces absent under {live_root}: "
+                    + "; ".join(missing_runtime)
+                    + (" (baseline profile — this control plane's surfaces, not"
+                       " required of every install)" if baseline else ""),
                 )
             )
         if missing_other:

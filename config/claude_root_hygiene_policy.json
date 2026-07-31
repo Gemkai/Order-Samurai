@@ -125,6 +125,10 @@
     "skills-lock.json",
     "subagent-lock.json"
   ],
+  "baselineRequiredDirectories": [],
+  "baselineRequiredFiles": [
+    "settings.json"
+  ],
   "boundaryRules": [
     {
       "name": "external-runtime-isolation",
@@ -142,6 +146,7 @@
         "AGENTS.md",
         "CLAUDE.md"
       ],
+      "forbiddenPatternsNote": "DETECTORS, NOT DRIFT — do not 'clean up' the machine-specific spellings below. verify_claude_runtime_coupling.py matches these as plain SUBSTRINGS (never regexes: the Windows entries contain \\U escapes that crash re.compile), so each host spelling an Antigravity reference could take needs its own entry. The Windows forms are retained regression guards from the pre-Mac era; the absolute /Users form catches a pinned Mac reference the ~ form cannot. Deleting any of them silently narrows the gate.",
       "forbiddenPatterns": [
         "C:\\Users\\example\\.gemini\\antigravity",
         "C:/Users/example/.gemini/antigravity",

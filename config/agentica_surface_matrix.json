@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Agentica OS Surface Matrix",
-  "targetRoot": "<REPO_ROOT>",
+  "targetRoot": "~/AgenticaOS",
   "description": "Declares the four Agentica OS layers as governance surfaces so Order Samurai can observe and enforce against Execution, Knowledge, Data, and Governance, not just a single runtime.",
   "surfaceRoles": [
     "knowledge_source",
