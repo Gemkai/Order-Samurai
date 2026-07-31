@@ -121,6 +121,8 @@ Visit `http://localhost:5173` to view real-time metrics, radar charts, active re
 - 📜 [Terms of Service](TERMS.md)
 - 🔒 [Privacy Policy (Zero Telemetry)](PRIVACY.md)
 - ⚖️ [End User License Agreement (EULA)](EULA.md)
+- 🤝 **Monetization & Growth Strategy**: [`docs/MONETIZATION.md`](docs/MONETIZATION.md) — Pricing tiers, local MCP strategy, compliance packs, and marketplace channels.
+- **Onboarding Guide**: [`docs/ONBOARDING.md`](docs/ONBOARDING.md) — Free + Pro activation walkthrough.
 - 🤝 [Contributing Guidelines](CONTRIBUTING.md)
 - 📝 [Changelog](CHANGELOG.md)
 
