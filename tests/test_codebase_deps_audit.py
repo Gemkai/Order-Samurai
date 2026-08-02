@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -22,12 +25,15 @@ if str(REPO_ROOT) not in sys.path:
 from bin.codebase_deps_audit import (  # type: ignore[import-not-found]
     build_audit,
     classify_licence,
+    parse_npm_audit,
     parse_pip_audit,
     parse_pip_outdated,
     run_audit,
+    scan_npm_projects,
     scan_licences,
     write_audit,
 )
+from bin import codebase_deps_audit as deps_audit  # type: ignore[import-not-found]
 
 # Cross-mechanism contract: the audit this produces must be readable by
 # pip_safe_upgrade.triage(), the downstream consumer.
@@ -62,6 +68,34 @@ def _pip_audit_json(*deps: tuple[str, str, list[str]]) -> str:
             ]
         }
     )
+
+
+def _npm_audit_json(total: int = 0) -> str:
+    return json.dumps({
+        "auditReportVersion": 2,
+        "vulnerabilities": ({
+            "example": {
+                "name": "example",
+                "severity": "high",
+                "via": [{"source": 123, "url": "https://github.com/advisories/GHSA-test"}],
+            }
+        } if total else {}),
+        "metadata": {
+            "vulnerabilities": {
+                "info": 0, "low": 0, "moderate": 0,
+                "high": total, "critical": 0, "total": total,
+            }
+        },
+    })
+
+
+def _healthy_npm_result(*audits: dict) -> dict:
+    return {
+        "audits": list(audits),
+        "scanner_ok": True,
+        "projects": {"fixture": True},
+        "errors": {},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +145,66 @@ class ParsePipAuditTests(unittest.TestCase):
 
     def test_returns_empty_list_for_empty_output(self) -> None:
         self.assertEqual(parse_pip_audit(""), [])
+
+
+class ParseNpmAuditTests(unittest.TestCase):
+
+    def test_extracts_total_breakdown_and_stable_advisory_id(self) -> None:
+        parsed = parse_npm_audit(_npm_audit_json(1), "Governance/api")
+        self.assertIsNotNone(parsed)
+        assert parsed is not None
+        self.assertEqual(parsed["project"], "Governance/api")
+        self.assertEqual(parsed["total"], 1)
+        self.assertEqual(parsed["findings"][0]["vuln_ids"], ["GHSA-test"])
+
+    def test_rejects_error_document_instead_of_returning_zero(self) -> None:
+        raw = json.dumps({"error": {"summary": "registry unavailable"}})
+        self.assertIsNone(parse_npm_audit(raw, "Governance"))
+
+    def test_rejects_json_without_vulnerability_metadata(self) -> None:
+        self.assertIsNone(parse_npm_audit("{}", "Governance"))
+
+
+class ScanNpmProjectsTests(unittest.TestCase):
+
+    def test_exit_one_with_valid_json_is_a_successful_vulnerability_scan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "package-lock.json").write_text("{}", encoding="utf-8")
+            result = scan_npm_projects(
+                [("fixture", root)],
+                npm_executable="/fixture/npm",
+                run_fn=lambda *args, **kwargs: SimpleNamespace(
+                    returncode=1, stdout=_npm_audit_json(1), stderr=""
+                ),
+            )
+        self.assertTrue(result["scanner_ok"])
+        self.assertEqual(result["audits"][0]["total"], 1)
+
+    def test_missing_lockfile_is_an_explicit_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = scan_npm_projects(
+                [("fixture", Path(tmp))],
+                npm_executable="/fixture/npm",
+                run_fn=lambda *args, **kwargs: self.fail("runner must not be called"),
+            )
+        self.assertFalse(result["scanner_ok"])
+        self.assertEqual(result["projects"], {"fixture": False})
+        self.assertIn("package-lock", result["errors"]["fixture"])
+
+    def test_malformed_json_is_failure_not_clean(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "package-lock.json").write_text("{}", encoding="utf-8")
+            result = scan_npm_projects(
+                [("fixture", root)],
+                npm_executable="/fixture/npm",
+                run_fn=lambda *args, **kwargs: SimpleNamespace(
+                    returncode=0, stdout="not-json", stderr=""
+                ),
+            )
+        self.assertFalse(result["scanner_ok"])
+        self.assertEqual(result["audits"], [])
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +286,7 @@ class RunAuditTests(unittest.TestCase):
             pip_outdated_fn=lambda: _pip_outdated_json(("flask", "2.0.0", "3.0.0")),
             pip_audit_fn=lambda: _pip_audit_json(("requests", "2.0.0", ["CVE-1"])),
             licence_fn=lambda: [("paramiko", "3.0.0", "GPL-3.0")],
+            npm_audit_fn=lambda: _healthy_npm_result(),
             now_fn=lambda: FROZEN_TS,
         )
         defaults.update(overrides)
@@ -199,8 +294,18 @@ class RunAuditTests(unittest.TestCase):
 
     def test_assembles_findings_from_all_scanners(self) -> None:
         audit = self._run()
-        self.assertEqual(audit["counts"], {"outdated": 1, "cves": 1,
-                                           "licence_flags": 1, "needs_review": 2})
+        self.assertEqual(audit["counts"], {
+            "outdated": 1, "cves": 1, "pip_cves": 1, "npm_cves": 0,
+            "licence_flags": 1, "needs_review": 2,
+        })
+
+    def test_counts_include_npm_vulnerabilities(self) -> None:
+        npm = parse_npm_audit(_npm_audit_json(1), "Governance/api")
+        assert npm is not None
+        audit = self._run(npm_audit_fn=lambda: _healthy_npm_result(npm))
+        self.assertEqual(audit["counts"]["pip_cves"], 1)
+        self.assertEqual(audit["counts"]["npm_cves"], 1)
+        self.assertEqual(audit["counts"]["cves"], 2)
 
     def test_skips_licence_scan_when_disabled(self) -> None:
         called: list[str] = []
@@ -211,8 +316,60 @@ class RunAuditTests(unittest.TestCase):
         self.assertEqual(audit["counts"]["licence_flags"], 0)
         self.assertEqual(called, [])  # disabled scan is never invoked
 
-    def test_leaves_npm_audits_empty_without_an_npm_hook(self) -> None:
+    def test_records_clean_npm_scan_without_findings(self) -> None:
         self.assertEqual(self._run()["npm_audits"], [])
+
+    def test_all_scanners_have_explicit_healthy_verdicts(self) -> None:
+        self.assertEqual(self._run()["scanner_ok"], {
+            "pip": True, "pip_audit": True, "npm": True,
+        })
+
+    def test_malformed_python_output_is_failure_not_clean(self) -> None:
+        audit = self._run(pip_outdated_fn=lambda: "not-json", pip_audit_fn=lambda: "{}")
+        self.assertFalse(audit["scanner_ok"]["pip"])
+        self.assertFalse(audit["scanner_ok"]["pip_audit"])
+        self.assertIn("pip", audit["scanner_errors"])
+        self.assertIn("pip_audit", audit["scanner_errors"])
+
+    def test_missing_pip_audit_writes_incomplete_artifact_and_exits_nonzero(self) -> None:
+        audit = self._run(pip_audit_fn=lambda: None)
+        self.assertFalse(audit["scanner_ok"]["pip_audit"])
+        self.assertEqual(audit["counts"]["pip_cves"], 0)
+        self.assertIn("pip-audit", audit["scanner_errors"]["pip_audit"])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "dependency_audit.json"
+            with mock.patch.object(deps_audit, "run_audit", return_value=audit):
+                exit_code = deps_audit.main(["--out", str(out), "--json"])
+            written = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(exit_code, 2)
+        self.assertFalse(written["scanner_ok"]["pip_audit"])
+
+    def test_failed_npm_scan_remains_explicit(self) -> None:
+        audit = self._run(npm_audit_fn=lambda: {
+            "audits": [], "scanner_ok": False,
+            "projects": {"Governance/api": False},
+            "errors": {"Governance/api": "registry unavailable"},
+        })
+        self.assertFalse(audit["scanner_ok"]["npm"])
+        self.assertEqual(
+            audit["scanner_errors"]["npm"]["Governance/api"],
+            "registry unavailable",
+        )
+
+    def test_cli_returns_nonzero_after_writing_failed_scan_artifact(self) -> None:
+        audit = self._run(npm_audit_fn=lambda: {
+            "audits": [], "scanner_ok": False,
+            "projects": {"Governance": False},
+            "errors": {"Governance": "registry unavailable"},
+        })
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "dependency_audit.json"
+            with mock.patch.object(deps_audit, "run_audit", return_value=audit):
+                exit_code = deps_audit.main(["--out", str(out), "--json"])
+            written = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(exit_code, 2)
+        self.assertFalse(written["scanner_ok"]["npm"])
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +383,7 @@ class IdempotencyTests(unittest.TestCase):
             pip_outdated_fn=lambda: _pip_outdated_json(("flask", "2.0.0", "3.0.0")),
             pip_audit_fn=lambda: _pip_audit_json(("requests", "2.0.0", ["CVE-1"])),
             licence_fn=lambda: [("paramiko", "3.0.0", "GPL-3.0")],
+            npm_audit_fn=lambda: _healthy_npm_result(),
             now_fn=lambda: FROZEN_TS,
         )
 
@@ -250,9 +408,10 @@ class IdempotencyTests(unittest.TestCase):
             pip_outdated_fn=lambda: calls.append("outdated") or "[]",
             pip_audit_fn=lambda: calls.append("audit") or "[]",
             licence_fn=lambda: calls.append("licence") or [],
+            npm_audit_fn=lambda: calls.append("npm") or _healthy_npm_result(),
             now_fn=lambda: FROZEN_TS,
         )
-        self.assertEqual(sorted(calls), ["audit", "licence", "outdated"])
+        self.assertEqual(sorted(calls), ["audit", "licence", "npm", "outdated"])
 
 
 if __name__ == "__main__":

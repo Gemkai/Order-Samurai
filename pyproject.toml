@@ -6,4 +6,12 @@ dependencies = [
     # P4 typed-envelope seam: aggregate.write_payload validates wid_payload.json
     # against schema/wid_payload.schema.json before persisting.
     "jsonschema>=4.0",
+    # Required by bin/codebase_deps_audit.py. A missing scanner is an explicit
+    # unhealthy audit, never a clean zero-vulnerability verdict.
+    "pip-audit>=2.7",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "live_machine: requires real platform homes or local services; excluded from CI",
 ]

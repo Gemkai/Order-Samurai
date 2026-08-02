@@ -1,15 +1,10 @@
 {
   "generator": "execution/sync_capability_manifest.py",
-  "surfaceCount": 13,
+  "surfaceCount": 8,
   "surfaces": [
     {
       "path": "Research",
       "role": "support",
-      "discoverable": true
-    },
-    {
-      "path": "agentica_core",
-      "role": "runtime",
       "discoverable": true
     },
     {
@@ -28,23 +23,8 @@
       "discoverable": true
     },
     {
-      "path": "docs",
-      "role": "support",
-      "discoverable": true
-    },
-    {
       "path": "execution",
       "role": "runtime",
-      "discoverable": true
-    },
-    {
-      "path": "harness",
-      "role": "support",
-      "discoverable": true
-    },
-    {
-      "path": "prompts",
-      "role": "support",
       "discoverable": true
     },
     {
@@ -55,11 +35,6 @@
     {
       "path": "scouts",
       "role": "runtime",
-      "discoverable": true
-    },
-    {
-      "path": "soji",
-      "role": "support",
       "discoverable": true
     },
     {

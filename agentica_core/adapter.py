@@ -83,12 +83,29 @@ def _build_execution(spec: dict | None) -> ExecutionCapability | None:
     return ExecutionCapability(**{k: spec[k] for k in _EXECUTION_SLOTS})
 
 
+def _telemetry_required(name: str, spec: dict) -> bool:
+    """Validate the active-telemetry gate. Omission is deliberately fail-closed."""
+    required = spec.get("telemetry_required", True)
+    if not isinstance(required, bool):
+        raise ValueError(f"platform {name!r} telemetry_required must be boolean")
+    if required is False:
+        reason = spec.get("telemetry_disabled_reason")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(
+                f"platform {name!r} disables telemetry without telemetry_disabled_reason"
+            )
+    return required
+
+
 @dataclass(frozen=True)
 class PlatformAdapter:
     name: str
     runtime_root: Path                  # slot A
     telemetry_source: Path              # slot B
     surface_matrix: Path                # slot D
+    # Supported/installed is not the same as production-active. False is an
+    # explicit operational hold; omission in the registry fails closed to True.
+    telemetry_required: bool = True
     verifiers: tuple[Verifier, ...] = field(default=())  # slot C — populated in a later phase
     execution: ExecutionCapability | None = None  # slot E — None = no headless surface
 
@@ -106,6 +123,7 @@ def _build(name: str, spec: dict) -> PlatformAdapter:
         runtime_root=_expand(spec["runtime_root"]),
         telemetry_source=_expand(spec["telemetry_source"]),
         surface_matrix=_expand(spec["surface_matrix"]),
+        telemetry_required=_telemetry_required(name, spec),
         execution=_build_execution(spec.get("execution")),
     )
 

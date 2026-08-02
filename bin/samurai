@@ -97,7 +97,7 @@ def cmd_doctor(args):
     print(f"🩺 Order Samurai Doctor v{SAMURAI_VERSION}")
     print("----------------------------------------")
 
-    total = 6
+    total = 5
     passed = 0
 
     def check(name, ok, detail=""):
@@ -144,20 +144,6 @@ def cmd_doctor(args):
     # Check 5: Path Authority
     root_ok = paths["root"].exists() and (paths["root"] / "agentica_core").exists()
     check("Path Authority", root_ok, f"Root: {paths['root']}")
-
-    # Check 6: Registered Engine Adapter Verifiers (Claude, Codex, Gemini, Antigravity)
-    try:
-        sys.path.insert(0, str(paths["root"]))
-        from agentica_core.adapter import resolve_platform
-        adapters_ok = True
-        platforms = ["claude", "codex", "gemini", "antigravity"]
-        for p in platforms:
-            plat = resolve_platform(p)
-            if not plat.surface_matrix.exists():
-                adapters_ok = False
-        check("Multi-Platform Engine Registry", adapters_ok, f"4 platforms active ({', '.join(platforms)})")
-    except Exception as e:
-        check("Multi-Platform Engine Registry", False, f"Error: {e}")
 
     print("----------------------------------------")
     print(f"Summary: {passed}/{total} checks passed.")

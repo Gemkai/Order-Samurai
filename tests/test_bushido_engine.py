@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -24,6 +24,7 @@ if str(_GOVERNANCE) not in sys.path:
 
 from agentica_core.bushido_engine import (  # noqa: E402
     BlastRadius,
+    ROLE_REQUESTED_CEILING,
     Tier,
     WorkItem,
     _consume_approval,
@@ -32,6 +33,9 @@ from agentica_core.bushido_engine import (  # noqa: E402
     enqueue_hitl,
     load_skill_metadata,
     mark_complete,
+    reconcile_stale_executing,
+    resolve_ceiling,
+    resolve_role_binding,
     resolve_ronin_mode,
     review_hitl,
     skill_to_work_item,
@@ -410,6 +414,25 @@ def test_budget_on_different_date_is_not_over(tmp_repo):
     assert tier == Tier.AUTO
 
 
+@pytest.mark.parametrize("payload", [
+    "{not json",
+    "{}",
+    json.dumps({"date": "not-a-date", "spent_usd": 0, "daily_limit_usd": 5}),
+    json.dumps({"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "spent_usd": "NaN", "daily_limit_usd": 5}),
+])
+def test_invalid_budget_ledger_fails_closed(tmp_repo, payload):
+    """A broken hard-limit ledger must not silently re-enable autonomous spend."""
+    (tmp_repo / "state" / "budget_ledger.json").write_text(payload, encoding="utf-8")
+    wi = WorkItem(
+        skill="canary-fault-diagnosis", source="reflex",
+        blast_radius=BlastRadius.CONFINED, reversible=True,
+    )
+    tier, qid = decide(wi, tmp_repo)
+    assert tier == Tier.HARD_STOP
+    assert qid is None
+
+
 # ── R2: approval must NOT bypass newly-added hard limit ───────────────────────
 
 def test_approval_does_not_bypass_hard_limit(tmp_repo):
@@ -477,6 +500,43 @@ def test_mark_complete_failed(tmp_repo):
 
 def test_mark_complete_unknown_returns_false(tmp_repo):
     assert mark_complete("hitl-does-not-exist", tmp_repo) is False
+
+
+def test_reconcile_stale_executing_marks_failed(tmp_repo):
+    now = datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc)
+    queue = {
+        "schema_version": 1,
+        "items": [
+            {"id": "old", "status": "executing",
+             "executing_at": (now - timedelta(hours=3)).isoformat(),
+             "completed_at": None},
+            {"id": "fresh", "status": "executing",
+             "executing_at": (now - timedelta(minutes=15)).isoformat(),
+             "completed_at": None},
+        ],
+    }
+    path = tmp_repo / "state" / "hitl_queue.json"
+    path.write_text(json.dumps(queue), encoding="utf-8")
+
+    assert reconcile_stale_executing(tmp_repo, max_age_hours=2, now=now) == 1
+    items = {i["id"]: i for i in json.loads(path.read_text())["items"]}
+    assert items["old"]["status"] == "failed"
+    assert items["old"]["failure_reason"] == "execution_lease_expired"
+    assert items["old"]["completed_at"] == now.isoformat()
+    assert items["fresh"]["status"] == "executing"
+
+
+def test_reconcile_missing_or_invalid_timestamp_fails_closed(tmp_repo):
+    now = datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc)
+    queue = {"schema_version": 1, "items": [
+        {"id": "missing", "status": "executing", "executing_at": None},
+        {"id": "bad", "status": "executing", "executing_at": "not-a-date"},
+    ]}
+    path = tmp_repo / "state" / "hitl_queue.json"
+    path.write_text(json.dumps(queue), encoding="utf-8")
+
+    assert reconcile_stale_executing(tmp_repo, now=now) == 2
+    assert all(i["status"] == "failed" for i in json.loads(path.read_text())["items"])
 
 
 # ── review_hitl ────────────────────────────────────────────────────────────────
@@ -637,3 +697,65 @@ def test_unparseable_override_falls_back_to_matrix():
     wi = WorkItem(skill="typo", blast_radius=BlastRadius.REPO,
                   reversible=True, approval_tier="atuo")
     assert compute_tier(wi) == Tier.QUEUE
+
+
+# ── Phase D1: role_binding ceiling resolution ─────────────────────────────────
+# docs/plans/2026-07-27-meta-harness-uplift.md:162 — a role_binding's
+# authority_ceiling narrows a package's requested BlastRadius, never widens it.
+
+def test_resolve_ceiling_narrows_repo_request_under_confined_ceiling():
+    """The literal plan verify: a package requesting `repo` under a `confined`
+    ceiling resolves to `confined`."""
+    assert resolve_ceiling(BlastRadius.REPO, BlastRadius.CONFINED) == BlastRadius.CONFINED
+
+
+@pytest.mark.parametrize("requested,ceiling,expected", [
+    (BlastRadius.REPO, BlastRadius.CONFINED, BlastRadius.CONFINED),
+    (BlastRadius.SYSTEM, BlastRadius.REPO, BlastRadius.REPO),
+    (BlastRadius.IRREVERSIBLE, BlastRadius.CONFINED, BlastRadius.CONFINED),
+    # Already at or under the ceiling -> untouched (never WIDENED to the ceiling).
+    (BlastRadius.CONFINED, BlastRadius.REPO, BlastRadius.CONFINED),
+    (BlastRadius.CONFINED, BlastRadius.IRREVERSIBLE, BlastRadius.CONFINED),
+    (BlastRadius.REPO, BlastRadius.REPO, BlastRadius.REPO),
+])
+def test_resolve_ceiling_never_widens(requested, ceiling, expected):
+    assert resolve_ceiling(requested, ceiling) == expected
+
+
+def test_resolve_ceiling_is_the_tighter_of_the_two_in_both_directions():
+    """Symmetry check: whichever argument is tighter wins, regardless of position."""
+    assert resolve_ceiling(BlastRadius.CONFINED, BlastRadius.SYSTEM) == BlastRadius.CONFINED
+    assert resolve_ceiling(BlastRadius.SYSTEM, BlastRadius.CONFINED) == BlastRadius.CONFINED
+
+
+def test_resolve_role_binding_writable_implementer_under_confined_ceiling():
+    """A writable-implementer role (requests REPO) bound to a confined-ceiling
+    workflow resolves to CONFINED — the read-only-reviewer verify scenario for
+    a package that would otherwise want to write."""
+    assert resolve_role_binding("writable-implementer", BlastRadius.CONFINED) == BlastRadius.CONFINED
+
+
+def test_resolve_role_binding_read_only_reviewer_untouched_by_wide_ceiling():
+    """A read-only-reviewer role's own CONFINED request is never widened by a
+    generous ceiling."""
+    assert resolve_role_binding("read-only-reviewer", BlastRadius.SYSTEM) == BlastRadius.CONFINED
+
+
+def test_resolve_role_binding_same_package_two_workflows_two_ceilings():
+    """Plan text: 'Same package runs writable-implementer in one workflow,
+    read-only-reviewer in another, no frontmatter edit needed.' — the role
+    alone (not the package) determines the requested ceiling; a critic@1-shaped
+    package bound as writable-implementer in a repo-ceiling workflow gets REPO,
+    the identical package bound as read-only-reviewer elsewhere gets CONFINED."""
+    as_implementer = resolve_role_binding("writable-implementer", BlastRadius.REPO)
+    as_reviewer = resolve_role_binding("read-only-reviewer", BlastRadius.REPO)
+    assert as_implementer == BlastRadius.REPO
+    assert as_reviewer == BlastRadius.CONFINED
+
+
+def test_resolve_role_binding_unknown_role_defaults_to_repo_request():
+    """Unknown role -> requests REPO (mirrors skill_to_work_item's unknown-skill
+    default), still bounded by the ceiling like any other request."""
+    assert "totally-unheard-of-role" not in ROLE_REQUESTED_CEILING
+    assert resolve_role_binding("totally-unheard-of-role", BlastRadius.CONFINED) == BlastRadius.CONFINED
+    assert resolve_role_binding("totally-unheard-of-role", BlastRadius.SYSTEM) == BlastRadius.REPO

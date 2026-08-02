@@ -386,20 +386,30 @@ def _real_apply(name: str) -> bool:
         # 5. If audit fails (exit code != 0), roll back to prev_ver
         if audit_proc.returncode != 0:
             print(f"pip-safe-upgrade: SECURITY AUDIT FAILED for {name}=={new_ver}. Vulnerabilities found.", file=sys.stderr)
-            if prev_ver:
-                print(f"pip-safe-upgrade: Rolling back {name} to {prev_ver}...", file=sys.stderr)
-                rb = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", f"{name}=={prev_ver}"],
-                    capture_output=True,
-                    timeout=PIP_TIMEOUT_S,
-                )
-            else:
-                print(f"pip-safe-upgrade: Uninstalling {name} (no previous version)...", file=sys.stderr)
-                rb = subprocess.run(
-                    [sys.executable, "-m", "pip", "uninstall", "-y", name],
-                    capture_output=True,
-                    timeout=PIP_TIMEOUT_S,
-                )
+            try:
+                if prev_ver:
+                    print(f"pip-safe-upgrade: Rolling back {name} to {prev_ver}...", file=sys.stderr)
+                    rb = subprocess.run(
+                        [sys.executable, "-m", "pip", "install", f"{name}=={prev_ver}"],
+                        capture_output=True,
+                        timeout=PIP_TIMEOUT_S,
+                    )
+                else:
+                    print(f"pip-safe-upgrade: Uninstalling {name} (no previous version)...", file=sys.stderr)
+                    rb = subprocess.run(
+                        [sys.executable, "-m", "pip", "uninstall", "-y", name],
+                        capture_output=True,
+                        timeout=PIP_TIMEOUT_S,
+                    )
+            except Exception as rb_exc:
+                # A rollback that raises (timeout, OS error) is not a verified
+                # rollback — must not fall through to the outer except's
+                # fail-open `return True` below and report a confirmed-
+                # vulnerable package as successfully upgraded.
+                print(f"pip-safe-upgrade: ROLLBACK FAILED for {name} ({rb_exc}) — "
+                      f"vulnerable version {new_ver} is STILL INSTALLED. Manual action required.",
+                      file=sys.stderr)
+                return False
             if rb.returncode != 0:
                 # The vulnerable version is still installed — say so loudly instead
                 # of logging "Rolling back..." and moving on as if it worked.

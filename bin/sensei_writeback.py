@@ -11,6 +11,8 @@ Safety invariants (from the grill + local pre-review):
 - POST first, then the ledger records the ACTUAL result (verdict_posted vs
   verdict_post_failed) — the ledger never claims a post that didn't happen.
 - Backlog write is atomic (temp + os.replace); a crash can't truncate the JSON.
+- Any required armed sink failure exits non-zero so the scheduler cannot report
+  a partial write-back as a successful cycle.
 """
 import contextlib, json, os, sys, datetime, tempfile, pathlib, time, urllib.request
 
@@ -33,10 +35,9 @@ BACKLOG = OSR / "state/PROPOSED_BACKLOG.json"
 BACKLOG_LOCK = BACKLOG.with_name(BACKLOG.name + ".lock")
 LOCK_WAIT_S = float(os.environ.get("SENSEI_LOCK_WAIT_S", "10"))
 LOCK_STALE_S = float(os.environ.get("SENSEI_LOCK_STALE_S", "300"))
-
-if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
-    print("Usage: python3 bin/sensei_writeback.py [JSON_FILE]")
-    sys.exit(0)
+TERMINAL_BACKLOG_STATUSES = frozenset(
+    {"resolved", "closed", "completed", "rejected", "promoted"}
+)
 
 data = json.load(open(sys.argv[1])) if len(sys.argv) > 1 else json.load(sys.stdin)
 posts = data.get("post_verdicts", []) or []
@@ -149,11 +150,24 @@ def _append_backlog_locked():
     existing = [str(i.get("id", "")) for i in items]
     n = max([int(i.split("-")[-1]) for i in existing
              if i.startswith("SENSEI-") and i.split("-")[-1].isdigit()] + [0])
+    unresolved_reflexes = {
+        str(i.get("reflex_id"))
+        for i in items
+        if i.get("source") == "sensei"
+        and i.get("reflex_id")
+        and str(i.get("status", "")).strip().lower() not in TERMINAL_BACKLOG_STATUSES
+    }
     added = []
     for b in backlog:
+        reflex_id = str(b.get("reflex_id", "")).strip()
+        is_sensei_reflex = b.get("source") == "sensei" and bool(reflex_id)
+        if is_sensei_reflex and reflex_id in unresolved_reflexes:
+            continue
         n += 1
         items.append({"id": f"SENSEI-{n}", **b})   # approved:false comes from the entry
         added.append(f"SENSEI-{n}")
+        if is_sensei_reflex:
+            unresolved_reflexes.add(reflex_id)
     fd, tmp = tempfile.mkstemp(dir=str(BACKLOG.parent), suffix=".tmp")
     with os.fdopen(fd, "w") as f:
         json.dump(container, f, indent=2)   # write the WHOLE container (object or list)
@@ -180,6 +194,7 @@ if not ARMED:
     sys.exit(0)
 
 print("[sensei-writeback] ARMED — writing.")
+writeback_ok = True
 
 # 1) POST first, capture truth
 post_ok = True
@@ -187,9 +202,12 @@ if posts:
     try:
         status = do_post()
         post_ok = 200 <= status < 300
+        if not post_ok:
+            writeback_ok = False
         print(f"  post   : HTTP {status} for {len(posts)} verdict(s)")
     except Exception as e:
         post_ok = False
+        writeback_ok = False
         print(f"  post   : FAILED — {e}")
 
 # 2) ledger reflects the ACTUAL post result
@@ -204,6 +222,7 @@ try:
     note = f" ({bad} schema_violation(s) logged — warn-only, rows still written)" if bad else ""
     print(f"  ledger : appended {len(final_rows)} row(s){note}")
 except Exception as e:
+    writeback_ok = False
     print(f"  ledger : FAILED — {e}")
 
 # 3) backlog (independent of POST; human-gated approved:false)
@@ -211,4 +230,11 @@ if backlog:
     try:
         print(f"  backlog: appended {append_backlog()} (approved:false — bin/ronin promote still required)")
     except Exception as e:
+        writeback_ok = False
         print(f"  backlog: FAILED — {e}")
+
+# An armed write-back is a transaction with independently durable sinks. The
+# ledger records a failed POST truthfully, but that does not make the failed POST
+# itself successful; launchd/callers still need a non-zero signal for any required
+# sink that did not land.
+sys.exit(0 if writeback_ok else 1)

@@ -27,8 +27,8 @@ def _normalize_root_entry(path_value: str) -> str:
 def index_declared_root_entries(*, payload: dict) -> set[str]:
     declared: set[str] = set()
     for section in ("directories", "files"):
-        for entries in payload.get(section, {}).values():
-            for entry in entries:
+        for entries in (payload.get(section) or {}).values():
+            for entry in entries or []:
                 normalized = _normalize_root_entry(entry)
                 if normalized:
                     declared.add(normalized)
@@ -40,18 +40,18 @@ def validate_root_hygiene_policy(*, payload: dict, repo_root: Path) -> list[str]
     declared_directories: set[str] = set()
     declared_files: set[str] = set()
 
-    for classification, entries in payload.get("directories", {}).items():
+    for classification, entries in (payload.get("directories") or {}).items():
         if classification not in VALID_ROOT_CLASSIFICATIONS:
             failures.append(f"root_hygiene_policy: invalid classification {classification}")
-        for entry in entries:
+        for entry in entries or []:
             normalized = _normalize_root_entry(entry)
             if normalized:
                 declared_directories.add(normalized)
 
-    for classification, entries in payload.get("files", {}).items():
+    for classification, entries in (payload.get("files") or {}).items():
         if classification not in VALID_ROOT_CLASSIFICATIONS:
             failures.append(f"root_hygiene_policy: invalid classification {classification}")
-        for entry in entries:
+        for entry in entries or []:
             normalized = _normalize_root_entry(entry)
             if normalized:
                 declared_files.add(normalized)

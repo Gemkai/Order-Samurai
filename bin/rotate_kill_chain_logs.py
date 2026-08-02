@@ -39,7 +39,10 @@ def _row_ts(line: str) -> datetime | None:
         raw = json.loads(line).get("ts")
         if not raw:
             return None
-        return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts
     except (ValueError, TypeError):
         return None
 

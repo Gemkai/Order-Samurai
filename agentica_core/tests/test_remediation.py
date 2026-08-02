@@ -120,7 +120,12 @@ def test_efficacy_returns_required_keys(tmp_path):
     hist = tmp_path / "hist.jsonl"
     hist.write_text("", encoding="utf-8")
     result = rem.efficacy(history_path=hist, records=[])
-    assert set(result.keys()) >= {"applied", "improved", "regressed", "flat", "success_rate", "by_skill", "events", "note"}
+    assert set(result.keys()) >= {
+        "applied", "improved", "regressed", "flat", "success_rate", "by_skill",
+        "events", "proposed_count", "proposed_improved",
+        "proposal_improvement_rate", "proposal_events", "human_correlated",
+        "human_correlated_improved", "human_events", "note",
+    }
 
 
 def test_efficacy_note_mentions_correlation(tmp_path):
@@ -162,7 +167,7 @@ def test_efficacy_counts_repeat_uses_in_distinct_windows_with_equal_values(monke
         _make_record("2026-01-03T12:00:00+00:00", ["investigate"]),
     ]
     result = rem.efficacy(history_path=hist, records=records)
-    ev = [e for e in result["events"] if e["metric"] == "Error_Rate"]
+    ev = [e for e in result["human_events"] if e["metric"] == "Error_Rate"]
     assert len(ev) == 2  # value-keyed dedup used to collapse these into one
 
 
@@ -248,6 +253,36 @@ def test_efficacy_builds_event_from_fire_time_measurement_without_snapshots(monk
     assert result["applied"] == 1 and result["improved"] == 1
 
 
+def test_efficacy_keeps_proposal_only_measurement_out_of_live_results(monkeypatch, tmp_path):
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(
+            "2026-01-01T00:00:00+00:00",
+            "done",
+            reflex_id="metric:bow:Error_Rate",
+            metric_before=5.0,
+            metric_after=1.0,
+            applied=False,
+            propose_only=True,
+        ),
+    ])
+    monkeypatch.setattr(rem, "_EXEC_LOG", exec_log)
+    hist = tmp_path / "hist.jsonl"
+    hist.write_text("", encoding="utf-8")
+
+    result = rem.efficacy(history_path=hist, records=[])
+
+    assert result["attempted"] == 0
+    assert result["applied"] == 0
+    assert result["improved"] == 0
+    assert result["improvement_rate"] is None
+    assert result["events"] == []
+    assert result["proposed_count"] == 1
+    assert result["proposed_improved"] == 1
+    assert result["proposal_improvement_rate"] == 100.0
+    assert result["proposal_events"][0]["outcome"] == "improved"
+
+
 def test_efficacy_judges_fire_time_no_change_run_as_flat(monkeypatch, tmp_path):
     exec_log = tmp_path / "exec_log.jsonl"
     _write_exec_log(exec_log, [
@@ -311,5 +346,25 @@ def test_efficacy_dedupes_repeat_uses_within_the_same_snapshot_window(monkeypatc
         _make_record("2026-01-01T12:00:00+00:00", ["investigate"]),
     ]
     result = rem.efficacy(history_path=hist, records=records)
-    ev = [e for e in result["events"] if e["metric"] == "Error_Rate"]
+    ev = [e for e in result["human_events"] if e["metric"] == "Error_Rate"]
     assert len(ev) == 1
+
+
+def test_human_improvement_cannot_raise_autonomous_rate(monkeypatch, tmp_path):
+    monkeypatch.setattr(rem, "_EXEC_LOG", tmp_path / "no_exec_log.jsonl")
+    hist = tmp_path / "hist.jsonl"
+    bad = _flagged_value()
+    _write_history(hist, [
+        ("2026-01-01T00:00:00+00:00", bad),
+        ("2026-01-02T00:00:00+00:00", 0.0),
+    ])
+    records = [_make_record("2026-01-01T12:00:00+00:00", ["investigate"])]
+
+    result = rem.efficacy(history_path=hist, records=records)
+
+    assert result["attempted"] == 0
+    assert result["improved"] == 0
+    assert result["improvement_rate"] is None
+    assert result["events"] == []
+    assert result["human_correlated"] == 1
+    assert result["human_correlated_improved"] == 1

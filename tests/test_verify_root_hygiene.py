@@ -12,6 +12,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from execution.verify_root_hygiene import (  # type: ignore[attr-defined]
     find_unclassified_root_entries,
+    index_declared_root_entries,
     summarize,
     validate_root_hygiene_policy,
 )
@@ -32,6 +33,48 @@ class VerifyRootHygieneTests(unittest.TestCase):
         failures = validate_root_hygiene_policy(payload=payload, repo_root=sandbox)
 
         self.assertEqual(failures, ["root_hygiene_policy: execution"])
+
+    def test_validate_root_hygiene_policy_handles_null_directories_key(self) -> None:
+        # A "directories" key present with an explicit JSON null (not absent)
+        # must not crash: dict.get(key, default) only substitutes default when
+        # the key is absent, not when it's present with value None.
+        sandbox = REPO_ROOT / ".tmp" / "test_verify_root_hygiene" / self._testMethodName
+        sandbox.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "directories": None,
+            "files": {},
+            "requiredDirectories": [],
+            "requiredFiles": [],
+            "boundaryRules": [],
+        }
+
+        failures = validate_root_hygiene_policy(payload=payload, repo_root=sandbox)
+
+        self.assertEqual(failures, [])
+
+    def test_validate_root_hygiene_policy_handles_null_entries_list(self) -> None:
+        # A classification bucket present with an explicit JSON null entry
+        # list must not crash iterating over it.
+        sandbox = REPO_ROOT / ".tmp" / "test_verify_root_hygiene" / self._testMethodName
+        sandbox.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "directories": {"live": None},
+            "files": {},
+            "requiredDirectories": [],
+            "requiredFiles": [],
+            "boundaryRules": [],
+        }
+
+        failures = validate_root_hygiene_policy(payload=payload, repo_root=sandbox)
+
+        self.assertEqual(failures, [])
+
+    def test_index_declared_root_entries_handles_null_section(self) -> None:
+        payload = {"directories": None, "files": None}
+
+        declared = index_declared_root_entries(payload=payload)
+
+        self.assertEqual(declared, set())
 
     def test_find_unclassified_root_entries_reports_unknown_directory(self) -> None:
         sandbox = REPO_ROOT / ".tmp" / "test_verify_root_hygiene" / self._testMethodName

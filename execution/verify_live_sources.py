@@ -74,10 +74,10 @@ def _is_logical_source(source: str) -> bool:
 
 
 def _token_resolves(token: str, repo_root: Path) -> bool:
-    """True if a single path token resolves to >=1 existing file or is a logical source."""
+    """True if a single path token resolves to >=1 existing file."""
     token = token.strip()
-    if not token or token.startswith(_LOGICAL_PREFIXES):
-        return True  # logical tokens (like telemetry.records) always resolve
+    if not token:
+        return True  # nothing to require
     if token.startswith("~/.claude/"):
         base, rel = _HOME_CLAUDE, token[len("~/.claude/"):]
     else:

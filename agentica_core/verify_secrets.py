@@ -101,8 +101,19 @@ def _default_roots() -> list[Path]:
     # (SENSEI-7, 2026-07-26). This also matches the module docstring, which
     # always said "Data telemetry" — the implementation over-scanned.
     return [
+        governance / "agentica_core",
+        governance / "api" / "src",
+        governance / "dashboard-ui" / "src",
+        governance / "bin",
+        governance / "tools",
+        governance / "governance_review.py",
+        governance / "refresh_dashboard.py",
+        governance / "build_obsidian.py",
+        os_repo / "bin",
         os_repo / "config",
         os_repo / "execution",
+        os_repo / "evalsuite",
+        os_repo / "scouts",
         agentica / "Data" / "telemetry",
         agentica / "Data" / "reports",
     ]

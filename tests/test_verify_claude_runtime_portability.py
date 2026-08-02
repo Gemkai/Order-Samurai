@@ -55,6 +55,17 @@ class VerifyClaudeRuntimePortabilityTests(unittest.TestCase):
         row = self._labels(results)["runtime_portability.bash-only-hooks"]
         self.assertEqual(row["status"], "WARN")
 
+    def test_whitespace_only_hook_command_does_not_crash(self) -> None:
+        # A hook command that is empty/whitespace-only must not raise
+        # IndexError in the bash-only-hooks classification: c.split()[0] is
+        # unguarded when c.strip().startswith(...) is False and c is blank.
+        self._write("settings.json", {"hooks": {"Stop": [
+            {"hooks": [{"command": "   "}]}]}})
+        self._write("mcp.json", {"mcpServers": {}})
+        results = vp.run_checks(runtime_root_dir=self.sandbox)
+        row = self._labels(results)["runtime_portability.bash-only-hooks"]
+        self.assertEqual(row["status"], "OK")
+
     def test_launcher_bypass_warns(self) -> None:
         self._write("settings.json", {"hooks": {}})
         self._write("mcp.json", {"mcpServers": {

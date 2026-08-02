@@ -163,17 +163,28 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
     uses = _skill_uses(records)
     exec_rows = _load_exec_rows(exec_log_path)
     events: list[dict] = []
+    # A validated patch measured inside an isolated worktree is useful evidence,
+    # but it did not change the live repository. Keep proposal efficacy separate
+    # so a promising candidate cannot inflate the applied/live success rate.
+    proposal_events: list[dict] = []
 
-    # ── Attempt counting (§A1): every exec_log run is an ATTEMPT, whatever its
-    # status. Zero engine runs finishing "done" used to render as total silence on
-    # the panel; "the engine tried N times and improved nothing" is the finding
-    # that matters, so no_change/error/timeout rows count here.
+    # ── Autonomous attempt counting (§A1): only live ReflexEngine remediation
+    # runs belong in Self_Correction_Rate. Manual/dashboard rows, read-only
+    # diagnostic mechanisms and proposal-only worktree candidates are separate
+    # channels; mixing their outcomes into this denominator/numerator made the
+    # metric claim autonomous self-correction it did not perform.
     attempted = 0
     completed = 0
     attempts_by_skill: dict[str, int] = {}
     for row in exec_rows:
         skill = row.get("skill", "")
         if not skill or not parse_ts(row.get("timestamp")):
+            continue
+        if row.get("source") != "reflex_engine":
+            continue
+        if row.get("propose_only") is True:
+            continue
+        if row.get("kind") == "mechanism" and row.get("read_only") is True:
             continue
         attempted += 1
         completed += row.get("status") == "done"
@@ -202,12 +213,16 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
         improved_row = (vc > va) if rule["dir"] == "higher" else (vc < va)
         worse = (vc < va) if rule["dir"] == "higher" else (vc > va)
         outcome = "improved" if improved_row else ("regressed" if worse else "flat")
-        events.append({
+        event = {
             "metric": metric, "skill": skill, "command": row.get("command", ""),
             "before": round(va, 2), "after": round(vc, 2), "outcome": outcome,
             "used_at": dt.isoformat(),
             "actor": "reflex" if row.get("source") == "reflex_engine" else "human",
-        })
+        }
+        if row.get("propose_only") is True:
+            proposal_events.append(event)
+        else:
+            events.append(event)
 
     for metric, rem in insights.REMEDIATION.items():
         rule = insights.METRIC_RULES.get(metric)
@@ -258,10 +273,18 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
             }
         events.extend(window_events.values())
 
+    # Split causal channels before computing the headline. Snapshot correlation
+    # from a human session remains useful observational evidence, but it cannot
+    # raise (or lower) an autonomous engine score.
+    human_events = [e for e in events if e.get("actor") != "reflex"]
+    events = [e for e in events if e.get("actor") == "reflex"]
+
     applied = len(events)
     improved = sum(1 for e in events if e["outcome"] == "improved")
     regressed = sum(1 for e in events if e["outcome"] == "regressed")
     flat = applied - improved - regressed
+    proposed_count = len(proposal_events)
+    proposed_improved = sum(1 for e in proposal_events if e["outcome"] == "improved")
     by_skill: dict[str, dict] = {}
     for skill, n in attempts_by_skill.items():
         by_skill[skill] = {"applied": 0, "improved": 0, "attempted": n}
@@ -278,12 +301,41 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
         # judged before/after"; these count every exec_log run regardless of outcome.
         "attempted": attempted,
         "completed": completed,
+        # improvement_rate (2026-08-01 metric-gap remediation, phase A1): the honest
+        # headline. success_rate divides by `applied` — the subset of attempts that
+        # happened to get a judged before/after — so the ~4-in-5 attempts that never
+        # produced a measured bracket are silently excluded from BOTH numerator and
+        # denominator, not counted as failures. That is how a 164-attempt, single-
+        # digit-improvement window read as a 52% success rate. improvement_rate divides
+        # by `attempted` (every engine run, incl. no_change/error/timeout) instead.
+        "improvement_rate": round(100 * improved / attempted, 1) if attempted else None,
+        "proposed_count": proposed_count,
+        "proposed_improved": proposed_improved,
+        "proposal_improvement_rate": (
+            round(100 * proposed_improved / proposed_count, 1)
+            if proposed_count else None
+        ),
+        # success_rate: OBSERVATIONAL ONLY as of 2026-08-01 — no grading/summary consumer
+        # may read this field (see aggregate.py::_self_correction_rate, which now sources
+        # improvement_rate). Retained one release for external readers of this dict, then
+        # delete; do not add a new consumer.
         "success_rate": round(100 * improved / applied, 1) if applied else None,
         "by_skill": by_skill,
         "events": sorted(events, key=lambda e: e["used_at"])[-20:],  # most recent
+        "proposal_events": sorted(proposal_events, key=lambda e: e["used_at"])[-20:],
+        "human_correlated": len(human_events),
+        "human_correlated_improved": sum(
+            1 for e in human_events if e["outcome"] == "improved"
+        ),
+        "human_events": sorted(human_events, key=lambda e: e["used_at"])[-20:],
         "note": ("fire-time before/after where recorded; else correlation not causation "
-                 "(flag -> skill used -> next snapshot moved healthy); attempted counts "
-                 "every engine run incl. no_change/error/timeout"),
+                 "(flag -> skill used -> next snapshot moved healthy); headline fields "
+                 "contain live autonomous ReflexEngine remediations only; human correlations, "
+                 "read-only diagnoses, and proposal-only candidates are separate; attempted "
+                 "counts autonomous no_change/error/timeout runs; improvement_rate = "
+                 "improved/attempted (the honest headline); success_rate = improved/applied "
+                 "is observational-only, scheduled for deletion; proposal-only candidate "
+                 "measurements are reported separately and never counted as live applications"),
     }
 
 
@@ -291,7 +343,9 @@ def main() -> int:
     r = efficacy()
     print(f"Remediation efficacy: {r['attempted']} attempted · {r['completed']} completed · "
           f"{r['applied']} applied · {r['improved']} improved · "
-          f"{r['regressed']} regressed · {r['flat']} flat · success {r['success_rate']}%")
+          f"{r['regressed']} regressed · {r['flat']} flat · "
+          f"improvement rate {r['improvement_rate']}% (observational success_rate {r['success_rate']}%)")
+    print(f"  proposals: {r['proposed_improved']}/{r['proposed_count']} improved in validation")
     for s, b in sorted(r["by_skill"].items()):
         print(f"  {s}: {b['improved']}/{b['applied']} improved")
     for e in r["events"][-8:]:

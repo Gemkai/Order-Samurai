@@ -279,3 +279,27 @@ def test_call_openrouter_null_content_is_failure_not_success(gateway):
         post.return_value = _openai_style_response(None)
         with pytest.raises(Exception):
             gateway._call_openrouter("hi")
+
+
+# ---------------------------------------------------------- _call_anthropic
+
+def _anthropic_response(text) -> MagicMock:
+    resp = MagicMock()
+    resp.json.return_value = {"content": [{"type": "text", "text": text}]}
+    resp.raise_for_status.return_value = None
+    resp.status_code = 200
+    return resp
+
+
+def test_call_anthropic_empty_content_is_failure_not_success(gateway):
+    # A stop-sequence hit or safety-filtered generation returns HTTP 200 with
+    # content[0].text = "". Unlike _call_openai and _call_openrouter, which
+    # already raise on a falsy completion so generate_text's fallback chain
+    # advances to the next model, _call_anthropic returned "" as a success —
+    # the exact silently-dead-tier failure mode CLAUDE.md's local-guard rule
+    # exists to prevent, just on the Anthropic backend instead of Ollama.
+    gateway.anthropic_key = "test-key"
+    with patch("agentica_core.llm.gateway.requests.post") as post:
+        post.return_value = _anthropic_response("")
+        with pytest.raises(Exception):
+            gateway._call_anthropic("anthropic/claude-3.5-sonnet", "hi")

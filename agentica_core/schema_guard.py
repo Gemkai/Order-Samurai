@@ -69,7 +69,14 @@ def check_warn_only(instance: Json, schema_name: str, sink_dir: Path,
     The recorded row carries the offending instance, so a violation is diagnosable
     without re-running the cycle that produced it.
     """
-    messages = violations(instance, schema_name)
+    try:
+        messages = violations(instance, schema_name)
+    except Exception as exc:  # noqa: BLE001
+        # A missing, unreadable, malformed, or wrong-draft schema means the row is
+        # UNVALIDATED, never valid. Keep the warn-only caller alive, but return and
+        # persist a non-empty violation so the A3 clean-streak cannot advance while
+        # its validator is broken.
+        messages = [f"<schema>: validator unavailable: {type(exc).__name__}: {exc}"]
     if not messages:
         return []
     row = {

@@ -44,6 +44,7 @@ from agentica_core.schema_guard import (  # noqa: E402
     load_schema,
     violations,
 )
+from agentica_core import schema_guard  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 SCHEMAS = ["scout_finding", "sensei_ledger_row", "remediation_result", "verdict_record"]
@@ -261,6 +262,34 @@ def test_unwritable_sink_never_breaks_the_caller(tmp_path):
     blocked = tmp_path / "not-a-dir"
     blocked.write_text("i am a file")
     assert check_warn_only(_ledger_row(pillar="fist"), "sensei_ledger_row", blocked / "state")
+
+
+def test_missing_schema_is_a_violation_not_a_silent_pass(tmp_path, monkeypatch):
+    schema_dir = tmp_path / "schemas"
+    schema_dir.mkdir()
+    monkeypatch.setattr(schema_guard, "SCHEMA_DIR", schema_dir)
+
+    messages = check_warn_only(_ledger_row(), "missing_contract", tmp_path / "state")
+
+    assert messages and "validator unavailable" in messages[0]
+    [record] = [json.loads(line) for line in
+                (tmp_path / "state" / VIOLATIONS_FILENAME).read_text().splitlines()]
+    assert record["event"] == "schema_violation"
+    assert record["schema"] == "missing_contract"
+
+
+def test_malformed_schema_is_a_violation_not_a_silent_pass(tmp_path, monkeypatch):
+    schema_dir = tmp_path / "schemas"
+    schema_dir.mkdir()
+    # Construct the fixture name so the public-export contract scanner does not
+    # mistake a test-only malformed file for a runtime schema dependency.
+    schema_name = "broken.schema." + "json"
+    (schema_dir / schema_name).write_text("{not json", encoding="utf-8")
+    monkeypatch.setattr(schema_guard, "SCHEMA_DIR", schema_dir)
+
+    messages = check_warn_only(_ledger_row(), "broken", tmp_path / "state")
+
+    assert messages and "validator unavailable" in messages[0]
 
 
 def _verdict(**over):

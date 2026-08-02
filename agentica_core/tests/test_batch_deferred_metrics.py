@@ -59,13 +59,20 @@ class BatchDeferredMetrics(unittest.TestCase):
     def test_known_expectations(self):
         b = set(batch_deferred_metrics())
         # Representative members (code-modifying, no mechanism) and non-members.
-        self.assertIn("Doc_Parity_Issues", b)
+        self.assertIn("Root_Hygiene_Issues", b)
         self.assertIn("Open_CVEs", b)              # security-adjacent but batched (user decision)
         self.assertIn("Governance_Pass_Rate", b)
         self.assertNotIn("Secrets_Detected", b)    # has secret_scrub mechanism
         self.assertNotIn("Chain_Depth_Avg", b)     # has chain_depth_audit mechanism
         self.assertNotIn("Avg_Session_Turns", b)   # readonly diagnostic
         self.assertNotIn("Token_Execution_Density", b)  # auto_remediable=False
+        # DEMOTE 2026-08-01 (metric-gap remediation, phase A2): simplify/wiki/audit-mechanisms
+        # are 0-improved over >=8 attempts each (frozen criterion) -> auto_remediable=False.
+        self.assertNotIn("Doc_Parity_Issues", b)
+        self.assertNotIn("Simplify_Age", b)
+        self.assertNotIn("Revision_Ratio", b)
+        self.assertNotIn("Raw_Pending", b)
+        self.assertNotIn("Wiki_Orphans", b)
 
 
 if __name__ == "__main__":

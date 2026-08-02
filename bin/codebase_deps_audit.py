@@ -16,14 +16,13 @@ What stays LLM: the genuinely ambiguous tail — non-permissive / unknown licenc
 human must clear, and CVEs with no clean fix version. Those surface in the audit
 under `needs_review`, for a human or the /codebase-cleanup-deps-audit skill to judge.
 
-Allowlist note: every scanner runs via `python -m` (`python -m pip ...`,
-`python -m pip_audit ...`), so this mechanism needs NO new tool-allowlist entries
-beyond the meditation's existing `Bash(python:*)`. Licence scanning is pure importlib —
-no shell at all. The npm path is left as an injected hook (off by default); wiring
-it is the only thing that would require adding `Bash(npm audit:*)`.
+Allowlist note: Python scanners run via `python -m` (`python -m pip ...`,
+`python -m pip_audit ...`). Licence scanning is pure importlib. The npm scanner
+invokes the installed npm executable directly against the three repo-owned lockfiles;
+it never runs package scripts or mutates a dependency.
 
 Usage:
-    python bin/codebase_deps_audit.py [--out PATH] [--json] [--no-licenses]
+    python bin/codebase_deps_audit.py [--out PATH] [--json] [--no-licences]
 
 Default is scan-and-write (no dependency mutation — a read-only audit): runs the
 scanners, classifies findings, writes dependency_audit.json, prints the report.
@@ -32,6 +31,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -41,8 +42,16 @@ from typing import Callable, Iterable
 # Same canonical location pip-safe-upgrade reads from — the two mechanisms align.
 DEFAULT_AUDIT_PATH = Path.home() / ".claude" / "data" / "dependency_audit.json"
 
+GOVERNANCE_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_NPM_PROJECTS: tuple[tuple[str, Path], ...] = (
+    ("Governance", GOVERNANCE_ROOT),
+    ("Governance/api", GOVERNANCE_ROOT / "api"),
+    ("Governance/dashboard-ui", GOVERNANCE_ROOT / "dashboard-ui"),
+)
+
 # Scanner subprocess timeout — remote index / advisory calls must never hang.
 SCAN_TIMEOUT_S = 900  # pip list --outdated hits PyPI per package; 300s timed out weekly (launchd 2026-07-13)
+NPM_SCAN_TIMEOUT_S = 180
 
 # Licences that clear automatically. Anything outside this set (or empty/unknown)
 # is flagged for the LLM/human judgement tail rather than auto-cleared.
@@ -64,8 +73,9 @@ def parse_pip_outdated(stdout: str) -> list[dict]:
     """Parse `pip list --outdated --format json` into upgrade candidates.
 
     Returns [{"name", "version", "latest"}], sorted by name for determinism.
-    Tolerant of empty / malformed output (returns []), so a scanner hiccup
-    degrades to "nothing outdated" rather than crashing the mechanism.
+    Tolerant of empty / malformed output (returns []); run_audit separately
+    marks malformed output unhealthy so this tolerant parser cannot create a
+    false clean verdict.
     """
     try:
         rows = json.loads(stdout or "[]")
@@ -130,6 +140,92 @@ def parse_pip_audit(stdout: str) -> list[dict]:
             }
         )
     return sorted(findings, key=lambda f: f["package"].lower())
+
+
+def _valid_pip_outdated_output(stdout: str | None) -> bool:
+    """Whether pip emitted its documented JSON-list envelope.
+
+    An empty list is a valid clean verdict; malformed JSON is not. Keeping this
+    separate from the tolerant parser prevents parse failure from becoming zero.
+    """
+    if stdout is None:
+        return False
+    try:
+        return isinstance(json.loads(stdout), list)
+    except (TypeError, ValueError):
+        return False
+
+
+def _valid_pip_audit_output(stdout: str | None) -> bool:
+    """Whether pip-audit emitted one of its documented JSON envelopes."""
+    if stdout is None:
+        return False
+    try:
+        doc = json.loads(stdout)
+    except (TypeError, ValueError):
+        return False
+    if isinstance(doc, list):
+        return True
+    return isinstance(doc, dict) and isinstance(doc.get("dependencies"), list)
+
+
+def parse_npm_audit(stdout: str, project: str) -> dict | None:
+    """Parse npm's audit-v2 JSON into the compact cross-project contract.
+
+    Returns None unless the document contains the vulnerability metadata needed
+    to distinguish a real zero from an npm/network/registry failure.
+    """
+    try:
+        doc = json.loads(stdout)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(doc, dict) or doc.get("error"):
+        return None
+
+    raw_counts = (doc.get("metadata") or {}).get("vulnerabilities")
+    if not isinstance(raw_counts, dict):
+        return None
+
+    severities = ("info", "low", "moderate", "high", "critical")
+    counts: dict[str, int] = {}
+    for severity in severities:
+        value = raw_counts.get(severity, 0)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            return None
+        counts[severity] = value
+    raw_total = raw_counts.get("total", sum(counts.values()))
+    if not isinstance(raw_total, int) or isinstance(raw_total, bool) or raw_total < 0:
+        return None
+    counts["total"] = raw_total
+
+    findings: list[dict] = []
+    raw_findings = doc.get("vulnerabilities") or {}
+    if isinstance(raw_findings, dict):
+        for package, finding in raw_findings.items():
+            if not isinstance(finding, dict):
+                continue
+            vuln_ids: set[str] = set()
+            for via in finding.get("via") or []:
+                if not isinstance(via, dict):
+                    continue
+                url_tail = str(via.get("url") or "").rstrip("/").rsplit("/", 1)[-1]
+                source = via.get("source")
+                if url_tail.startswith(("CVE-", "GHSA-")):
+                    vuln_ids.add(url_tail)
+                elif source is not None:
+                    vuln_ids.add(f"npm:{source}")
+            findings.append({
+                "package": finding.get("name") or package,
+                "severity": finding.get("severity") or "unknown",
+                "vuln_ids": sorted(vuln_ids),
+            })
+
+    return {
+        "project": project,
+        "total": raw_total,
+        "vulnerabilities": counts,
+        "findings": sorted(findings, key=lambda row: str(row["package"]).lower()),
+    }
 
 
 def classify_licence(licence: str | None) -> str:
@@ -197,6 +293,19 @@ def build_audit(
     `generated_at` is injected (not read from the clock here) so the function is
     pure and the idempotency eval can hold it constant.
     """
+    npm_audits = npm_audits or []
+    pip_vulnerability_count = 0
+    for cve in pip_cves:
+        count = cve.get("vuln_count", 1) if isinstance(cve, dict) else 1
+        pip_vulnerability_count += (
+            count if isinstance(count, int) and not isinstance(count, bool) and count >= 0 else 1
+        )
+    npm_vulnerability_count = sum(
+        a.get("total", 0)
+        for a in npm_audits
+        if isinstance(a, dict) and isinstance(a.get("total", 0), int)
+        and not isinstance(a.get("total", 0), bool)
+    )
     needs_review = {
         "licences": [f for f in licence_flags if f["flag"] in ("copyleft", "unknown")],
         "cves": [c for c in pip_cves],  # every CVE wants a human/skill confirmation
@@ -205,12 +314,14 @@ def build_audit(
         "generated_at": generated_at,
         "pip_outdated": pip_outdated,
         "pip_cves": pip_cves,
-        "npm_audits": npm_audits or [],
+        "npm_audits": npm_audits,
         "licence_flags": licence_flags,
         "needs_review": needs_review,
         "counts": {
             "outdated": len(pip_outdated),
-            "cves": len(pip_cves),
+            "cves": pip_vulnerability_count + npm_vulnerability_count,
+            "pip_cves": pip_vulnerability_count,
+            "npm_cves": npm_vulnerability_count,
             "licence_flags": len(licence_flags),
             "needs_review": len(needs_review["licences"]) + len(needs_review["cves"]),
         },
@@ -218,18 +329,21 @@ def build_audit(
 
 
 # ---------------------------------------------------------------------------
-# Real scanners (python -m only — no new allowlist entries)
+# Real scanners
 # ---------------------------------------------------------------------------
 
 def _real_pip_outdated() -> str | None:
     """pip's outdated JSON, or None when pip itself failed — a dead pip would
     otherwise parse as "0 outdated" indefinitely with no failure marker."""
-    proc = subprocess.run(
-        [sys.executable, "-m", "pip", "list", "--outdated", "--format", "json"],
-        capture_output=True,
-        text=True,
-        timeout=SCAN_TIMEOUT_S,
-    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "pip", "list", "--outdated", "--format", "json"],
+            capture_output=True,
+            text=True,
+            timeout=SCAN_TIMEOUT_S,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
     if proc.returncode != 0:
         return None
     return proc.stdout
@@ -252,9 +366,9 @@ def _real_pip_audit() -> str | None:
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    if not proc.stdout and proc.returncode != 0:
+    if not proc.stdout:
         return None
-    return proc.stdout or "[]"
+    return proc.stdout
 
 
 def _installed_licences() -> list[tuple[str, str, str | None]]:
@@ -282,16 +396,98 @@ def _installed_licences() -> list[tuple[str, str, str | None]]:
     return rows
 
 
+def _find_npm() -> str | None:
+    """Resolve npm under both an interactive shell and launchd's minimal PATH."""
+    candidates = [
+        shutil.which("npm"),
+        str(Path.home() / ".local" / "share" / "mise" / "shims" / "npm"),
+        str(Path.home() / ".local" / "share" / "mise" / "installs" / "node" / "latest" / "bin" / "npm"),
+        "/opt/homebrew/bin/npm",
+        "/usr/local/bin/npm",
+        "/usr/bin/npm",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
+def scan_npm_projects(
+    projects: Iterable[tuple[str, Path]] = DEFAULT_NPM_PROJECTS,
+    *,
+    npm_executable: str | None = None,
+    run_fn: Callable[..., object] = subprocess.run,
+) -> dict:
+    """Run read-only npm audits for repo-owned lockfiles.
+
+    npm exits 1 when vulnerabilities are found; that remains a successful scan.
+    Exit codes above 1, malformed JSON, missing lockfiles, and timeouts are
+    explicit per-project failures and never become zero findings.
+    """
+    project_rows = list(projects)
+    npm_executable = npm_executable or _find_npm()
+    audits: list[dict] = []
+    project_status: dict[str, bool] = {}
+    errors: dict[str, str] = {}
+
+    if npm_executable is None:
+        for label, _root in project_rows:
+            project_status[label] = False
+            errors[label] = "npm executable not found"
+        return {"audits": audits, "scanner_ok": False,
+                "projects": project_status, "errors": errors}
+
+    for label, root in project_rows:
+        if not (root / "package-lock.json").is_file():
+            project_status[label] = False
+            errors[label] = "package-lock.json missing"
+            continue
+        try:
+            proc = run_fn(
+                [npm_executable, "audit", "--json", "--package-lock-only", "--ignore-scripts"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=NPM_SCAN_TIMEOUT_S,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            project_status[label] = False
+            errors[label] = f"{type(exc).__name__}: {exc}"[:300]
+            continue
+
+        returncode = getattr(proc, "returncode", 2)
+        stdout = getattr(proc, "stdout", "") or ""
+        parsed = parse_npm_audit(stdout, label)
+        if returncode not in (0, 1) or parsed is None:
+            stderr = (getattr(proc, "stderr", "") or "").strip()
+            project_status[label] = False
+            errors[label] = (stderr or f"npm audit returned {returncode} without usable JSON")[:300]
+            continue
+        audits.append(parsed)
+        project_status[label] = True
+
+    return {
+        "audits": audits,
+        "scanner_ok": bool(project_rows) and all(project_status.values()),
+        "projects": project_status,
+        "errors": errors,
+    }
+
+
+def _real_npm_audits() -> dict:
+    return scan_npm_projects()
+
+
 # ---------------------------------------------------------------------------
 # Orchestration (testable via injected fns; no shell in tests)
 # ---------------------------------------------------------------------------
 
 def run_audit(
     *,
-    pip_outdated_fn: Callable[[], str] = _real_pip_outdated,
-    pip_audit_fn: Callable[[], str] = _real_pip_audit,
+    pip_outdated_fn: Callable[[], str | None] = _real_pip_outdated,
+    pip_audit_fn: Callable[[], str | None] = _real_pip_audit,
     licence_fn: Callable[[], list[tuple[str, str, str | None]]] = _installed_licences,
-    npm_audit_fn: Callable[[], list[dict]] | None = None,
+    npm_audit_fn: Callable[[], dict | list[dict]] = _real_npm_audits,
     include_licences: bool = True,
     now_fn: Callable[[], str] = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"),
 ) -> dict:
@@ -306,7 +502,27 @@ def run_audit(
     pip_outdated = parse_pip_outdated(pip_outdated_raw or "")
     pip_cves = parse_pip_audit(pip_cves_raw or "")
     licence_flags = scan_licences(licence_fn()) if include_licences else []
-    npm_audits = npm_audit_fn() if npm_audit_fn is not None else []
+    npm_result = npm_audit_fn()
+    if isinstance(npm_result, dict):
+        npm_audits = npm_result.get("audits")
+        npm_audits = npm_audits if isinstance(npm_audits, list) else []
+        npm_ok = npm_result.get("scanner_ok") is True
+        npm_projects = npm_result.get("projects")
+        npm_projects = npm_projects if isinstance(npm_projects, dict) else {}
+        npm_errors = npm_result.get("errors")
+        npm_errors = npm_errors if isinstance(npm_errors, dict) else {}
+    elif isinstance(npm_result, list):
+        # Compatibility for existing injected hooks. Production uses the explicit
+        # result envelope above, including per-project health.
+        npm_audits = npm_result
+        npm_ok = True
+        npm_projects = {"injected": True}
+        npm_errors = {}
+    else:
+        npm_audits = []
+        npm_ok = False
+        npm_projects = {}
+        npm_errors = {"npm": "scanner returned an invalid result envelope"}
 
     audit = build_audit(
         pip_outdated=pip_outdated,
@@ -319,8 +535,18 @@ def run_audit(
     # genuinely clean scan from a dead scanner whose empty output zeroed the
     # counts (Deprecated_Deps would otherwise read healthy forever).
     audit["scanner_ok"] = {
-        "pip": pip_outdated_raw is not None,
-        "pip_audit": pip_cves_raw is not None,
+        "pip": _valid_pip_outdated_output(pip_outdated_raw),
+        "pip_audit": _valid_pip_audit_output(pip_cves_raw),
+        "npm": npm_ok,
+    }
+    audit["scanner_details"] = {"npm": npm_projects}
+    audit["scanner_errors"] = {
+        **({"pip": "pip outdated did not produce valid JSON"}
+           if not audit["scanner_ok"]["pip"] else {}),
+        **({"pip_audit": "pip-audit did not produce valid JSON"}
+           if not audit["scanner_ok"]["pip_audit"] else {}),
+        **({"npm": npm_errors or {"npm": "one or more npm audits failed"}}
+           if not npm_ok else {}),
     }
     return audit
 
@@ -347,10 +573,23 @@ def _format_report(audit: dict, out_path: Path) -> str:
         for cve in audit["pip_cves"]:
             ids = ", ".join(cve["vuln_ids"]) or "?"
             lines.append(f"  {cve['package']} {cve['version']}  — {ids}")
+    if audit["npm_audits"]:
+        lines.append("\nNPM audits:")
+        for npm_audit in audit["npm_audits"]:
+            lines.append(
+                f"  {npm_audit.get('project', '?')}  — "
+                f"{npm_audit.get('total', '?')} vulnerabilities"
+            )
     if audit["needs_review"]["licences"]:
         lines.append("\nLicences needing review:")
         for f in audit["needs_review"]["licences"]:
             lines.append(f"  [{f['flag']}] {f['name']} {f['version']}  — {f['licence']}")
+    failed = [name for name, ok in (audit.get("scanner_ok") or {}).items() if ok is not True]
+    if failed:
+        lines.append(
+            "\nSCANNER FAILURE: " + ", ".join(failed)
+            + " — vulnerability/dependency counts are incomplete, not zero"
+        )
     lines.append(f"\nWrote {out_path}")
     return "\n".join(lines)
 
@@ -376,7 +615,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(json.dumps(audit, indent=2, sort_keys=True) if args.json
           else _format_report(audit, args.out))
-    return 0
+    return 0 if all((audit.get("scanner_ok") or {}).values()) else 2
 
 
 if __name__ == "__main__":

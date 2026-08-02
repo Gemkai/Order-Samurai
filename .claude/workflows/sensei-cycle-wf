@@ -15,12 +15,12 @@ const A = (() => { try { return typeof args === 'string' ? JSON.parse(args) : (a
 // caller EXPLICITLY opts into live with {live:true}. A missing/malformed flag can never POST.
 const DRY_RUN = A.live !== true
 const RIVAL_MODEL = A.rivalModel || 'sonnet'  // rival agentType pins an inaccessible model; override
-const REPO = process.env.OS_ROOT || '.'
-const GOV = process.env.GOV_ROOT || '..'
-const WID = `${GOV}\\dashboard-ui\\public\\wid_payload.json`
-const LEDGER = `${REPO}\\state\\SENSEI_LEDGER.jsonl`
-const BACKLOG = `${REPO}\\state\\PROPOSED_BACKLOG.json`
-const BUDGET = `${REPO}\\state\\budget_ledger.json`
+const REPO = '$HOME/AgenticaOS/Governance/Order Samurai'
+const GOV = '$HOME/AgenticaOS/Governance'
+const WID = `${GOV}/dashboard-ui/public/wid_payload.json`
+const LEDGER = `${REPO}/state/SENSEI_LEDGER.jsonl`
+const BACKLOG = `${REPO}/state/PROPOSED_BACKLOG.json`
+const BUDGET = `${REPO}/state/budget_ledger.json`
 const VERDICT_ENDPOINT = 'http://localhost:3001/api/reflex/verdicts'
 const PILLARS = ['bow', 'sword', 'brush', 'arts']
 

@@ -18,8 +18,9 @@ would require exit-code tracking; the pragmatic signal we have is "_MIN_RUNS
 samples with zero improvements" (canary_fault_detect.py exiting 1 surfaces here
 because it never moves the metric).
 
-Inputs are loaded lazily: a missing/empty skill_efficacy.json degrades to the
-seed behavior (every metric remains APPLY, reflex_ready=true).
+Inputs are loaded lazily: a genuinely missing/empty skill_efficacy.json keeps
+the legacy seed behavior. A present but unreadable/malformed file fails closed
+to OBSERVE; corrupted control data must never restore autonomous APPLY grants.
 """
 from __future__ import annotations
 
@@ -72,14 +73,20 @@ MECH_ERROR = "error"
 MECH_RULE = "graded_rule"
 MECH_GOTCHA = "graded_gotcha"
 MECH_NEUTRAL = "graded_neutral"
+_EFFICACY_CONTROL_ERROR = "__agentica_control_error__"
 
 
 def _load_skill_efficacy(path: Path = _SKILL_EFFICACY_PATH) -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
+    except FileNotFoundError:
+        # A fresh install has no history yet; preserve the documented seed path.
         return {}
+    except (OSError, ValueError) as exc:
+        return {_EFFICACY_CONTROL_ERROR: str(exc)}
+    if not isinstance(data, dict) or any(not isinstance(v, dict) for v in data.values()):
+        return {_EFFICACY_CONTROL_ERROR: "skill_efficacy must map names to objects"}
+    return data
 
 
 def _stats_for(metric: str, cfg: dict, efficacy: dict) -> dict | None:
@@ -147,6 +154,13 @@ def resolve_maturity(metric: str, *, metric_config: dict | None = None,
     cfg = cfg_table.get(metric, {})
     seed = cfg.get("maturity", APPLY)
     efficacy = efficacy if efficacy is not None else _load_skill_efficacy()
+    if _EFFICACY_CONTROL_ERROR in efficacy:
+        return {
+            "maturity": OBSERVE,
+            "reflex_ready": False,
+            "mechanism_status": MECH_ERROR if "mechanism" in cfg else MECH_NONE,
+            "demoted_by": "skill_efficacy_invalid",
+        }
     stats = _stats_for(metric, cfg, efficacy)
     mech_status = _classify_mechanism(cfg, stats)
 

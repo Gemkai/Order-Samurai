@@ -1,165 +1,129 @@
-"""Tests for agentica_core/model_router.py — the scout/mechanism fallback router.
+"""Contract tests for the stable model_router facade and canonical gateway."""
+from __future__ import annotations
 
-Focus: the fallback chain semantics (first success wins, errors skip to the next
-backend, all-fail returns None) and the documented Ollama reliability guards
-(CLAUDE.md "Local LLM Routing"): reasoning-field fallback for thinking models,
-max_tokens >= 512 floor, empty output treated as failure.
-"""
-import io
-import json
+import sys
+from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from agentica_core import model_router
+from agentica_core.llm import gateway as gateway_module
 
 
 @pytest.fixture(autouse=True)
 def no_provider_keys(monkeypatch):
-    for var in ("ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY"):
+    monkeypatch.setattr(gateway_module, "load_dotenv", lambda *a, **k: False)
+    for var in (
+        "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY",
+        "GEMINI_PAID_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY",
+    ):
         monkeypatch.delenv(var, raising=False)
 
 
-def _http_response(body: dict):
-    """Context-manager mock mimicking urllib.request.urlopen."""
-    resp = MagicMock()
-    resp.read.return_value = json.dumps(body).encode()
-    resp.__enter__ = lambda self: self
-    resp.__exit__ = lambda self, *a: False
-    return resp
+def _response(body: dict, status: int = 200):
+    response = MagicMock()
+    response.status_code = status
+    response.text = ""
+    response.json.return_value = body
+    response.raise_for_status.return_value = None
+    return response
 
 
-def _openai_chat_body(content: str, **extra) -> dict:
-    message = {"content": content, **extra}
-    return {"choices": [{"message": message}]}
+def _local_body(content: str = "", **extra) -> dict:
+    return {"message": {"content": content, **extra}}
 
 
-# ------------------------------------------------------- fallback chain
+def test_facade_points_at_the_canonical_router_contract():
+    assert model_router.__router_facade__ is True
+    assert model_router.call_llm is gateway_module.call_routed_llm
+    assert model_router._MODELS is gateway_module.ROUTED_MODELS
+
 
 def test_call_llm_returns_none_when_all_backends_fail():
-    with patch.object(model_router.urllib.request, "urlopen", side_effect=OSError("down")):
+    with patch.object(gateway_module.requests, "post", side_effect=OSError("down")):
         assert model_router.call_llm("sys", "user") is None
 
 
-def test_call_llm_skips_keyless_backends_and_uses_ollama():
-    # No API keys set -> claude/gemini return None without any HTTP call;
-    # ollama (keyless) is the first backend that issues a request.
-    with patch.object(model_router.urllib.request, "urlopen") as urlopen:
-        urlopen.return_value = _http_response(_openai_chat_body("local says hi"))
+def test_keyless_call_uses_local_ollama():
+    with patch.object(gateway_module.requests, "post", return_value=_response(_local_body("local says hi"))) as post:
         out = model_router.call_llm("sys", "user", task="classification")
     assert out == "local says hi"
-    assert urlopen.call_count == 1
-    req = urlopen.call_args.args[0]
-    assert "/v1/chat/completions" in req.full_url
-    assert "11434" in req.full_url or "chat/completions" in req.full_url
+    assert post.call_count == 1
+    assert post.call_args.args[0].endswith("/api/chat")
 
 
-def test_call_llm_backend_exception_falls_through_to_next(monkeypatch):
-    # Ollama raises -> chain continues to openrouter (key present) and succeeds.
+def test_local_failure_falls_through_to_openrouter(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    calls = []
 
-    def fake_urlopen(req, timeout=None):
-        calls.append(req.full_url)
-        if "11434" in req.full_url or "localhost" in req.full_url:
+    def fake_post(url, **kwargs):
+        if url.endswith("/api/chat"):
             raise OSError("ollama down")
-        return _http_response(_openai_chat_body("openrouter answer"))
+        return _response({"choices": [{"message": {"content": "openrouter answer"}}]})
 
-    with patch.object(model_router.urllib.request, "urlopen", side_effect=fake_urlopen):
-        out = model_router.call_llm("sys", "user")
-    assert out == "openrouter answer"
-    assert len(calls) == 2
+    with patch.object(gateway_module.requests, "post", side_effect=fake_post) as post:
+        assert model_router.call_llm("sys", "user") == "openrouter answer"
+    assert post.call_count == 2
 
 
-def test_call_llm_unknown_task_returns_none():
-    # Unknown task key raises inside every backend; call_llm swallows and
-    # returns None rather than crashing the calling scout.
-    with patch.object(model_router.urllib.request, "urlopen") as urlopen:
-        urlopen.return_value = _http_response(_openai_chat_body("x"))
+def test_unknown_task_fails_without_network_call():
+    with patch.object(gateway_module.requests, "post") as post:
         assert model_router.call_llm("sys", "user", task="bogus-task") is None
+    post.assert_not_called()
 
 
-def test_all_backends_carry_explicit_timeout():
-    # Release It! hard rule: every remote call has an explicit timeout.
-    # Keyless run -> Ollama is the backend that fires; it must carry the shared
-    # local timeout (local_guards.LOCAL_TIMEOUT_SEC), not the 30s cloud timeout.
-    with patch.object(model_router.urllib.request, "urlopen") as urlopen:
-        urlopen.return_value = _http_response(_openai_chat_body("hi"))
-        model_router.call_llm("sys", "user")
-    assert urlopen.call_args.kwargs.get("timeout") == model_router.LOCAL_TIMEOUT_SEC
+def test_local_request_has_explicit_timeout_and_token_floor():
+    with patch.object(gateway_module.requests, "post", return_value=_response(_local_body("ok"))) as post:
+        model_router.call_llm("sys", "user", max_tokens=64)
+    assert post.call_args.kwargs["timeout"] == model_router.LOCAL_TIMEOUT_SEC
+    assert post.call_args.kwargs["json"]["options"]["num_predict"] >= 512
 
 
-# ------------------------------------------------ ollama-specific guards
-
-def test_ollama_empty_content_is_failure_not_success():
-    # Empty local output must return None (-> chain continues), never "".
-    with patch.object(model_router.urllib.request, "urlopen") as urlopen:
-        urlopen.return_value = _http_response(_openai_chat_body("   "))
-        out = model_router._call_ollama("sys", "user", "classification", 2048, 0.0)
-    assert out is None
-
-
-def test_ollama_reads_reasoning_field_when_content_empty():
-    # deepseek-r1 (the "analysis" model) can return empty content with the
-    # answer in the reasoning field — the documented CLAUDE.md guard. Missing
-    # this fallback is what made the local tier silently dead for a month.
-    with patch.object(model_router.urllib.request, "urlopen") as urlopen:
-        urlopen.return_value = _http_response(
-            _openai_chat_body("", reasoning="the reasoned answer")
-        )
-        out = model_router._call_ollama("sys", "user", "analysis", 2048, 0.0)
-    assert out == "the reasoned answer"
-
-
-def test_ollama_enforces_max_tokens_floor():
-    # CLAUDE.md guard: "set max_tokens >= 512" on every local call.
-    with patch.object(model_router.urllib.request, "urlopen") as urlopen:
-        urlopen.return_value = _http_response(_openai_chat_body("ok"))
-        model_router._call_ollama("sys", "user", "classification", 64, 0.0)
-    req = urlopen.call_args.args[0]
-    sent = json.loads(req.data)
-    assert sent["max_tokens"] >= 512
-
-
-def test_ollama_task_selects_documented_model():
-    with patch.object(model_router.urllib.request, "urlopen") as urlopen:
-        urlopen.return_value = _http_response(_openai_chat_body("ok"))
-        model_router._call_ollama("sys", "user", "classification", 2048, 0.0)
-        sent_fast = json.loads(urlopen.call_args.args[0].data)
-        model_router._call_ollama("sys", "user", "analysis", 2048, 0.0)
-        sent_deep = json.loads(urlopen.call_args.args[0].data)
-    assert sent_fast["model"] == model_router._MODELS["ollama"]["classification"]
-    assert sent_deep["model"] == model_router._MODELS["ollama"]["analysis"]
-
-
-def test_claude_and_gemini_return_none_without_keys():
-    assert model_router._call_claude("s", "u", "analysis", 100, 0.0) is None
-    assert model_router._call_gemini("s", "u", "analysis", 100, 0.0) is None
-
-
-# ------------------------------------------------------- local_only (fail closed)
-
-def test_call_llm_local_only_routes_to_ollama_despite_cloud_keys(monkeypatch):
-    # Cloud keys present -> the default chain would try Claude first. local_only
-    # must skip every cloud backend and go straight to Ollama.
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    with patch.object(model_router.urllib.request, "urlopen") as urlopen:
-        urlopen.return_value = _http_response(_openai_chat_body("local only"))
-        out = model_router.call_llm("sys", "user", local_only=True)
-    assert out == "local only"
-    assert urlopen.call_count == 1
-    assert "/v1/chat/completions" in urlopen.call_args.args[0].full_url
-
-
-def test_call_llm_local_only_fails_closed_when_ollama_down(monkeypatch):
-    # Sensitive prompts must NEVER fail over to cloud: with Ollama down and
-    # cloud keys available, local_only returns None after exactly one attempt.
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+def test_local_thinking_response_uses_reasoning_fallback():
     with patch.object(
-        model_router.urllib.request, "urlopen", side_effect=OSError("down")
-    ) as urlopen:
+        gateway_module.requests,
+        "post",
+        return_value=_response(_local_body("", reasoning="the reasoned answer")),
+    ):
+        assert model_router.call_llm("sys", "user", task="analysis") == "the reasoned answer"
+
+
+def test_task_selects_the_documented_local_model():
+    with patch.object(gateway_module.requests, "post", return_value=_response(_local_body("ok"))) as post:
+        model_router.call_llm("sys", "user", task="classification")
+        fast = post.call_args.kwargs["json"]["model"]
+        model_router.call_llm("sys", "user", task="analysis")
+        deep = post.call_args.kwargs["json"]["model"]
+    assert fast == gateway_module.ROUTED_MODELS["ollama"]["classification"]
+    assert deep == gateway_module.ROUTED_MODELS["ollama"]["analysis"]
+
+
+def test_local_only_skips_cloud_even_when_keys_exist(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    with patch.object(gateway_module.requests, "post", return_value=_response(_local_body("local only"))) as post:
+        assert model_router.call_llm("sys", "user", local_only=True) == "local only"
+    assert post.call_count == 1
+    assert post.call_args.args[0].endswith("/api/chat")
+
+
+def test_local_only_fails_closed_when_ollama_is_down(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    with patch.object(gateway_module.requests, "post", side_effect=OSError("down")) as post:
         assert model_router.call_llm("sys", "user", local_only=True) is None
-    assert urlopen.call_count == 1
-    assert "/v1/chat/completions" in urlopen.call_args.args[0].full_url
+    assert post.call_count == 1
+
+
+def test_brain_context_is_prepended_to_the_system_message():
+    fake_brain = ModuleType("agentica_core.brain_context")
+    fake_brain.load_brain_context = MagicMock(return_value="BRAIN CONTEXT")
+    with (
+        patch.dict(sys.modules, {"agentica_core.brain_context": fake_brain}),
+        patch.object(gateway_module.requests, "post", return_value=_response(_local_body("ok"))) as post,
+    ):
+        assert model_router.call_llm("BASE SYSTEM", "user", brain=True) == "ok"
+    messages = post.call_args.kwargs["json"]["messages"]
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"].startswith("BRAIN CONTEXT")
+    assert "BASE SYSTEM" in messages[0]["content"]

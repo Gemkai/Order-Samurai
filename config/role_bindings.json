@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "comment": "Phase D (docs/plans/2026-07-27-meta-harness-uplift.md:162): per-workflow role bindings consumed by sensei-orchestrator.ts's spawnWithRoleBinding(). Shape: workflows[workflow_name][package@version] = {role, authority_ceiling} — package@version is the map key, not a field. authority_ceiling is on Bushido's existing BlastRadius scale (bushido_engine.py resolve_role_binding), narrowing what the role's own intrinsic request can do; it never widens it. The same package can carry a different binding per workflow with no change to its own Execution/Agents/*.md frontmatter — that is the point of this indirection.",
+  "workflows": {
+    "sensei-cycle": {
+      "critic@1": {
+        "role": "read-only-reviewer",
+        "authority_ceiling": "confined"
+      }
+    }
+  }
+}

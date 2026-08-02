@@ -54,10 +54,12 @@ if str(_GOVERNANCE) not in sys.path:
 try:
     from agentica_core.bushido_engine import (  # noqa: E402
         BlastRadius,
+        ROLE_REQUESTED_CEILING,
         Tier,
         WorkItem,
         decide,
         mark_complete,
+        resolve_role_binding,
         resolve_ronin_mode,
         review_hitl,
         skill_to_work_item,
@@ -137,6 +139,12 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Review mode: expire a pending queue item. Requires --reason.")
     p.add_argument("--reason", default="",
                    help="With --approve/--reject/--expire: the human's stated reason.")
+    p.add_argument("--resolve-role-binding", dest="resolve_role_binding", nargs=2,
+                   metavar=("ROLE", "CEILING"),
+                   help="D1: resolve mode. Narrow ROLE's intrinsic requested blast_radius "
+                        "to at most CEILING (a BlastRadius value). Prints "
+                        "{\"role\":..,\"requested\":..,\"ceiling\":..,\"effective\":..,"
+                        "\"narrowed\":bool} and exits 0, or exits 3 on an invalid CEILING.")
     p.add_argument("--ronin-override", choices=["true", "false"], default=None,
                    help="Force ronin mode on/off for this call (testing).")
     return p
@@ -173,6 +181,31 @@ def main(argv: list[str] | None = None) -> int:
             return 3
         print(json.dumps({"reviewed": ok, "queue_id": queue_id, "action": action}))
         return 0 if ok else 1
+
+    # ── D1: role-binding ceiling-resolve mode ────────────────────────────────
+    # Checked before --skill is required so a caller doing pure ceiling
+    # arithmetic (sensei-orchestrator's role-bound spawn path) never needs a
+    # skill name. Engine-independent failure handling: an invalid CEILING is a
+    # caller bug (bad config), not a runtime decision error, so it exits 3
+    # rather than routing through the fail-open/fail-closed skill logic below.
+    if args.resolve_role_binding:
+        role, ceiling_str = args.resolve_role_binding
+        try:
+            ceiling = BlastRadius(ceiling_str)
+        except ValueError:
+            sys.stderr.write(f"bushido_check: invalid --resolve-role-binding ceiling: {ceiling_str!r}\n")
+            print(json.dumps({"effective": None, "error": f"invalid ceiling: {ceiling_str!r}"}))
+            return 3
+        requested = ROLE_REQUESTED_CEILING.get(role, BlastRadius.REPO)
+        effective = resolve_role_binding(role, ceiling)
+        print(json.dumps({
+            "role": role,
+            "requested": requested.value,
+            "ceiling": ceiling.value,
+            "effective": effective.value,
+            "narrowed": effective != requested,
+        }))
+        return 0
 
     # ── Completion mode ──────────────────────────────────────────────────────
     if args.complete:

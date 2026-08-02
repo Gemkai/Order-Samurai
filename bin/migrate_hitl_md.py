@@ -50,7 +50,7 @@ _KV_RE = re.compile(r"^- \*\*([^*]+)\*\*:\s*`([^`]+)`")
 
 
 def _parse_md(path: Path) -> dict[str, str]:
-    """Pull the `- **Key**: \`value\`` lines and the Recommended Intervention
+    r"""Pull the `- **Key**: \`value\`` lines and the Recommended Intervention
     text out of one ticket file."""
     text = path.read_text(encoding="utf-8", errors="ignore")
     fields: dict[str, str] = {}

@@ -5,6 +5,9 @@ need is in this prompt. Work end-to-end without stopping to ask anything.
 ## Absolute rules (violating any is a failure)
 - **Do NOT use AskUserQuestion under any circumstances. Proceed autonomously.**
 - **NEVER edit anything under `~/.claude/`** (control-plane; protected + off-limits).
+- **Issue one atomic Bash command per call — never chain with `;`/`&&`/`|`.** This session has no
+  human to approve a "multiple operations" prompt; a chained command hangs waiting for approval that
+  will never come. Re-run `git`/`gh`/version-probe commands as separate single-purpose calls.
 - **NEVER commit to or push `work`.** Every fix lands on its own branch off `work` and is proposed via a PR.
 - **Test-gate every fix.** A fix is allowed ONLY if you first write a test that FAILS on the bug and
   PASSES after the fix. No failing-then-passing test → do NOT edit code; record it in the triage
@@ -43,6 +46,8 @@ Cap this run at the **5 highest-confidence bugs**. Stop earlier if you run out o
 candidates — do NOT pad with low-value changes.
 
 ## Required output artifact (write this even if zero bugs were fixed)
+This report file is APPEND-ONLY across runs — it accumulates history from every prior sweep. Never
+overwrite or truncate it; append this run's section below the existing content.
 Write a Markdown report to:
 `<REPO_ROOT>/Governance/Order Samurai/artifacts/overnight_bug_sweep_report.md`
 containing:

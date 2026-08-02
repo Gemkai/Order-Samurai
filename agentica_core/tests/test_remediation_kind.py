@@ -112,6 +112,26 @@ class RemediationKind(unittest.TestCase):
                     "mis_route",
                 )
 
+    def test_unproven_simplifiers_cannot_run_autonomously(self):
+        # These metrics previously attracted broad source-rewrite scripts that had
+        # no metric-specific proof and damaged unrelated files. They remain visible
+        # and manually actionable, but may not enter the autonomous fire path or
+        # advertise a deterministic mechanism until a discriminating eval exists.
+        for metric in ("Simplify_Age", "Revision_Ratio"):
+            with self.subTest(metric=metric):
+                cfg = METRIC_CONFIG[metric]
+                self.assertIs(cfg.get("auto_remediable"), False)
+                self.assertNotIn("mechanism", cfg)
+                self.assertEqual(
+                    remediation_kind(
+                        cfg["command"],
+                        readonly=cfg.get("readonly", False),
+                        auto_remediable=cfg.get("auto_remediable"),
+                        explicit_kind=cfg.get("kind"),
+                    ),
+                    "advisory",
+                )
+
     def test_session_hygiene_skills_membership(self):
         # Guard the set stays what the engine/UI expect (context-optimization + compact).
         self.assertEqual(SESSION_HYGIENE_SKILLS, {"context-optimization", "compact"})

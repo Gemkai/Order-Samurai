@@ -24,9 +24,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-_THIS = Path(__file__).resolve()
-_PRODUCT_ROOT = _THIS.parents[1]
-_SURFACE = (_PRODUCT_ROOT / "harness" / "editable_surface.json") if (_PRODUCT_ROOT / "harness" / "editable_surface.json").exists() else (_PRODUCT_ROOT / "Order Samurai" / "harness" / "editable_surface.json")
+_SURFACE = Path(__file__).resolve().parents[1] / "Order Samurai" / "harness" / "editable_surface.json"
 
 _ENV_PREFIX = "OS_HARNESS_"
 

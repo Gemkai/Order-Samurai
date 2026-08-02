@@ -329,6 +329,26 @@ class RealApplyAuditGuardTests(unittest.TestCase):
         rollback = [c for c in calls if any("certifi==1.0" in part for part in c)]
         self.assertEqual(len(rollback), 1)
 
+    def test_rollback_subprocess_exception_still_reports_failure(self) -> None:
+        """A confirmed-vulnerable package whose rollback subprocess call itself
+        raises (timeout, OS error) must still resolve to False. The broad
+        except Exception around the whole audit block previously let this
+        fall through to the function's final `return True`, reporting a
+        known-vulnerable, not-verified-rolled-back package as upgraded."""
+        def run(cmd, **kwargs):
+            if "pip_audit" in cmd:
+                return SimpleNamespace(returncode=1, stdout="", stderr="Found 1 known vulnerability")
+            if any("==" in str(part) for part in cmd):
+                raise pip_safe_upgrade.subprocess.TimeoutExpired(cmd, 30)
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(pip_safe_upgrade.subprocess, "run", run), \
+             mock.patch("importlib.metadata.version", return_value="1.0"), \
+             mock.patch("importlib.util.find_spec", return_value=object()):
+            result = pip_safe_upgrade._real_apply("certifi")
+
+        self.assertFalse(result)
+
 
 if __name__ == "__main__":
     unittest.main()

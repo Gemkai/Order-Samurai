@@ -15,7 +15,7 @@ _ORDER_SAMURAI_ROOT = Path(os.environ.get(
 # Guardrail_Blocks is protective-activity: shown but NOT graded (no dir key).
 METRIC_CONFIG: dict[str, dict] = {
     # Bow — operational
-    "Error_Rate":               {"skill": "investigate",                  "command": "/investigate",                         "dir": "lower",  "warn": 2,     "fail": 5,   "readonly": True, "weight": 3.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "error_triage.py", "args": [], "read_only": True, "timeout_s": 120}},
+    "Error_Rate":               {"skill": "investigate",                  "command": "/investigate",                         "dir": "lower",  "warn": 2,     "fail": 5,   "readonly": True, "weight": 3.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "error_triage.py", "args": ["--json"], "read_only": True, "timeout_s": 120}},
     # Latency_P50 consolidated into Latency_P95 (2026-07-08 audit) — the median was
     # claude's constant zeros, not speed. Re-add with the emitter fix.
     # RETUNE 2026-07-08 audit: an audit skill can't move infra latency — advisory only.
@@ -31,6 +31,16 @@ METRIC_CONFIG: dict[str, dict] = {
     # REMAP 2026-07-08 audit: audit-mechanisms REPORTS orphans; removing one is human
     # work (0/8 improved, audit_only failure_mode) — advisory, never auto-fire.
     "Mechanism_Orphans":        {"skill": "audit-mechanisms",             "command": "/audit-mechanisms",                    "dir": "lower",  "warn": 1,     "fail": 3, "auto_remediable": False, "weight": 1.0},
+    # Remediation_Delta (2026-08-01, metric-gap remediation, phase B2): magnitude
+    # companion to Self_Correction_Rate's yes/no judgment -- median(3 post-firing) -
+    # median(3 pre-firing) history values per remediation attempt, sign-normalized so
+    # improvement is always positive (agentica_core/remediation_delta.py). No single
+    # skill remediates a compound cross-skill signal like this; route through
+    # /insights (read-only) so an alarm has a real, harmless next action.
+    # OBSERVATIONAL per the maturity ladder: warn/fail below are PROPOSED, not graded
+    # -- graduates to graded only after two consecutive clean weekly measurements
+    # (calibration gate), and this metric has zero weeks of real data yet.
+    "Remediation_Delta":       {"skill": "insights",                     "command": "/insights",                            "dir": "higher", "warn": 0,     "fail": -0.01, "readonly": True, "auto_remediable": False, "maturity": "OBSERVE", "weight": 1.0},
     # Verifier_Failures consolidated into Governance_Pass_Rate (2026-07-08 audit):
     # same verifier source, two rows. The failing-platform drill-down rides on this
     # envelope (failure_platforms + doctor mitigation, set in build_pillars).
@@ -41,6 +51,16 @@ METRIC_CONFIG: dict[str, dict] = {
     # 100. Advisory/read-only: past-prompt routing can't be auto-remediated; low
     # adherence surfaces via /insights (session friction + routing analysis).
     "Skill_Routing_Adherence":  {"skill": "insights",                     "command": "/insights",                            "dir": "higher", "warn": 80,    "fail": 65, "readonly": True, "auto_remediable": False, "weight": 2.0},
+    # Verifier_Falsifiability (2026-08-01, metric-gap remediation, phase C2): % of
+    # Order Samurai/execution/verify_falsifiability.py's registered checks proven to
+    # fail on a known-bad fixture AND pass on a known-clean one. A verifier that never
+    # sees a bad input can silently CLEAN forever -- this closes that gap directly, so
+    # no skill remediates it (the fix is writing more fixtures, a human/agent task, not
+    # an auto-fire). OBSERVATIONAL: this launches with only 4 fixture pairs written
+    # (~13%) by design -- warn/fail are set loose (10/5) so day-one coverage doesn't
+    # read as an artificial CRITICAL; tighten as fixtures accumulate, same ratchet
+    # pattern as Doc_Parity_Issues. Zero weeks of real calibration data yet.
+    "Verifier_Falsifiability":  {"skill": "insights",                     "command": "/insights",                            "dir": "higher", "warn": 10,    "fail": 5, "readonly": True, "auto_remediable": False, "maturity": "OBSERVE", "weight": 2.0},
     # Sword — security
     # SWAP 2026-07-11 (C/D/F remediation plan step 3): Vulnerability_MTTR retired —
     # its name promised CVE mean-time-to-resolution but the reducer read kill-chain
@@ -54,7 +74,7 @@ METRIC_CONFIG: dict[str, dict] = {
     # warn:0 (main #59, 2026-07-26): a single detected secret must not grade a
     # perfect PASS — 1 was the "clean" floor, so exactly one secret scored the
     # same as zero.
-    "Secrets_Detected":         {"skill": "security-audit",               "command": "/security-audit",                      "dir": "lower",  "warn": 0,     "fail": 1, "weight": 3.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "secret_scrub.py", "args": [], "read_only": True, "timeout_s": 120}},
+    "Secrets_Detected":         {"skill": "security-audit",               "command": "/security-audit",                      "dir": "lower",  "warn": 0,     "fail": 1, "weight": 3.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "secret_scrub.py", "args": ["--json"], "read_only": True, "timeout_s": 120}},
     # Guardrail_Blocks RETIRED 2026-07-19 (dead emitter — no security_gate_log.jsonl writer on this host).
     # RETUNE 2026-07-08 audit: policy-enforcement-audit finds unenforced policy, it
     # doesn't stop violations (stuck 0/2) — advisory only. Window mismatch (S6) fixed
@@ -112,7 +132,10 @@ METRIC_CONFIG: dict[str, dict] = {
     # (~/.claude/scripts/llm_router.py task-type routing), not a skill invocation.
     "Local_Routing_Share":      {"skill": "model-selector",               "command": "/model-selector",                      "dir": "higher", "warn": 25,    "fail": 10,  "auto_remediable": False, "kind": "mis_route", "weight": 2.0},
     "Context_Cliff_Events":     {"skill": "token-optimizer",              "command": "/token-optimizer",                     "dir": "lower",  "warn": 25,    "fail": 50, "readonly": True, "auto_remediable": False, "calibrate": False, "weight": 1.0},  # PERCENT of scanned sessions since 2026-07-19 (was absolute count)
-    "Revision_Ratio":           {"skill": "simplify",                     "command": "/simplify"},
+    # DEMOTE 2026-08-01 (metric-gap remediation, phase A2, frozen criterion >=8
+    # attempts AND 0 improved): simplify is 0/31 lifetime improved across its
+    # mapped metrics (remediation.efficacy() by_skill) — advisory, never auto-fire.
+    "Revision_Ratio":           {"skill": "simplify",                     "command": "/simplify",                            "auto_remediable": False},
     # DEMOTED 2026-07-11 (metric grading pass, grade D): the benchmark design bug —
     # whole-session cost vs 3x solo median — makes an orchestrator session look
     # inefficient by construction, while the spawn grader shows 98.6% of spawn cost
@@ -130,7 +153,7 @@ METRIC_CONFIG: dict[str, dict] = {
     # RETUNE 2026-07-08 audit: warn 3 / fail 5 read as "don't orchestrate" for an
     # agent OS whose own sensei-cycle spawns 4 scouts (live median 4 = perpetual
     # WARN). Early-warning trend line, not an anti-orchestration gate.
-    "Chain_Depth_Avg":          {"skill": "subagent-audit",               "command": "/subagent-audit",                      "dir": "lower",  "warn": 5,     "fail": 10, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "chain_depth_audit.py", "args": [], "read_only": True, "timeout_s": 120}},
+    "Chain_Depth_Avg":          {"skill": "subagent-audit",               "command": "/subagent-audit",                      "dir": "lower",  "warn": 5,     "fail": 10, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "chain_depth_audit.py", "args": ["--json"], "read_only": True, "timeout_s": 120}},
     # REMAP 2026-07-08 audit: "arch-hygiene" does not exist in the skill library —
     # dead reference. Both metrics derive from doctor verifier FAILs, so /doctor is
     # the surface that shows and re-checks them (METRIC_DOCS already said so).
@@ -147,25 +170,30 @@ METRIC_CONFIG: dict[str, dict] = {
     "Faithfulness_Score":       {"skill": "insights", "command": "/insights", "dir": "higher", "warn": 80, "fail": 60, "readonly": True, "auto_remediable": False, "weight": 3.0},
     "Refusal_Appropriateness":  {"skill": "insights", "command": "/insights", "dir": "higher", "warn": 70, "fail": 50, "readonly": True, "auto_remediable": False, "weight": 1.0},
     "Retrieval_Relevance":      {"skill": "wiki", "command": "/wiki", "dir": "higher", "warn": 70, "fail": 50, "readonly": True, "auto_remediable": False, "weight": 2.0},
-    "Slop_Density":             {"skill": "humanizer",                    "command": "/humanizer",                           "dir": "lower",  "warn": 15,    "fail": 30, "weight": 3.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "slop_strip.py", "args": [], "read_only": True, "timeout_s": 120}},
+    "Slop_Density":             {"skill": "humanizer",                    "command": "/humanizer",                           "dir": "lower",  "warn": 15,    "fail": 30, "weight": 3.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "slop_strip.py", "args": ["--json"], "read_only": True, "timeout_s": 120}},
     "Frustration_Signals":      {"skill": "insights",                     "command": "/insights",                            "dir": "lower",  "warn": 0.5,   "fail": 2,  "per": "session", "readonly": True, "auto_remediable": False, "weight": 2.0},
     "Rework_Loops":             {"skill": "insights",                     "command": "/insights",                            "dir": "lower",  "warn": 1,     "fail": 3,  "per": "session", "auto_remediable": False, "weight": 2.0},
     "Stop_Hook_Loops":          {"skill": "insights",                     "command": "/insights",                            "dir": "lower",  "warn": 1,     "fail": 2,  "per": "session", "readonly": True, "auto_remediable": False, "weight": 2.0},
     # Simplify_Runs consolidated into Simplify_Age (2026-07-08 audit): it counted
     # its own remediation's invocations and passed on a single run.
-    "Simplify_Age":             {"skill": "simplify",                     "command": "/simplify",                            "dir": "lower",  "warn": 7,     "fail": 21, "weight": 1.0},
+    # DEMOTE 2026-08-01 (metric-gap remediation, phase A2, frozen criterion >=8
+    # attempts AND 0 improved): simplify is 0/31 lifetime improved — advisory.
+    "Simplify_Age":             {"skill": "simplify",                     "command": "/simplify",                            "dir": "lower",  "warn": 7,     "fail": 21, "weight": 1.0, "auto_remediable": False},
     # RATCHET 2026-07-11: the 2026-07-08 baseline ratchet was set at warn 634 (the
     # then-live backlog); the parity backlog has since drained to 1, so 634/697 was
     # absurdly loose — any regression up to 633 would still read PASS. Tightened to
     # warn 5 / fail 25 and auto-remediation re-enabled: /wiki demonstrably clears
     # small drifts at this scale (11/13 efficacy on vault work). Ratchet rule stays:
     # tighten (never loosen) as clean weeks accumulate.
-    "Doc_Parity_Issues":        {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 5,     "fail": 25, "weight": 2.0},
+    # DEMOTE 2026-08-01 (metric-gap remediation, phase A2): the 2026-07-11 re-enable
+    # above has not held — wiki is now 0/24 lifetime improved across every metric it
+    # maps to (frozen criterion >=8 attempts AND 0 improved) — advisory, never auto-fire.
+    "Doc_Parity_Issues":        {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 5,     "fail": 25, "weight": 2.0, "auto_remediable": False},
     # Skills_Optimized + Skill_Promotions RETIRED 2026-07-19 (metric-surface review
     # Part E item 3): their sources (skill_improve_after_use_log.jsonl /
     # skill_promotion_log.jsonl) are never written on this host — both counters were
     # permanently dark. Re-add only together with live emitters.
-    "Skill_Conflicts":          {"skill": "skill-consolidator",           "command": "/skill-consolidator",                  "dir": "lower",  "warn": 1,     "fail": 5, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "skill_conflict_audit.py", "args": [], "read_only": True, "timeout_s": 120}},
+    "Skill_Conflicts":          {"skill": "skill-consolidator",           "command": "/skill-consolidator",                  "dir": "lower",  "warn": 1,     "fail": 5, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "skill_conflict_audit.py", "args": ["--json"], "read_only": True, "timeout_s": 120}},
     "MCP_Smoke_Fails":          {"skill": "mcp-setup",                    "command": "/mcp-setup",                           "dir": "lower",  "warn": 1,     "fail": 3, "weight": 1.0},
     # Knowledge vault health (arts/Knowledge group — cross-component integration)
     "Wiki_Health_Score":        {"skill": "wiki",                         "command": "/wiki"},
@@ -173,8 +201,11 @@ METRIC_CONFIG: dict[str, dict] = {
     # warn 1->5 / fail 5->15 ratified 2026-07-12 (Wargame 01 Move 6 row 8): the librarian
     # nightly (01:30) FEEDS Knowledge/vault/raw/ by design, so warn=1 guaranteed a nightly
     # re-breach the morning after every distillation run.
-    "Raw_Pending":              {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 5,     "fail": 15, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "wiki_compile.py", "args": [], "read_only": True, "timeout_s": 120}},
-    "Wiki_Orphans":             {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 2,     "fail": 10, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "wiki_link.py", "args": [], "read_only": True, "timeout_s": 120}},
+    # DEMOTE 2026-08-01 (metric-gap remediation, phase A2, frozen criterion >=8
+    # attempts AND 0 improved): wiki is 0/24 lifetime improved across its mapped
+    # metrics — advisory, never auto-fire.
+    "Raw_Pending":              {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 5,     "fail": 15, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "wiki_compile.py", "args": [], "read_only": True, "timeout_s": 120}, "auto_remediable": False},
+    "Wiki_Orphans":             {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 2,     "fail": 10, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "wiki_link.py", "args": ["--json"], "read_only": True, "timeout_s": 120}, "auto_remediable": False},
     # OKF / <BRAND>³ knowledge health (scouts.knowledge_signals -> arts/Knowledge group).
     # Thresholds mirror verify_knowledge.py constants — change both together.
     "OKF_Conformance":          {"skill": "wiki",                         "command": "python3 Knowledge/okf/okf_tools.py validate Knowledge/vault --list 20", "dir": "higher", "warn": 95, "fail": 80, "auto_remediable": False, "weight": 1.0},  # validate lists offenders; fixing frontmatter is editorial
@@ -262,7 +293,8 @@ for _cfg in METRIC_CONFIG.values():
 # Public aliases for external consumers (calibrate.py, reflexes.py, remediation.py, tests).
 METRIC_RULES: dict[str, dict] = {
     k: {p: v[p] for p in ("dir", "warn", "fail", "per") if p in v}
-    for k, v in METRIC_CONFIG.items() if "dir" in v
+    for k, v in METRIC_CONFIG.items()
+    if "dir" in v and v.get("maturity") != "OBSERVE"
 }
 REMEDIATION: dict[str, dict] = {
     k: {"skill": v["skill"], "command": v["command"]}

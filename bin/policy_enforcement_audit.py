@@ -46,6 +46,14 @@ POLICY_GLOBS = [
     "~/.claude/data/*policies*.json",
 ]
 
+# Generated measurements can contain words such as "allowlist" or "baseline"
+# without declaring runtime behavior. Treating them as policies creates false
+# breaches and encourages wiring enforcement to historical output files.
+GENERATED_ARTIFACT_NAMES = frozenset({
+    "allowlist_drift.json",
+    "config_integrity_baseline.json",
+})
+
 # Directories to search for readers of each policy file.
 SEARCH_DIRS = [
     os.path.expanduser("~/.claude/scripts"),
@@ -75,6 +83,7 @@ READER_EXTENSIONS = {".py", ".js", ".ts", ".sh", ".json", ".yaml", ".yml", ".md"
 # NOT the full file content — prevents false positives from incidental patterns in
 # unrelated functions (PE-02, PE-03, PE-05 adversarial review findings).
 ENFORCER_PATTERNS = [
+    r"\bPOLICY_ENFORCER\s*=",                               # explicit, tested ownership marker
     r"sys\.exit\([1-9]",                                    # non-zero exit on violation
     r"sys\.exit\(2\)",                                      # explicit block exit code
     r"\braise\b.*(polic|block|violat|deny|[Pp]ermission)",  # policy-intent raise only
@@ -135,13 +144,16 @@ def suggest_fix(policy_type: str) -> str:
 # Assembly (pure)
 # ---------------------------------------------------------------------------
 
-def _verdict_for(readers: list[dict]) -> str:
+def _verdict_for(readers: list[dict], load_error: str | None = None) -> str:
     """Derive verdict from a list of ReaderRecord dicts.
 
+    - 'INVALID_POLICY':            policy file could not be read/parsed
     - 'NOT_READ':                  readers is empty
     - 'DECLARED_BUT_UNENFORCED':   readers exist but all are OBSERVER
     - 'ENFORCED':                  at least one reader is ENFORCER
     """
+    if load_error:
+        return "INVALID_POLICY"
     if not readers:
         return "NOT_READ"
     if any(r["reader_type"] == "ENFORCER" for r in readers):
@@ -163,32 +175,53 @@ def build_report(
     findings: list[dict] = []
     for pf in policy_files:
         readers = readers_map.get(pf["path"], [])
-        verdict = _verdict_for(readers)
+        load_error = str(pf.get("load_error") or "")
+        verdict = _verdict_for(readers, load_error or None)
+        if verdict == "INVALID_POLICY":
+            fix_suggestion = "Repair the unreadable or malformed policy JSON before assessing enforcement"
+        else:
+            fix_suggestion = suggest_fix(pf["policy_type"]) if verdict != "ENFORCED" else ""
         findings.append(
             {
                 "policy_file": pf["path"],
                 "policy_type": pf["policy_type"],
                 "keys": pf["keys"],
+                **({"load_error": load_error} if load_error else {}),
                 "readers": readers,
                 "has_enforcer": any(r["reader_type"] == "ENFORCER" for r in readers),
                 "verdict": verdict,
-                "fix_suggestion": suggest_fix(pf["policy_type"]) if verdict != "ENFORCED" else "",
+                "fix_suggestion": fix_suggestion,
             }
         )
 
     enforced = sum(1 for f in findings if f["verdict"] == "ENFORCED")
     unenforced = sum(1 for f in findings if f["verdict"] == "DECLARED_BUT_UNENFORCED")
     not_read = sum(1 for f in findings if f["verdict"] == "NOT_READ")
-    needs_review = [f["policy_file"] for f in findings if f["verdict"] == "DECLARED_BUT_UNENFORCED"]
+    invalid = sum(1 for f in findings if f["verdict"] == "INVALID_POLICY")
+    needs_review = [
+        f["policy_file"] for f in findings
+        if f["verdict"] in {"DECLARED_BUT_UNENFORCED", "INVALID_POLICY"}
+    ]
+    calibrated = bool(policy_files)
+    breach_confirmed = calibrated and (unenforced + not_read + invalid) > 0
+    verdict = (
+        "uncalibrated" if not calibrated
+        else "breach_confirmed" if breach_confirmed
+        else "cleared"
+    )
 
     return {
         "generated_at": generated_at,
+        "calibrated": calibrated,
+        "breach_confirmed": breach_confirmed,
+        "verdict": verdict,
         "policies_scanned": len(policy_files),
         "findings": findings,
         "counts": {
             "enforced": enforced,
             "unenforced": unenforced,
             "not_read": not_read,
+            "invalid": invalid,
         },
         "needs_review": needs_review,
     }
@@ -200,24 +233,33 @@ def build_report(
 # ---------------------------------------------------------------------------
 
 def _real_policy_files() -> list[dict]:
-    """Enumerate policy files from standard agent-OS locations."""
+    """Enumerate policy files from standard agent-OS locations.
+
+    Enumeration and parsing are deliberately separate: a matching file that is
+    unreadable or malformed is itself a policy-control failure. It must remain in
+    the report as INVALID_POLICY rather than disappearing and making the audit look
+    cleaner than the filesystem it scanned.
+    """
     import glob
 
     results: list[dict] = []
     for g in POLICY_GLOBS:
         for p in glob.glob(os.path.expanduser(g)):
+            if Path(p).name in GENERATED_ARTIFACT_NAMES:
+                continue
+            record = {
+                "path": p,
+                "policy_type": Path(p).stem,
+                "keys": [],
+            }
             try:
                 data = json.loads(Path(p).read_text(encoding="utf-8"))
-                keys = list(data.keys()) if isinstance(data, dict) else []
-                results.append(
-                    {
-                        "path": p,
-                        "policy_type": Path(p).stem,
-                        "keys": keys,
-                    }
-                )
-            except (OSError, ValueError):
-                pass
+                if not isinstance(data, dict):
+                    raise ValueError(f"expected JSON object, got {type(data).__name__}")
+                record["keys"] = list(data.keys())
+            except (OSError, ValueError) as exc:
+                record["load_error"] = f"{type(exc).__name__}: {exc}"
+            results.append(record)
     return results
 
 
@@ -247,18 +289,20 @@ def _real_readers(policy_path: str) -> list[dict]:
                     continue
                 if filename not in content and stem not in content:
                     continue
-                # Extract the snippet (±2 lines around the policy filename reference)
-                # THEN classify only the snippet — prevents false-positives from
-                # incidental patterns (return False, raise KeyError, etc.) in
-                # unrelated functions elsewhere in the file (PE-03 fix).
+                # Extract snippets around every policy reference. Using only the
+                # first reference hid explicit enforcement ownership whenever a
+                # protected-file registry or docstring mentioned the policy first.
+                # Classification still sees only local windows, never unrelated
+                # functions elsewhere in the reader (PE-03).
                 lines = content.splitlines()
                 snippet_lines: list[str] = []
                 for i, line in enumerate(lines):
                     if filename in line or stem in line:
                         start = max(0, i - 2)
                         end = min(len(lines), i + 3)
-                        snippet_lines = lines[start:end]
-                        break
+                        if snippet_lines:
+                            snippet_lines.append("...")
+                        snippet_lines.extend(lines[start:end])
                 snippet = "\n".join(snippet_lines) if snippet_lines else content[:300]
                 reader_type = classify_reader(snippet)
                 # Find the evidence pattern that determined classification
@@ -326,8 +370,14 @@ def _format_report(report: dict, out_path: Path) -> str:
         f"  policies scanned: {report['policies_scanned']}  ·  "
         f"enforced: {c['enforced']}  ·  "
         f"unenforced: {c['unenforced']}  ·  "
-        f"not_read: {c['not_read']}",
+        f"not_read: {c['not_read']}  ·  "
+        f"invalid: {c['invalid']}",
     ]
+    invalid = [f for f in report["findings"] if f["verdict"] == "INVALID_POLICY"]
+    if invalid:
+        lines.append("\nINVALID_POLICY (cannot assess enforcement):")
+        for f in invalid:
+            lines.append(f"  {f['policy_file']}: {f['load_error']}")
     unenforced = [f for f in report["findings"] if f["verdict"] == "DECLARED_BUT_UNENFORCED"]
     if unenforced:
         lines.append("\nDECLARED_BUT_UNENFORCED (needs wiring):")

@@ -1,0 +1,2 @@
+a normal text file with no binary content
+second line

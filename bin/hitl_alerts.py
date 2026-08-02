@@ -41,6 +41,14 @@ EXPIRED_WINDOW_DAYS = 7    # digest includes items that expired unreviewed this 
 SUBPROCESS_TIMEOUT = 30    # every external call gets a timeout (Release It! rule)
 
 
+class QueueReadError(RuntimeError):
+    """The approval queue could not be read or did not satisfy its schema."""
+
+
+class AlertStateError(RuntimeError):
+    """Alert delivery state could not be read or durably persisted."""
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -63,14 +71,25 @@ def _age_str(item: dict) -> str:
 
 
 def load_queue() -> tuple[list[dict], list[dict]]:
-    """Return (pending, recently_expired_unreviewed). Missing/torn file → ([], [])."""
+    """Return (pending, recently expired); never equate unreadable with empty."""
     try:
-        d = json.loads(QUEUE_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return [], []
-    items = d.get("items", []) if isinstance(d, dict) else d
+        raw = QUEUE_PATH.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise QueueReadError(f"cannot read {QUEUE_PATH}: {exc}") from exc
+    try:
+        d = json.loads(raw)
+    except ValueError as exc:
+        raise QueueReadError(f"invalid JSON in {QUEUE_PATH}: {exc}") from exc
+    if isinstance(d, dict):
+        if "items" not in d:
+            raise QueueReadError(f"invalid queue schema in {QUEUE_PATH}: missing 'items'")
+        items = d["items"]
+    elif isinstance(d, list):
+        items = d
+    else:
+        raise QueueReadError(f"invalid queue schema in {QUEUE_PATH}: expected object or list")
     if not isinstance(items, list):
-        return [], []
+        raise QueueReadError(f"invalid queue schema in {QUEUE_PATH}: 'items' is not a list")
     pending = [i for i in items if isinstance(i, dict) and i.get("status") == "pending"]
     expired = []
     for i in items:
@@ -84,16 +103,32 @@ def load_queue() -> tuple[list[dict], list[dict]]:
 
 def _load_state() -> dict:
     try:
-        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        raw = STATE_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
         return {}
+    except OSError as exc:
+        raise AlertStateError(f"cannot read {STATE_PATH}: {exc}") from exc
+    try:
+        state = json.loads(raw)
+    except ValueError as exc:
+        raise AlertStateError(f"invalid JSON in {STATE_PATH}: {exc}") from exc
+    if not isinstance(state, dict):
+        raise AlertStateError(f"invalid alert state in {STATE_PATH}: expected object")
+    return state
 
 
 def _save_state(state: dict) -> None:
+    tmp = STATE_PATH.with_name(f".{STATE_PATH.name}.{os.getpid()}.tmp")
     try:
-        STATE_PATH.write_text(json.dumps(state, indent=2), encoding="utf-8")
-    except OSError:
-        pass  # alerting must never crash on state persistence
+        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        tmp.replace(STATE_PATH)
+    except OSError as exc:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise AlertStateError(f"cannot persist {STATE_PATH}: {exc}") from exc
 
 
 def _item_line(i: dict) -> str:
@@ -105,20 +140,25 @@ def _item_line(i: dict) -> str:
 # ── notify mode ──────────────────────────────────────────────────────────────
 
 def do_notify() -> int:
-    pending, _ = load_queue()
-    state = _load_state()
+    try:
+        pending, _ = load_queue()
+        state = _load_state()
+    except (QueueReadError, AlertStateError) as exc:
+        print(f"hitl_alerts --notify: FAILED — {exc}", file=sys.stderr)
+        return 1
     prev_ids = set(state.get("last_pending_ids", []))
     cur_ids = {str(i["id"]) for i in pending if i.get("id")}
     last_banner = _parse_ts(state.get("last_banner_at"))
     stale = last_banner is None or (_now() - last_banner).total_seconds() > REMIND_HOURS * 3600
 
     should = bool(pending) and (cur_ids != prev_ids or stale)
+    sent = False
     if should:
         top = _item_line(pending[0])
         more = f" (+{len(pending) - 1} more)" if len(pending) > 1 else ""
         env = {**os.environ, "NUDGE_DESKTOP_NOTIFY": "true"}
         try:
-            subprocess.run(
+            out = subprocess.run(
                 [sys.executable, str(NOTIFY_PY),
                  f"Order Samurai: {len(pending)} approval(s) waiting",
                  f"{top}{more}",
@@ -126,12 +166,40 @@ def do_notify() -> int:
                  "--severity", "HIGH"],
                 env=env, timeout=SUBPROCESS_TIMEOUT, capture_output=True,
             )
+            detail = (out.stderr or b"")
+            if isinstance(detail, bytes):
+                detail = detail.decode(errors="replace")
+            # notify.py intentionally exits zero for both "dispatched" and
+            # "suppressed". Its explicit acknowledgement is therefore part of
+            # the delivery contract; exit status alone is not confirmation.
+            acknowledged = detail.strip().splitlines()[-1:] == ["dispatched"]
+            if out.returncode != 0 or not acknowledged:
+                print(
+                    f"hitl_alerts: notify dispatch failed (exit {out.returncode}): "
+                    f"{detail.strip()[:200]}",
+                    file=sys.stderr,
+                )
+            else:
+                sent = True
         except (OSError, subprocess.TimeoutExpired) as exc:
             print(f"hitl_alerts: notify dispatch failed: {exc}", file=sys.stderr)
+        if not sent:
+            print(f"hitl_alerts --notify: {len(pending)} pending; banner FAILED")
+            return 1
         state["last_banner_at"] = _now().isoformat()
-    state["last_pending_ids"] = sorted(cur_ids)
-    _save_state(state)
-    print(f"hitl_alerts --notify: {len(pending)} pending; banner {'sent' if should else 'suppressed'}")
+        state["last_pending_ids"] = sorted(cur_ids)
+    elif state.get("last_pending_ids", []) != sorted(cur_ids):
+        # Clearing the snapshot is not a delivery record; it lets a future item
+        # with a reused ID be treated as new.
+        state["last_pending_ids"] = sorted(cur_ids)
+
+    try:
+        _save_state(state)
+    except AlertStateError as exc:
+        delivery = " after banner delivery" if sent else ""
+        print(f"hitl_alerts --notify: state persistence FAILED{delivery} — {exc}", file=sys.stderr)
+        return 1
+    print(f"hitl_alerts --notify: {len(pending)} pending; banner {'sent' if sent else 'suppressed'}")
     return 0
 
 
@@ -180,8 +248,19 @@ def _send_resend(subject: str, body: str, to: str, key: str) -> bool:
     )
     try:
         with urllib.request.urlopen(req, timeout=SUBPROCESS_TIMEOUT) as r:
-            return 200 <= r.status < 300
-    except OSError as exc:
+            raw = r.read()
+            if not 200 <= r.status < 300:
+                return False
+            try:
+                response = json.loads(raw)
+            except (TypeError, ValueError):
+                print("hitl_alerts: resend returned invalid JSON", file=sys.stderr)
+                return False
+            if not isinstance(response, dict) or not response.get("id"):
+                print("hitl_alerts: resend did not confirm a message id", file=sys.stderr)
+                return False
+            return True
+    except (OSError, ValueError) as exc:
         print(f"hitl_alerts: resend failed: {exc}", file=sys.stderr)
         return False
 
@@ -214,17 +293,20 @@ def do_email(force: bool) -> int:
               "HITL approval digest.", file=sys.stderr)
         return 1
 
-    state = _load_state()
+    try:
+        state = _load_state()
+        pending, expired = load_queue()
+    except (QueueReadError, AlertStateError) as exc:
+        print(f"hitl_alerts --email: FAILED — {exc}", file=sys.stderr)
+        return 1
+
     today = _now().date().isoformat()
     if not force and state.get("last_email_date") == today:
         print(f"hitl_alerts --email: already sent {today} — skipping (use --force to resend)")
         return 0
 
-    pending, expired = load_queue()
     if not pending and not expired and not force:
         print("hitl_alerts --email: nothing pending or recently expired — no email today")
-        state["last_email_date"] = today
-        _save_state(state)
         return 0
 
     subject = (f"[Order Samurai] {len(pending)} approval(s) waiting"
@@ -234,7 +316,14 @@ def do_email(force: bool) -> int:
     sent = _send_resend(subject, body, to, key) if key else _send_mail_app(subject, body, to)
     if sent:
         state["last_email_date"] = today
-        _save_state(state)
+        try:
+            _save_state(state)
+        except AlertStateError as exc:
+            print(
+                f"hitl_alerts --email: message delivered but delivery-state persistence FAILED — {exc}",
+                file=sys.stderr,
+            )
+            return 1
     print(f"hitl_alerts --email: {'sent' if sent else 'FAILED'} → {to} "
           f"({len(pending)} pending, {len(expired)} expired, via "
           f"{'resend' if key else 'Mail.app'})")

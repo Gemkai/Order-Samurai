@@ -115,7 +115,7 @@ def run_checks(*, runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
     # (bash -c ..., or a .sh entrypoint) is non-portable to hosts without it.
     bash_only = [c for c in hook_commands
                  if c.strip().startswith(("bash ", "bash\t", "/bin/bash", "sh "))
-                 or ".sh" in c.split()[0] if c.split()]
+                 or (c.split() and ".sh" in c.split()[0])]
     results.append(
         _make_result("WARN", "runtime_portability.bash-only-hooks",
                      f"{len(bash_only)} hook(s) depend on bash/.sh: "

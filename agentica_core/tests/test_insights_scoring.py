@@ -192,6 +192,14 @@ def test_graded_metric_pillar_map_matches_registry():
     assert set(insights._GRADED_METRIC_PILLARS) == set(insights.METRIC_RULES)
 
 
+def test_observe_metrics_are_not_graded_before_calibration():
+    """OBSERVE means visible evidence, not a green/red SLO contribution."""
+    for metric in ("Remediation_Delta", "Verifier_Falsifiability"):
+        assert insights.METRIC_CONFIG[metric]["maturity"] == "OBSERVE"
+        assert metric not in insights.METRIC_RULES
+        assert metric not in insights._GRADED_METRIC_PILLARS
+
+
 def test_instrumentation_coverage_counts_absent_metrics_as_dark():
     """Audit S4 regression: a pillar with one live graded envelope out of a
     registry of many graded metrics must NOT report 100% coverage — absent-source

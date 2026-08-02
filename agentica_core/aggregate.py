@@ -11,6 +11,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
@@ -39,7 +40,8 @@ _KILL_CHAIN_EXTRA_ROOTS: list[Path] = [
     Path(__file__).resolve().parents[1],  # Governance/ (covers all session cwds)
 ]
 
-from . import harness_config, insights, reflexes, remediation, scouts, threshold_audit, verify_secrets
+from . import (harness_config, insights, reflexes, remediation, remediation_delta, scouts,
+               threshold_audit, verify_secrets)
 from .atomic import atomic_json_write
 from .adapter import PlatformUnavailable, list_platforms, resolve_platform
 from .telemetry import (SCHEMA_VERSION, default_events_path, iso_week, normalize_entry,
@@ -1153,6 +1155,10 @@ def _kill_chains_open(records: list[dict], repo_root: Path | None = None) -> dic
 _CALIBRATION_MIN_SAMPLES = 20  # fallback only; real bar is calibration_threshold.samples
 
 
+class CalibrationPolicyError(RuntimeError):
+    """A present governed calibration policy cannot be trusted."""
+
+
 def _calibration_threshold(coef_data: dict, coef_path: Path | None = None) -> dict:
     """The governed calibration bar, resolved config-first.
 
@@ -1173,11 +1179,30 @@ def _calibration_threshold(coef_data: dict, coef_path: Path | None = None) -> di
     if coef_path is not None:
         policy = coef_path.parent.parent / "config" / "calibration_policy.json"
         try:
-            block = json.loads(policy.read_text(encoding="utf-8")).get("calibration_threshold")
-            if isinstance(block, dict):
-                return block
-        except (OSError, ValueError):
-            pass
+            raw = policy.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            raw = None
+        except OSError as exc:
+            raise CalibrationPolicyError(f"calibration policy unreadable: {exc}") from exc
+        if raw is not None:
+            try:
+                payload = json.loads(raw)
+            except (TypeError, ValueError) as exc:
+                raise CalibrationPolicyError(f"calibration policy is invalid JSON: {exc}") from exc
+            if not isinstance(payload, dict):
+                raise CalibrationPolicyError("calibration policy root must be an object")
+            block = payload.get("calibration_threshold")
+            if not isinstance(block, dict):
+                raise CalibrationPolicyError(
+                    "calibration policy missing object `calibration_threshold`"
+                )
+            for key in ("samples", "weeks"):
+                value = block.get(key)
+                if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                    raise CalibrationPolicyError(
+                        f"calibration policy `{key}` must be a positive integer"
+                    )
+            return block
     block = coef_data.get("calibration_threshold")
     return block if isinstance(block, dict) else {}
 
@@ -1187,9 +1212,9 @@ def _calibration_min_samples(coef_data: dict, coef_path: Path | None = None) -> 
     (_calibrate_coefficients) uses, so the dashboard never hides a threshold that
     disagrees with the calculation. Falls back to the constant only when neither
     the config policy nor a legacy state block supplies one."""
+    threshold = _calibration_threshold(coef_data, coef_path)
     try:
-        return int(_calibration_threshold(coef_data, coef_path)
-                   .get("samples", _CALIBRATION_MIN_SAMPLES))
+        return int(threshold.get("samples", _CALIBRATION_MIN_SAMPLES))
     except (TypeError, ValueError):
         return _CALIBRATION_MIN_SAMPLES
 
@@ -1281,22 +1306,107 @@ def _estimated_agent_time_saved(records: list[dict], repo_root: Path | None = No
 
 
 def _self_correction_rate(records: list[dict]) -> dict:
-    """AUTO-005: Self-Correction Rate — the autonomic self-healing SUCCESS rate:
-    % of applied autonomous remediations that actually IMPROVED their target metric
-    (improved / applied), from remediation.efficacy() over this window. A reflex/
+    """AUTO-005: Self-Correction Rate — the autonomic self-healing IMPROVEMENT rate:
+    % of ALL autonomous-remediation attempts that actually IMPROVED their target metric
+    (improved / attempted), from remediation.efficacy() over this window. A reflex/
     sensei remediation fires on a degraded metric; this measures how often the metric
     then moved the right way, from a real before/after reading per event — so it is
-    calibrated from day one (no seed coefficient, unlike Est. Agent Hours Saved). A
-    window with zero applied remediations is a data gap (nothing to rate), never a
+    calibrated from day one (no seed coefficient, unlike Est. Agent Hours Saved).
+
+    2026-08-01 (metric-gap remediation, phase A1): sources `improvement_rate`
+    (improved/attempted), not the retired `success_rate` (improved/applied). `applied`
+    only counts attempts that got a judged before/after bracket — most attempts never
+    do — so success_rate silently dropped the majority of no-op/unmeasured runs from
+    its denominator, turning a single-digit real improvement rate into a ~52% headline.
+    A window with zero attempted remediations is a data gap (nothing to rate), never a
     fabricated 0%."""
     try:
         eff = remediation.efficacy(records=records)
-        applied = eff.get("applied", 0) or 0
-        rate = eff.get("success_rate")
-        if not applied or rate is None:
+        attempted = eff.get("attempted", 0) or 0
+        rate = eff.get("improvement_rate")
+        if not attempted or rate is None:
             return {"val": None, "data_gap": True, "calibrated": True}
         return {"val": rate, "calibrated": True,
-                "detail": f"{eff.get('improved', 0)}/{applied} remediations improved their metric"}
+                "detail": f"{eff.get('improved', 0)}/{attempted} remediation attempts improved their metric"}
+    except Exception as e:
+        return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
+
+
+def _mitigation_route_validity(records: list[dict]) -> dict:  # noqa: ARG001
+    """Mitigation_Route_Validity (2026-08-01, metric-gap remediation, phase D1): %
+    of this codebase's full metric REGISTRY (every row the dashboard emits, graded
+    or not) whose mitigation route is real and not known-broken. A metric counts
+    as VALID when it has both a METRIC_RULES entry (a direction to judge it by)
+    and a REMEDIATION entry (a skill/command) whose resolved kind is NOT
+    `mis_route` (insights.remediation_kind's explicit DO-NOT-USE marker, e.g.
+    Boundary_Violations -> /guard, which can't fix existing violations). A metric
+    with no rule or no route at all (an informational counter, or a compound
+    AUTO-tier reducer like Self_Correction_Rate that no single skill remediates)
+    is INVALID here -- it structurally has no route to validate, which is exactly
+    what this metric surfaces: not every tracked number has an owner for fixing
+    it. Pure computation over the static registry; no new collection, `records`
+    unused. OBSERVATIONAL/informational (no METRIC_CONFIG entry, like its sibling
+    Self_Correction_Rate) -- this metric describes the registry's own wiring
+    health and isn't itself a thing any skill remediates."""
+    total = len(REGISTRY)
+    if not total:
+        return {"val": None, "data_gap": True, "calibrated": True}
+    valid = 0
+    for _pillar, _group, key, _fn, _tier, _is_pct, _is_cnt in REGISTRY:
+        cfg = insights.METRIC_CONFIG.get(key, {})
+        rem = insights.REMEDIATION.get(key)
+        rule = insights.METRIC_RULES.get(key)
+        if not rule or not rem:
+            continue
+        kind = insights.remediation_kind(
+            rem["command"], readonly=cfg.get("readonly", False),
+            auto_remediable=cfg.get("auto_remediable"), explicit_kind=cfg.get("kind"))
+        if kind != "mis_route":
+            valid += 1
+    return {"val": round(100 * valid / total, 1), "calibrated": True,
+            "detail": f"{valid}/{total} registry metrics have a real, non-mis-routed remediation path"}
+
+
+def _remediation_delta(records: list[dict]) -> dict:  # noqa: ARG001
+    """Remediation_Delta (2026-08-01, metric-gap remediation, phase B2): magnitude
+    companion to Self_Correction_Rate's yes/no judgment. val = the overall median
+    delta (median(3 post-firing) - median(3 pre-firing) history values, sign-
+    normalized by dir) across every skill's attempts this window, from
+    remediation_delta.compute(). A window with no attempts scored on both sides yet
+    is a data gap (nothing to rate), never a fabricated 0. OBSERVATIONAL — see
+    insights.METRIC_CONFIG["Remediation_Delta"]."""
+    try:
+        d = remediation_delta.compute()
+        val = d.get("overall")
+        pending = d.get("pending", 0)
+        if val is None:
+            return {"val": None, "data_gap": True, "calibrated": True,
+                    "detail": f"{pending} attempt(s) pending — fewer than 3 real history values on one side"}
+        return {"val": val, "calibrated": True,
+                "detail": f"median delta across {len(d.get('by_skill', {}))} skill(s); {pending} pending"}
+    except Exception as e:
+        return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
+
+
+def _verifier_falsifiability(records: list[dict]) -> dict:  # noqa: ARG001
+    """Verifier_Falsifiability (2026-08-01, metric-gap remediation, phase C2): % of
+    registered falsifiability checks (Order Samurai/execution/verify_falsifiability.py)
+    proven to fail on a known-bad fixture AND pass on a known-clean one over this
+    session's process lifetime. A verifier that never sees a deliberately-bad input
+    can silently CLEAN forever -- this closes exactly that gap. `records` is ignored
+    (this reads fixture/script state, not telemetry). OBSERVATIONAL: see
+    insights.METRIC_CONFIG["Verifier_Falsifiability"]."""
+    try:
+        if str(_ORDER_SAMURAI_ROOT) not in sys.path:
+            sys.path.insert(0, str(_ORDER_SAMURAI_ROOT))
+        from execution.verify_falsifiability import run_falsifiability
+        r = run_falsifiability()
+        total = r.get("total", 0) or 0
+        falsifiable = r.get("falsifiable", 0)
+        if not total:
+            return {"val": None, "data_gap": True, "calibrated": True}
+        return {"val": round(100 * falsifiable / total, 1), "calibrated": True,
+                "detail": f"{falsifiable}/{total} checks proven falsifiable"}
     except Exception as e:
         return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
 
@@ -1973,6 +2083,8 @@ REGISTRY: list[tuple[str, str, str, Callable | None, str, bool, bool]] = [
     ("sword", "Governance", "Kill_Chains_Open", _kill_chains_open, "AUTO", False, True),
     ("bow", "Activity", "Estimated_Agent_Time_Saved", _estimated_agent_time_saved, "AUTO", False, False),
     ("bow", "Autonomic", "Self_Correction_Rate", _self_correction_rate, "AUTO", True, False),
+    ("bow", "Autonomic", "Remediation_Delta", _remediation_delta, "AUTO", False, False),
+    ("bow", "Autonomic", "Mitigation_Route_Validity", _mitigation_route_validity, "AUTO", True, False),
     ("bow", "Autonomic", "Mechanism_Liveness", _mechanism_liveness, "AUTO", False, True),
     # AUTO-017: Lesson Graduation Rate — real skill-lesson ledger
     # (~/.claude/data/skill_improve_queue.jsonl) vs. proven-effective graduation
@@ -1984,6 +2096,7 @@ REGISTRY: list[tuple[str, str, str, Callable | None, str, bool, bool]] = [
     # Arts hero (estimate by design — real counts x seed coefficients, see reducer)
     ("arts", "Craft", "Estimated_Human_Time_Saved", _estimated_human_time_saved, "AUTO", False, False),
     ("sword", "Governance", "Pending_Chain_Proposals", _pending_chain_proposals, "AUTO", False, True),
+    ("sword", "Governance", "Verifier_Falsifiability", _verifier_falsifiability, "AUTO", True, False),
 ]
 
 
@@ -2144,8 +2257,26 @@ def build_pillars(records: list[dict], *, verifier_results: list[dict] | None = 
         # Sword additions
         if "open_cves" in s:
             _set(pillars, "sword", "Vulnerability", "Open_CVEs", _env(s["open_cves"], "AUTO", is_count=True))
+        elif s.get("dependency_scanner_failures", 0):
+            _set(
+                pillars, "sword", "Vulnerability", "Open_CVEs",
+                _env(
+                    {"val": None, "data_gap": True,
+                     "detail": "Dependency vulnerability scan incomplete; zero is not established."},
+                    "SIMULATED", is_count=True, simulated=True,
+                ),
+            )
         if "deprecated_deps" in s:
             _set(pillars, "sword", "Supply Chain", "Deprecated_Deps", _env(s["deprecated_deps"], "AUTO", is_count=True))
+        elif s.get("dependency_scanner_failures", 0):
+            _set(
+                pillars, "sword", "Supply Chain", "Deprecated_Deps",
+                _env(
+                    {"val": None, "data_gap": True,
+                     "detail": "Dependency outdated scan incomplete; zero is not established."},
+                    "SIMULATED", is_count=True, simulated=True,
+                ),
+            )
         # Arts additions
         # Skills_Optimized + Skill_Promotions RETIRED 2026-07-19 (metric-surface
         # review Part E item 3): their JSONL sources are never written on this

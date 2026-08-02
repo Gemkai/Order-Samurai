@@ -30,10 +30,11 @@ from __future__ import annotations
 import functools
 import inspect
 import json
+import math
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,57 @@ class BlastRadius(str, Enum):
     REPO = "repo"               # edits within the Order Samurai repo
     SYSTEM = "system"           # writes outside the repo (~/.claude, etc.)
     IRREVERSIBLE = "irreversible"  # cost commitment, push, unreplicated delete
+
+
+# ── Phase D — role/authority ceiling resolution ────────────────────────────────
+#
+# D1 (docs/plans/2026-07-27-meta-harness-uplift.md:162): a package's role_binding
+# names an `authority_ceiling` on this SAME BlastRadius scale — no new taxonomy.
+# The scale is already an implicit narrow-to-wide ordering (state-only < repo <
+# outside-repo < unrecoverable); this section makes that ordering explicit and
+# exposes the one operation a binding needs: narrow a requested blast radius to
+# at most its ceiling, never past it.
+_BLAST_RANK: dict[BlastRadius, int] = {
+    BlastRadius.CONFINED: 0,
+    BlastRadius.REPO: 1,
+    BlastRadius.SYSTEM: 2,
+    BlastRadius.IRREVERSIBLE: 3,
+}
+
+# A role names the ceiling it intrinsically requests, before any binding narrows
+# it further. New roles are added here, never invented as ad-hoc strings at a
+# call site — bushido_engine stays the single authority model DRY calls for.
+ROLE_REQUESTED_CEILING: dict[str, BlastRadius] = {
+    "read-only-reviewer": BlastRadius.CONFINED,
+    "writable-implementer": BlastRadius.REPO,
+}
+
+
+def resolve_ceiling(requested: BlastRadius, ceiling: BlastRadius) -> BlastRadius:
+    """Narrow `requested` to at most `ceiling` on the BlastRadius scale.
+
+    Pure, total order comparison — the tighter (lower-rank) of the two always
+    wins. A role_binding's `authority_ceiling` can only ever narrow what a
+    package asked for; it can never grant more than it declares. E.g.
+    resolve_ceiling(REPO, CONFINED) -> CONFINED, resolve_ceiling(CONFINED, REPO)
+    -> CONFINED (already narrower than the ceiling, so untouched).
+    """
+    return requested if _BLAST_RANK[requested] <= _BLAST_RANK[ceiling] else ceiling
+
+
+def resolve_role_binding(role: str, authority_ceiling: BlastRadius) -> BlastRadius:
+    """The entry point a `role_binding` entry (`{package@version, role,
+    authority_ceiling}`) resolves through to get its EFFECTIVE blast radius.
+
+    `role` looks up its intrinsic requested ceiling in ROLE_REQUESTED_CEILING;
+    an unrecognized role defaults to requesting REPO — matching
+    skill_to_work_item's existing "unknown -> REPO" default. That default is
+    safe specifically because resolve_ceiling only ever narrows: a wrong REPO
+    guess for an unknown role can still never be granted more than
+    `authority_ceiling` allows.
+    """
+    requested = ROLE_REQUESTED_CEILING.get(role, BlastRadius.REPO)
+    return resolve_ceiling(requested, authority_ceiling)
 
 
 # ── Work item ─────────────────────────────────────────────────────────────────
@@ -132,23 +184,40 @@ def compute_tier(work_item: WorkItem, ronin_mode: bool = False) -> Tier:
 # ── Hard limits (runtime state — budget, etc.) ────────────────────────────────
 
 def _over_daily_budget(repo_root: Path) -> bool:
-    """Read state/budget_ledger.json; fail open (False) on any error.
+    """Read state/budget_ledger.json, failing closed on invalid control data.
 
-    Compares ledger.date to today (UTC). Different date → not over (new day).
+    A missing file is a legitimate first-run state and uses the historical default
+    (not over budget). Once the file exists, unreadable/malformed/non-finite values
+    cannot disable the hard limit: they conservatively report over budget until an
+    operator repairs the ledger. A valid different date still means a fresh day.
     """
+    ledger_path = Path(repo_root) / "state" / "budget_ledger.json"
     try:
-        ledger_path = Path(repo_root) / "state" / "budget_ledger.json"
         d = json.loads(ledger_path.read_text(encoding="utf-8"))
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        if d.get("date") != today:
+    except FileNotFoundError:
+        return False
+    except Exception:
+        return True
+
+    try:
+        if not isinstance(d, dict):
+            return True
+        raw_date = d.get("date")
+        if not isinstance(raw_date, str):
+            return True
+        ledger_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+        today = datetime.now(timezone.utc).date()
+        if ledger_date != today:
             return False
         spent = float(d.get("spent_usd", 0) or 0)
         # `or` must not collapse an explicit 0 (a budget freeze) into the default.
         raw_limit = d.get("daily_limit_usd")
         limit = 5.0 if raw_limit in (None, "") else float(raw_limit)
+        if not math.isfinite(spent) or not math.isfinite(limit) or spent < 0 or limit < 0:
+            return True
         return spent >= limit
     except Exception:
-        return False
+        return True
 
 
 def _is_hard_limit(work_item: WorkItem, repo_root: Path | None = None) -> bool:
@@ -485,6 +554,60 @@ def mark_complete(queue_id: str, repo_root: Path, failed: bool = False) -> bool:
     return False
 
 
+@_under_queue_lock
+def reconcile_stale_executing(
+    repo_root: Path,
+    *,
+    max_age_hours: float = 2.0,
+    now: datetime | None = None,
+) -> int:
+    """Fail expired execution leases so crashes cannot strand approvals forever.
+
+    ``executing`` is a lease, not a terminal state. The TypeScript engine marks
+    completion in its terminal callback, but a process crash/restart can skip
+    that callback. Reconciliation is idempotent and deliberately marks stale
+    rows ``failed`` rather than re-queueing them: replaying an unknown partially
+    executed repo mutation would be unsafe without fresh human review.
+    """
+    if max_age_hours <= 0:
+        raise ValueError("max_age_hours must be positive")
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    cutoff = now - timedelta(hours=max_age_hours)
+
+    queue_path = Path(repo_root) / "state" / "hitl_queue.json"
+    data = _load_queue(repo_root)
+    items = data.get("items", [])
+    if not isinstance(items, list):
+        return 0
+
+    reconciled = 0
+    for item in items:
+        if not isinstance(item, dict) or item.get("status") != "executing":
+            continue
+        raw = item.get("executing_at")
+        started: datetime | None = None
+        if isinstance(raw, str):
+            try:
+                started = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                if started.tzinfo is None:
+                    started = started.replace(tzinfo=timezone.utc)
+            except ValueError:
+                started = None
+        if started is not None and started > cutoff:
+            continue
+        item["status"] = "failed"
+        item["completed_at"] = now.isoformat()
+        item["failure_reason"] = "execution_lease_expired"
+        reconciled += 1
+
+    if reconciled:
+        data["updated_at"] = now.isoformat()
+        _atomic_write_json(queue_path, data)
+    return reconciled
+
+
 _REVIEW_ACTIONS = {"approve", "reject", "expire"}
 
 
@@ -625,6 +748,17 @@ def decide(
     """
     repo_root = Path(repo_root)
 
+    # Repair crash-stranded executions before looking for a reusable approval.
+    # Environment ownership makes the lease tunable without changing policy
+    # code; malformed values fall back to the conservative two-hour default.
+    try:
+        lease_hours = float(os.environ.get("HITL_EXECUTION_LEASE_HOURS", "2"))
+        if lease_hours <= 0:
+            raise ValueError
+    except ValueError:
+        lease_hours = 2.0
+    reconcile_stale_executing(repo_root, max_age_hours=lease_hours)
+
     # Step 1: hard limits (R2: always first, even before approval consume)
     if _is_hard_limit(work_item, repo_root):
         _emit_decision(work_item, Tier.HARD_STOP, repo_root)
@@ -663,7 +797,11 @@ __all__ = [
     "decide",
     "enqueue_hitl",
     "mark_complete",
+    "reconcile_stale_executing",
     "resolve_ronin_mode",
     "load_skill_metadata",
     "skill_to_work_item",
+    "resolve_ceiling",
+    "resolve_role_binding",
+    "ROLE_REQUESTED_CEILING",
 ]

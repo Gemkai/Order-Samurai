@@ -10,18 +10,22 @@ policy file). All filesystem access is injected — no test ever touches the rea
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from bin.policy_enforcement_audit import (  # type: ignore[import-not-found]
+    _real_policy_files,
     classify_reader,
     run_audit,
     suggest_fix,
 )
+import bin.policy_enforcement_audit as policy_audit  # type: ignore[import-not-found]
 
 FROZEN_TS = "2026-06-15T00:00:00+00:00"
 
@@ -51,6 +55,13 @@ _UNKNOWN_POLICY = {
     "path": "/fake/.claude/data/custom_rules.json",
     "policy_type": "custom_rules",
     "keys": ["rule_set"],
+}
+
+_INVALID_POLICY = {
+    "path": "/fake/.claude/data/broken_rules.json",
+    "policy_type": "broken_rules",
+    "keys": [],
+    "load_error": "JSONDecodeError: invalid JSON",
 }
 
 # Reader record factories
@@ -96,6 +107,10 @@ class ClassifyReaderTests(unittest.TestCase):
 
     def test_classifies_sys_exit_nonzero_as_enforcer(self) -> None:
         code = "if bad:\n    sys.exit(2)"
+        self.assertEqual(classify_reader(code), "ENFORCER")
+
+    def test_classifies_explicit_policy_enforcer_owner_as_enforcer(self) -> None:
+        code = 'POLICY_ENFORCER = "protected_asset_gate.py"'
         self.assertEqual(classify_reader(code), "ENFORCER")
 
     def test_classifies_raise_with_policy_intent_as_enforcer(self) -> None:
@@ -229,7 +244,17 @@ class RunAuditTests(unittest.TestCase):
         self.assertEqual(report["counts"]["enforced"], 1)
         self.assertEqual(report["counts"]["unenforced"], 1)
         self.assertEqual(report["counts"]["not_read"], 1)
+        self.assertEqual(report["counts"]["invalid"], 0)
         self.assertEqual(report["policies_scanned"], 3)
+
+    def test_invalid_policy_is_counted_as_a_breach_and_needs_review(self) -> None:
+        report = _run([_INVALID_POLICY], {})
+        finding = report["findings"][0]
+        self.assertEqual(finding["verdict"], "INVALID_POLICY")
+        self.assertEqual(report["counts"]["invalid"], 1)
+        self.assertTrue(report["breach_confirmed"])
+        self.assertEqual(report["verdict"], "breach_confirmed")
+        self.assertIn(_INVALID_POLICY["path"], report["needs_review"])
 
     def test_fix_suggestion_present_for_unenforced(self) -> None:
         report = _run(
@@ -263,7 +288,34 @@ class RunAuditTests(unittest.TestCase):
         report = _run([], {})
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["policies_scanned"], 0)
-        self.assertEqual(report["counts"], {"enforced": 0, "unenforced": 0, "not_read": 0})
+        self.assertEqual(report["counts"], {
+            "enforced": 0, "unenforced": 0, "not_read": 0, "invalid": 0,
+        })
+        self.assertFalse(report["breach_confirmed"])
+        self.assertFalse(report["calibrated"])
+        self.assertEqual(report["verdict"], "uncalibrated")
+
+    def test_real_scanner_keeps_malformed_policy_visible(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            policy = Path(td) / "broken_rules.json"
+            policy.write_text("{not json", encoding="utf-8")
+            with patch.object(policy_audit, "POLICY_GLOBS", [str(policy)]):
+                rows = _real_policy_files()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["path"], str(policy))
+        self.assertIn("load_error", rows[0])
+
+    def test_real_scanner_excludes_generated_measurement_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "allowlist_drift.json").write_text("{}", encoding="utf-8")
+            (root / "config_integrity_baseline.json").write_text("{}", encoding="utf-8")
+            policy = root / "runtime_rules.json"
+            policy.write_text('{"rules": []}', encoding="utf-8")
+            with patch.object(policy_audit, "POLICY_GLOBS", [str(root / "*.json")]):
+                rows = _real_policy_files()
+
+        self.assertEqual([row["path"] for row in rows], [str(policy)])
 
 
 # ---------------------------------------------------------------------------

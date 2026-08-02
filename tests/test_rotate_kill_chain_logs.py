@@ -102,6 +102,20 @@ class RotateKillChainLogsTests(unittest.TestCase):
         summary = self._rotate(self.sandbox / "missing.jsonl")
         self.assertIn("absent", summary)
 
+    def test_naive_timestamp_row_does_not_crash_rotation(self) -> None:
+        # A restored/legacy row can carry a tz-naive "ts" (no Z/offset), e.g.
+        # {"ts": "2026-01-01T00:00:00"}. _row_ts parses it with
+        # datetime.fromisoformat and never normalizes it to UTC like every
+        # sibling timestamp parser in this codebase does, so comparing it
+        # against the aware `now` in _cutoff_index raises TypeError and kills
+        # the whole nightly rotation job instead of degrading gracefully.
+        naive_row = json.dumps({"ts": "2026-01-01T00:00:00", "event_type": "test",
+                                "confidence": 0.5, "n": 0}) + "\n"
+        fresh = [row(NOW - timedelta(days=1), i + 1) for i in range(2)]
+        path = self._write("kill_chain_events.jsonl", [naive_row] + fresh)
+        summary = self._rotate(path, max_lines=1, keep_lines=1)
+        self.assertIn("archived", summary)
+
 
 if __name__ == "__main__":
     unittest.main()

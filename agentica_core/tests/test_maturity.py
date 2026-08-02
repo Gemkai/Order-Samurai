@@ -47,6 +47,26 @@ def test_unknown_metric_returns_legacy_apply():
     assert out["mechanism_status"] == m.MECH_NONE
 
 
+def test_present_malformed_efficacy_fails_closed(tmp_path):
+    path = tmp_path / "skill_efficacy.json"
+    path.write_text("{not-json", encoding="utf-8")
+    efficacy = m._load_skill_efficacy(path)
+    out = m.resolve_maturity("X_Metric", metric_config=_metric("foo"), efficacy=efficacy)
+    assert out == {
+        "maturity": m.OBSERVE,
+        "reflex_ready": False,
+        "mechanism_status": m.MECH_ERROR,
+        "demoted_by": "skill_efficacy_invalid",
+    }
+
+
+def test_missing_efficacy_file_keeps_fresh_install_seed(tmp_path):
+    efficacy = m._load_skill_efficacy(tmp_path / "absent.json")
+    out = m.resolve_maturity("X_Metric", metric_config=_metric("foo"), efficacy=efficacy)
+    assert out["maturity"] == m.APPLY
+    assert out["reflex_ready"] is True
+
+
 # ---------------------------------------------------------------------------
 # Grading paths
 # ---------------------------------------------------------------------------

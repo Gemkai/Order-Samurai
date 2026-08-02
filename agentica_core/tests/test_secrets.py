@@ -71,3 +71,15 @@ def test_control_plane_baseline_is_clean():
     # the real default roots (governance config/code + Data) must have no leaked secrets
     results = vs.run_checks()
     assert all(r["status"] != "FAIL" for r in results)
+
+
+def test_default_roots_cover_source_control_plane_without_runtime_logs():
+    roots = {str(path) for path in vs._default_roots()}
+    governance = str(vs._THIS.parents[1])
+    assert f"{governance}/agentica_core" in roots
+    assert f"{governance}/api/src" in roots
+    assert f"{governance}/dashboard-ui/src" in roots
+    assert f"{governance}/Order Samurai/bin" in roots
+    assert f"{governance}/Order Samurai/config" in roots
+    assert f"{governance}/Order Samurai/execution" in roots
+    assert f"{governance}/Order Samurai/state/logs" not in roots

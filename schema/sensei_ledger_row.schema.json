@@ -63,6 +63,11 @@
       "description": "True when the row needs human review: SUSPECT verdicts, and any reflex whose rival could not run even on the fallback model.",
       "type": "boolean"
     },
+    "rival_harness": {
+      "description": "C3 (docs/plans/2026-07-27-meta-harness-uplift.md): which harness produced (or last attempted) rival_verdict. gemini is the bound default; claude appears both as the pre-C3 harness on older rows and as the live fallback whenever gemini is unavailable. Optional and null-able: absent on every row written before C3, and null when no rival ran at all (real:false findings never spawn one) — distinct from a rival that ran and failed, which still names the harness that failed.",
+      "type": ["string", "null"],
+      "enum": ["claude", "gemini", null]
+    },
     "detail": {
       "description": "Optional operator note. Present on 2 of the 10 real rows.",
       "type": "string"

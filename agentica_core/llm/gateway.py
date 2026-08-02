@@ -60,6 +60,30 @@ OLLAMA_URL = os.getenv("OLLAMA_HOST", "http://localhost:11434") + "/api/chat"
 LOCAL_MODEL = os.getenv("LOCAL_MODEL_NAME", "gemma4:4b")
 # Single home for the local-timeout rule: local_guards.LOCAL_TIMEOUT_SEC.
 OLLAMA_TIMEOUT_SEC = LOCAL_TIMEOUT_SEC  # re-export for existing importers/tests
+CLOUD_TIMEOUT_SEC = 60
+
+# Canonical task-tier roster used by the lightweight scout/mechanism facade in
+# agentica_core.model_router. Provider execution lives in this module only; the
+# facade preserves the stable public import without maintaining a second HTTP
+# stack, retry policy, or model roster.
+ROUTED_MODELS: Dict[str, Dict[str, str]] = {
+    "claude": {
+        "classification": "claude-haiku-4-5-20251001",
+        "analysis": "claude-sonnet-4-6",
+    },
+    "gemini": {
+        "classification": "gemini-2.5-flash",
+        "analysis": "gemini-2.5-flash",
+    },
+    "ollama": {
+        "classification": "gemma4:4b",
+        "analysis": "qwen3.6:35b",
+    },
+    "openrouter": {
+        "classification": "meta-llama/llama-3.3-70b-instruct:free",
+        "analysis": "meta-llama/llama-3.3-70b-instruct:free",
+    },
+}
 
 FREE_CHAIN = [
     "google/gemini-2.0-flash-exp:free",
@@ -556,7 +580,7 @@ class LLMGateway:
                         ],
                         "generationConfig": {
                             "temperature": temperature,
-                            "maxOutputTokens": 4096,
+                            "maxOutputTokens": int(kwargs.get("max_tokens") or 4096),
                         },
                     }
                     if system_instruction:
@@ -645,6 +669,7 @@ class LLMGateway:
             "model": model,
             "messages": messages,
             "temperature": temperature,
+            "max_tokens": int(kwargs.get("max_tokens") or 4096),
         }
         if kwargs.get("response_schema"):
             payload["response_format"] = {"type": "json_object"}
@@ -724,6 +749,7 @@ class LLMGateway:
                             "messages": messages,
                             "temperature": temperature,
                             "top_p": 1,
+                            "max_tokens": int(kwargs.get("max_tokens") or 4096),
                         }
                     ),
                     timeout=60,
@@ -786,7 +812,7 @@ class LLMGateway:
         }
         payload = {
             "model": actual_model,
-            "max_tokens": 4096,
+            "max_tokens": int(kwargs.get("max_tokens") or 4096),
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temperature,
         }
@@ -804,6 +830,8 @@ class LLMGateway:
                 response.raise_for_status()
                 response_json = response.json()
                 text = response_json["content"][0]["text"]
+                if not text:
+                    raise RuntimeError("Anthropic returned an empty content payload.")
                 self._log_langfuse_generation(
                     name="anthropic-direct-call",
                     prompt=prompt,
@@ -923,6 +951,71 @@ class LLMGateway:
 
 
 gateway = LLMGateway()
+
+
+def call_routed_llm(
+    system: str,
+    user: str,
+    task: str = "classification",
+    max_tokens: int = 2048,
+    temperature: float = 0.0,
+    local_only: bool = False,
+    brain: bool = False,
+) -> Optional[str]:
+    """Stable text-router contract for scouts and stateless model callers.
+
+    This replaces the second provider implementation formerly housed in
+    ``agentica_core.model_router``. That module is now only a compatibility
+    facade; all HTTP, timeout, retry, empty-output, and model-selection behavior
+    is owned here.
+
+    ``local_only`` is fail closed: the chain contains exactly one local model,
+    and any failure returns ``None``. Cloud mode retains the quality-first order
+    Claude -> Gemini -> local Ollama -> OpenRouter, skipping providers that have
+    no configured credential rather than making doomed network calls.
+    """
+    if task not in ("classification", "analysis"):
+        return None
+    if brain:
+        try:
+            # Brain³ is differentiated/private context and is deliberately not
+            # part of the public export's static import closure. Resolve it only
+            # when requested so the public gateway remains self-contained.
+            brain_module = __import__(
+                "agentica_core.brain_context", fromlist=["load_brain_context"]
+            )
+            preamble = brain_module.load_brain_context()
+        except Exception:
+            preamble = ""
+        if preamble:
+            system = f"{preamble}\n\n---\n\n{system}"
+
+    routed = LLMGateway()
+    local_model = ROUTED_MODELS["ollama"][task]
+    if local_only:
+        chain = [local_model]
+    else:
+        chain = []
+        if routed.anthropic_key:
+            chain.append(f"anthropic/{ROUTED_MODELS['claude'][task]}")
+        if routed.gemini_keys:
+            chain.append(ROUTED_MODELS["gemini"][task])
+        chain.append(local_model)
+        if routed.openrouter_key:
+            chain.append(ROUTED_MODELS["openrouter"][task])
+
+    try:
+        result = routed.generate_text(
+            prompt=user,
+            system_instruction=system,
+            temperature=temperature,
+            model_chain=chain,
+            local_only=local_only,
+            max_tokens=max_tokens,
+        )
+        return result if isinstance(result, str) and result.strip() else None
+    except Exception:
+        return None
 
 
 def generate_text(

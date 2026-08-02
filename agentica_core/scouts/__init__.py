@@ -45,6 +45,39 @@ def _count_autonomic_events(event_name: str) -> int | None:
     return count
 
 
+def _dependency_scanner_ok(dep: dict, scanner: str) -> bool:
+    """Require an explicit healthy verdict; absent legacy health is unknown."""
+    health = dep.get("scanner_ok")
+    return isinstance(health, dict) and health.get(scanner) is True
+
+
+def _pip_cve_count(rows: object) -> int:
+    if not isinstance(rows, list):
+        return 0
+    total = 0
+    for row in rows:
+        if isinstance(row, dict):
+            count = row.get("vuln_count", 1)
+            total += count if isinstance(count, int) and not isinstance(count, bool) else 1
+        else:
+            # Legacy fixtures/artifacts represented one finding as one scalar.
+            total += 1
+    return total
+
+
+def _npm_cve_count(rows: object) -> int:
+    if not isinstance(rows, list):
+        return 0
+    total = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        count = row.get("total", 0)
+        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+            total += count
+    return total
+
+
 def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
     """Read the security telemetry a platform's hooks ALREADY emit (under <runtime_root>/data).
     Reads existing logs — does not touch the security hooks. Missing files are simply omitted."""
@@ -73,15 +106,22 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
 
     dep = _read_json(data / "dependency_audit.json")
     if isinstance(dep, dict):
-        cves = dep.get("pip_cves") or []
-        n = len(cves) if isinstance(cves, list) else 0
-        npm = dep.get("npm_audits")
-        if isinstance(npm, list):
-            n += sum(a.get("total", 0) for a in npm if isinstance(a, dict))
-        elif isinstance(npm, dict):
-            n += sum(len(v) for v in npm.values() if isinstance(v, list))
-        out["open_cves"] = n
-        out["deprecated_deps"] = len(dep.get("pip_outdated") or [])
+        expected = ("pip", "pip_audit", "npm")
+        failed = sum(not _dependency_scanner_ok(dep, scanner) for scanner in expected)
+        out["dependency_scanner_failures"] = failed
+
+        # Completeness is required before publishing an exact zero or count.
+        # A partial lower bound would still understate risk and look authoritative.
+        if (_dependency_scanner_ok(dep, "pip_audit")
+                and _dependency_scanner_ok(dep, "npm")):
+            out["open_cves"] = (
+                _pip_cve_count(dep.get("pip_cves"))
+                + _npm_cve_count(dep.get("npm_audits"))
+            )
+        if _dependency_scanner_ok(dep, "pip"):
+            outdated = dep.get("pip_outdated")
+            if isinstance(outdated, list):
+                out["deprecated_deps"] = len(outdated)
 
     # canary_failures RETIRED 2026-07-11 (C/D/F plan step 5): behavioral_canary.py
     # was never scheduled on this host, so canary_status.json is permanently absent —
