@@ -12,12 +12,11 @@ at engine start and from a validation worktree.
 Usage:  python3 bin/render_surface_env.py [--check]
         --check exits 1 if the rendered file is stale (for CI/doctor), writing nothing.
 """
-from __future__ import annotations
-
 import sys
 from pathlib import Path
 
-_GOV_ROOT = Path(__file__).resolve().parents[2]
+_THIS = Path(__file__).resolve()
+_GOV_ROOT = next((p for p in [_THIS] + list(_THIS.parents) if (p / "agentica_core").is_dir()), _THIS.parents[1])
 if str(_GOV_ROOT) not in sys.path:
     sys.path.insert(0, str(_GOV_ROOT))
 

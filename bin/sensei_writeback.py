@@ -34,6 +34,10 @@ BACKLOG_LOCK = BACKLOG.with_name(BACKLOG.name + ".lock")
 LOCK_WAIT_S = float(os.environ.get("SENSEI_LOCK_WAIT_S", "10"))
 LOCK_STALE_S = float(os.environ.get("SENSEI_LOCK_STALE_S", "300"))
 
+if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+    print("Usage: python3 bin/sensei_writeback.py [JSON_FILE]")
+    sys.exit(0)
+
 data = json.load(open(sys.argv[1])) if len(sys.argv) > 1 else json.load(sys.stdin)
 posts = data.get("post_verdicts", []) or []
 backlog = data.get("backlog_entries", []) or []

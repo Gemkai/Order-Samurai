@@ -26,10 +26,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 _THIS = Path(__file__).resolve()
-_ROOT = _THIS.parents[1]        # Order Samurai
-_GOV = _ROOT.parent             # Governance
-if str(_GOV) not in sys.path:
-    sys.path.insert(0, str(_GOV))
+_ROOT = next((p for p in [_THIS] + list(_THIS.parents) if (p / "agentica_core").is_dir()), _THIS.parents[1])
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from agentica_core.emit import build_record  # noqa: E402  — canonical record shape, reused not reimplemented
 from agentica_core.aggregate import (  # noqa: E402  — SAME reducers the live dashboard grades Brush with
