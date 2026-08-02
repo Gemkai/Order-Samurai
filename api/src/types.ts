@@ -44,6 +44,22 @@ export interface VerdictMapEntry extends VerdictRecord {
   expiresAt: number  // Date.now() + 24 * 60 * 60 * 1000
 }
 
+export interface RepoAuditRecord {
+  id: string
+  repoUrl: string
+  repoName: string
+  status: 'pending' | 'cloning' | 'auditing' | 'completed' | 'failed'
+  timestamp: string
+  summary: {
+    critical: number
+    high: number
+    medium: number
+    low: number
+  }
+  reportMarkdown?: string
+  error?: string
+}
+
 // WebSocket message types — Server → Client
 export type ServerMsg =
   | { type: 'state'; data: DojoState }
@@ -58,10 +74,13 @@ export type ServerMsg =
   | { type: 'auto_reflex_stuck'; metric: string; command: string; consecutiveNoImprovement: number }
   | { type: 'auto_reflex_pending'; metric: string; command: string; tier: string; windowMs: number; cancelKey: string }
   | { type: 'auto_reflex_skipped'; reflex_id: string; reason: string }
+  | { type: 'repo_audit_update'; record: RepoAuditRecord }
 
 // WebSocket message types — Client → Server
 export type ClientMsg =
   | { type: 'toggle'; pillar: PillarSlug }
   | { type: 'run'; pillar: PillarSlug }
   | { type: 'exec'; command: string; scope?: string }
+  | { type: 'audit_repo'; repoUrl: string }
   | { type: 'ping' }
+

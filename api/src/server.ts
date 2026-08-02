@@ -9,6 +9,8 @@ import path from 'path'
 import { DojoStateManager, PILLAR_SLUGS, ORDER_SAMURAI_ROOT, GOVERNANCE_ROOT, WID_PAYLOAD_PATH, VERDICT_RECORD_SCHEMA_PATH } from './state.js'
 import { AutoRemediationEngine } from './dojo.js'
 import { ReflexEngine, REFLEX_MAX_TURNS, checkWarnOnly, type ReflexEntry } from './reflex-engine.js'
+import { RepoAuditManager } from './repo-audit.js'
+import { isProEntitled } from './licensing.js'
 import type { PillarSlug, RoninStatus, ServerMsg, ClientMsg, DojoState, VerdictRecord } from './types.js'
 
 const PORT = 3001
@@ -245,6 +247,9 @@ const reflexEngine = new ReflexEngine(
   CLAUDE_BIN,
   (cmd: string) => spawnExecActive.has(cmd.trim()),
 )
+const repoAuditManager = new RepoAuditManager((record) =>
+  broadcast({ type: 'repo_audit_update', record })
+)
 
 // Boot side-effects (state watcher, auto-remediation, reflex watcher, periodic
 // refresh) are deferred until the port is bound — see boot() below. A second
@@ -480,6 +485,33 @@ app.get('/api/dojo/state', (_req, res) => {
   res.json(s)
 })
 
+app.get('/api/licensing', (_req, res) => {
+  res.json({ isPro: isProEntitled() })
+})
+
+app.get('/api/audit-repo', (_req, res) => {
+  res.json({ isPro: isProEntitled(), records: repoAuditManager.getAll() })
+})
+
+app.get('/api/audit-repo/:id', (req, res) => {
+  const record = repoAuditManager.getById(req.params['id'] ?? '')
+  if (!record) return res.status(404).json({ error: 'audit report not found' })
+  res.json(record)
+})
+
+app.post('/api/audit-repo', requireLocalTrusted, async (req, res) => {
+  const repoUrl = typeof req.body?.repoUrl === 'string' ? req.body.repoUrl : ''
+  if (!repoAuditManager.validateUrl(repoUrl)) {
+    return res.status(400).json({ error: 'Invalid repository URL format' })
+  }
+  try {
+    const record = await repoAuditManager.startAudit(repoUrl)
+    res.json(record)
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Failed to initiate audit' })
+  }
+})
+
 app.post('/api/ronin/toggle/:pillar', requireLocalTrusted, (req, res) => {
   const pillar = req.params['pillar'] as PillarSlug
   if (!PILLAR_SLUGS.includes(pillar)) return res.status(400).json({ error: 'unknown pillar' })
@@ -534,6 +566,8 @@ wss.on('connection', (ws) => {
         if (!engine.isRunning(msg.pillar)) engine.run(msg.pillar)
       } else if (msg.type === 'exec' && typeof msg.command === 'string' && msg.command.trim()) {
         spawnExec(msg.command, typeof msg.scope === 'string' && msg.scope.trim() ? msg.scope.trim() : undefined)
+      } else if (msg.type === 'audit_repo' && typeof msg.repoUrl === 'string') {
+        repoAuditManager.startAudit(msg.repoUrl).catch(() => {})
       }
       // 'ping' messages are silently ignored (keepalive only)
     } catch {

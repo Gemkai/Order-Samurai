@@ -201,3 +201,20 @@ export const PILLARS: PillarMeta[] = [
     headlineLabel: "Human Hours Saved",
     headlineDesc: "Developer review & QA hours saved by autonomous verifiers, auto-cleaning, and doc parity." },
 ]
+
+export interface RepoAuditRecord {
+  id: string
+  repoUrl: string
+  repoName: string
+  status: "pending" | "cloning" | "auditing" | "completed" | "failed"
+  timestamp: string
+  summary: {
+    critical: number
+    high: number
+    medium: number
+    low: number
+  }
+  reportMarkdown?: string
+  error?: string
+}
+

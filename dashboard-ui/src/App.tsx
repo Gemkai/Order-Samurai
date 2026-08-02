@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react"
 import { motion, AnimatePresence } from "motion/react"
-import { X, Terminal, Info, Zap } from "lucide-react"
-import { PILLARS, type PillarKey, type WIDPayload, type Reflex } from "@/types"
+import { X, Terminal, Info, Zap, Box } from "lucide-react"
+import { PILLARS, type PillarKey, type WIDPayload, type Reflex, type RepoAuditRecord } from "@/types"
 import logoImg from "@/assets/logo.png"
+import { mdToHtml } from "@/lib/md"
 import {
   loadPayload, liveSimCounts, METRIC_DOCS, metricLabel, type FlatMetric,
 } from "@/lib/data"
@@ -22,6 +23,7 @@ import { AsciiBackground } from "@/components/AsciiBackground"
 import { SidebarParticles } from "@/components/SidebarParticles"
 import { IconTorii, IconShuriken, IconKatana, IconFan, IconArmor, IconYinYang } from "@/components/SamuraiIcons"
 import { LandingPage } from "@/components/LandingPage"
+import { Ascii3DPlayground } from "@/components/Ascii3DPlayground"
 
 type GlyphKey = "overview" | "bow" | "sword" | "brush" | "arts" | "reports"
 function NavIcon({ k, size, color }: { k: GlyphKey; size: number; color?: string }) {
@@ -35,7 +37,7 @@ function NavIcon({ k, size, color }: { k: GlyphKey; size: number; color?: string
   return null
 }
 
-type View = "overview" | PillarKey | "reports"
+type View = "overview" | PillarKey | "reports" | "repo_audit"
 
 interface RubricRow {
   name: string
@@ -116,8 +118,337 @@ const DEMO_REPORTS = [
   }
 ]
 
-function Reports({ payload }: { payload: WIDPayload }) {
-  const [subTab, setSubTab] = useState<"logs" | "rubric">("logs")
+function RepoAuditSection({ lastRecord, onStartAudit }: { lastRecord?: RepoAuditRecord | null, onStartAudit?: (url: string) => void }) {
+  const [repoUrl, setRepoUrl] = useState("")
+  const [records, setRecords] = useState<RepoAuditRecord[]>([])
+  const [isPro, setIsPro] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [selectedRecord, setSelectedRecord] = useState<RepoAuditRecord | null>(null)
+
+  const fetchRecords = async () => {
+    try {
+      const res = await fetch('/api/audit-repo')
+      if (res.ok) {
+        const text = await res.text()
+        try {
+          const data = JSON.parse(text)
+          if (Array.isArray(data)) {
+            setRecords(data)
+          } else if (data && Array.isArray(data.records)) {
+            setRecords(data.records)
+            setIsPro(!!data.isPro)
+          }
+        } catch {
+          // ignore non-json
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchRecords()
+  }, [])
+
+  useEffect(() => {
+    if (lastRecord) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRecords((prev) => {
+        const idx = prev.findIndex((r) => r.id === lastRecord.id)
+        if (idx >= 0) {
+          const next = [...prev]
+          next[idx] = lastRecord
+          return next
+        }
+        return [lastRecord, ...prev]
+      })
+      if (lastRecord.status === 'completed' || lastRecord.status === 'failed') {
+        setLoading(false)
+      }
+    }
+  }, [lastRecord])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!repoUrl.trim()) return
+    setError(null)
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/audit-repo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoUrl: repoUrl.trim() }),
+      })
+      const text = await res.text()
+      let data: Record<string, unknown>
+      try { data = JSON.parse(text) as Record<string, unknown> } catch {
+        throw new Error(res.ok ? 'Unexpected response format' : `Server error (${res.status}): ${res.statusText}`)
+      }
+      if (!res.ok) {
+        throw new Error((data.error as string) || 'Failed to start repository audit')
+      }
+      const newRecord = data as unknown as RepoAuditRecord
+      setRecords((prev) => [newRecord, ...prev.filter(r => r.id !== newRecord.id)])
+      setRepoUrl("")
+      if (onStartAudit) onStartAudit(repoUrl.trim())
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error initiating audit')
+      setLoading(false)
+    }
+  }
+
+  // Separate report into Executive Summary (Free) and Detailed Findings (Pro)
+  const renderReportContent = (md: string) => {
+    const splitKey = "## Detailed Line Findings & Remediation Guidance"
+    const parts = md.split(splitKey)
+    const summaryMd = parts[0]
+    const detailsMd = parts.length > 1 ? splitKey + parts[1] : ""
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div dangerouslySetInnerHTML={{ __html: mdToHtml(summaryMd) }} />
+        {detailsMd && (
+          isPro ? (
+            <div dangerouslySetInnerHTML={{ __html: mdToHtml(detailsMd) }} />
+          ) : (
+            <div style={{ position: "relative", marginTop: 20, borderRadius: 14, overflow: "hidden" }}>
+              <div style={{ filter: "blur(5px)", opacity: 0.35, pointerEvents: "none", userSelect: "none" }}>
+                <div dangerouslySetInnerHTML={{ __html: mdToHtml(detailsMd) }} />
+              </div>
+              <div style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                background: "rgba(5,5,5,0.65)",
+                backdropFilter: "blur(4px)",
+                padding: 24,
+                textAlign: "center",
+              }}>
+                <div style={{ fontSize: 28 }}>🔒</div>
+                <div className="mono" style={{ fontSize: 13, letterSpacing: 2, color: "#facc15", fontWeight: 700 }}>
+                  DETAILED LINE FINDINGS & REMEDIATION GUIDANCE · PRO
+                </div>
+                <div className="mono" style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", maxWidth: 520, lineHeight: 1.6 }}>
+                  Executive AI Consensus summary is included in Free. Line-by-line defects and automated remediation guidance ship with Order Samurai Pro.
+                </div>
+              </div>
+            </div>
+          )
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="page-enter" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      {/* Input Banner */}
+      <div className="glass" style={{ borderRadius: 18, padding: 24, borderLeft: "3px solid var(--arts)", background: "rgba(255,255,255,0.015)", position: "relative", zIndex: 10 }}>
+        <h3 className="mono" style={{ margin: "0 0 8px", fontSize: "0.9rem", letterSpacing: 1.5, textTransform: "uppercase", color: "var(--foreground)" }}>
+          🛡️ Governed Public Repository Code Audit
+        </h3>
+        <p className="mono" style={{ margin: "0 0 16px", fontSize: "0.72rem", color: "var(--muted-foreground)", lineHeight: 1.6 }}>
+          Paste a public Git repository URL (e.g. <code>https://github.com/owner/repo.git</code>). Order Samurai will shallow-clone the repository into an isolated local sandbox, execute multi-model consensus security & secret scanning, and produce an audit report.
+        </p>
+
+        <form onSubmit={handleSubmit} style={{ display: "flex", gap: 12, alignItems: "center", position: "relative", zIndex: 12 }}>
+          <input
+            type="text"
+            className="mono"
+            placeholder="https://github.com/owner/repository.git"
+            value={repoUrl}
+            onChange={(e) => setRepoUrl(e.target.value)}
+            disabled={loading}
+            style={{
+              flex: 1,
+              padding: "10px 14px",
+              borderRadius: 8,
+              background: "rgba(0,0,0,0.4)",
+              border: "1px solid rgba(255,255,255,0.15)",
+              color: "#fff",
+              fontSize: "0.8rem",
+            }}
+          />
+          <button
+            type="submit"
+            disabled={loading || !repoUrl.trim()}
+            className="mono"
+            style={{
+              padding: "10px 20px",
+              borderRadius: 8,
+              background: loading ? "rgba(255,255,255,0.1)" : "var(--arts)",
+              color: "#000",
+              fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+              border: "none",
+              fontSize: "0.78rem",
+              letterSpacing: 1,
+              textTransform: "uppercase",
+              transition: "0.2s",
+            }}
+          >
+            {loading ? "Auditing Sandbox..." : "Start Governed Audit"}
+          </button>
+        </form>
+
+        {error && (
+          <div className="mono" style={{ marginTop: 12, color: "var(--sword)", fontSize: "0.75rem" }}>
+            ⚠️ {error}
+          </div>
+        )}
+      </div>
+
+      {/* Audit Table */}
+      <div className="glass" style={{ borderRadius: 18, padding: 24 }}>
+        <h3 className="mono" style={{ margin: "0 0 16px", fontSize: "0.85rem", letterSpacing: 1.5, textTransform: "uppercase", color: "var(--foreground)" }}>
+          Public Repository Audits Table
+        </h3>
+
+        {records.length === 0 ? (
+          <div className="mono" style={{ textAlign: "center", padding: 30, color: "var(--muted-foreground)", fontSize: "0.78rem" }}>
+            No repository audits executed yet. Copy in a public URL above to generate your first governed audit report.
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="mono" style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.75rem" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", textAlign: "left" }}>
+                  <th style={{ padding: "8px 12px", color: "var(--muted-foreground)" }}>Repository</th>
+                  <th style={{ padding: "8px 12px", color: "var(--muted-foreground)" }}>Date</th>
+                  <th style={{ padding: "8px 12px", color: "var(--muted-foreground)" }}>Status</th>
+                  <th style={{ padding: "8px 12px", color: "var(--muted-foreground)" }}>Findings (Crit / High / Med / Low)</th>
+                  <th style={{ padding: "8px 12px", color: "var(--muted-foreground)", textAlign: "right" }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.map((r) => {
+                  const statusColors: Record<string, string> = {
+                    completed: "#10b981",
+                    auditing: "#facc15",
+                    cloning: "#3b82f6",
+                    pending: "#94a3b8",
+                    failed: "#ef4444",
+                  }
+                  return (
+                    <tr key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                      <td style={{ padding: "10px 12px", color: "var(--foreground)", fontWeight: 600 }}>
+                        {r.repoName}
+                        <div style={{ fontSize: "0.65rem", color: "var(--muted-foreground)" }}>{r.repoUrl}</div>
+                      </td>
+                      <td style={{ padding: "10px 12px", color: "rgba(255,255,255,0.6)" }}>
+                        {new Date(r.timestamp).toLocaleString()}
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <span style={{
+                          padding: "2px 8px",
+                          borderRadius: 6,
+                          fontSize: "0.65rem",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          background: `${statusColors[r.status] || '#94a3b8'}22`,
+                          color: statusColors[r.status] || '#94a3b8',
+                          border: `1px solid ${statusColors[r.status] || '#94a3b8'}44`,
+                        }}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td style={{ padding: "10px 12px" }}>
+                        <div style={{ display: "flex", gap: 8, fontSize: "0.7rem" }}>
+                          <span style={{ color: r.summary.critical > 0 ? "#ef4444" : "rgba(255,255,255,0.4)" }}>🚨 {r.summary.critical}</span>
+                          <span style={{ color: r.summary.high > 0 ? "#f97316" : "rgba(255,255,255,0.4)" }}>⚠️ {r.summary.high}</span>
+                          <span style={{ color: r.summary.medium > 0 ? "#eab308" : "rgba(255,255,255,0.4)" }}>⚡ {r.summary.medium}</span>
+                          <span style={{ color: "rgba(255,255,255,0.4)" }}>ℹ️ {r.summary.low}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: "10px 12px", textAlign: "right" }}>
+                        {r.reportMarkdown ? (
+                          <button
+                            onClick={() => setSelectedRecord(r)}
+                            className="mono"
+                            style={{
+                              padding: "4px 10px",
+                              borderRadius: 6,
+                              background: "rgba(255,255,255,0.05)",
+                              border: "1px solid rgba(255,255,255,0.15)",
+                              color: "var(--arts)",
+                              cursor: "pointer",
+                              fontSize: "0.7rem",
+                            }}
+                          >
+                            View Report
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: "0.65rem", color: "var(--muted-foreground)" }}>
+                            {r.status === 'failed' ? r.error || 'Failed' : 'Processing...'}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Report Modal */}
+      {selectedRecord && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.75)",
+          backdropFilter: "blur(6px)",
+          zIndex: 999,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}>
+          <div className="glass report-md" style={{
+            width: "100%",
+            maxWidth: 850,
+            maxHeight: "85vh",
+            overflowY: "auto",
+            borderRadius: 18,
+            padding: 30,
+            background: "#0d0e12",
+            border: "1px solid rgba(255,255,255,0.15)",
+            position: "relative",
+          }}>
+            <button
+              onClick={() => setSelectedRecord(null)}
+              className="mono"
+              style={{
+                position: "absolute",
+                top: 16,
+                right: 20,
+                background: "transparent",
+                border: "none",
+                color: "#fff",
+                fontSize: "1.2rem",
+                cursor: "pointer",
+              }}
+            >
+              ✕
+            </button>
+            {renderReportContent(selectedRecord.reportMarkdown || "")}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Reports({ payload, dojoProps }: { payload: WIDPayload; dojoProps?: DojoProps }) {
+  const [subTab, setSubTab] = useState<"logs" | "rubric" | "repo_audit">("logs")
   const [activeIdx, setActiveIdx] = useState(0)
 
   const ACCENT: Record<string, string> = { "claude-code": "var(--brush)", antigravity: "var(--bow)", "codex-cli": "var(--arts)" }
@@ -157,10 +488,22 @@ function Reports({ payload }: { payload: WIDPayload }) {
               color: subTab === "rubric" ? "var(--arts)" : "rgba(255,255,255,0.45)", transition: "0.2s" }}>
             Scoring Rubric
           </button>
+          <button onClick={() => setSubTab("repo_audit")} className="mono"
+            style={{ padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontSize: "var(--text-caption)", letterSpacing: 1, textTransform: "uppercase",
+              background: subTab === "repo_audit" ? "rgba(255,255,255,0.05)" : "transparent",
+              border: `1px solid ${subTab === "repo_audit" ? "var(--arts)" : "rgba(255,255,255,0.06)"}`,
+              color: subTab === "repo_audit" ? "var(--arts)" : "rgba(255,255,255,0.45)", transition: "0.2s" }}>
+            Repo Code Audit
+          </button>
         </div>
       </div>
 
-      {subTab === "logs" ? (
+      {subTab === "repo_audit" ? (
+        <RepoAuditSection
+          lastRecord={dojoProps?.lastRepoAuditRecord}
+          onStartAudit={(url) => dojoProps?.startRepoAudit?.(url)}
+        />
+      ) : subTab === "logs" ? (
         (() => {
           const isDemo = typeof window !== "undefined" && (window.location.search.includes("demo") || window.location.hash.includes("demo") || window.location.pathname.includes("demo"))
           if (!isDemo && payload?.window?.records === 0) {
@@ -547,6 +890,7 @@ export default function App() {
   const [loadedAt, setLoadedAt] = useState<number | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [view, setView] = useState<View>("overview")
+  const [show3DPlayground, setShow3DPlayground] = useState(false)
   const [selected, setSelected] = useState<{ metric: FlatMetric; color: string } | null>(null)
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const dojoProps = useDojo()
@@ -637,6 +981,7 @@ export default function App() {
     { key: "overview", label: "Bushido Overview", glyph: "☯", accent: "var(--overview)" },
     ...PILLARS.map((p) => ({ key: p.key as View, label: p.label, glyph: p.glyph, accent: p.accent })),
     { key: "reports", label: "Reports", glyph: "📜", accent: "var(--arts)" },
+    { key: "repo_audit", label: "Repo Code Audit", glyph: "🛡️", accent: "var(--sword)" },
   ]
 
   const HARNESS_CONFIG: { key: string; label: string; unit: string; color: string }[] = [
@@ -693,10 +1038,25 @@ export default function App() {
                 border: `1px solid ${on ? `${p.accent}55` : "transparent"}`,
                 boxShadow: on ? `0 0 18px ${p.accent}30, inset 0 0 14px ${p.accent}0c` : "none",
               }}>
-              <NavIcon k={p.key as GlyphKey} size={18} /> {p.label}
+              <span style={{ fontSize: "1.1rem" }}>{p.glyph}</span>
+              <span>{p.label}</span>
             </button>
           )
         })}
+        <button
+          onClick={() => setShow3DPlayground(true)}
+          style={{
+            display: "flex", alignItems: "center", gap: 12, padding: "0.85rem 1rem", borderRadius: 16, cursor: "pointer",
+            textTransform: "uppercase", letterSpacing: 1.5, fontSize: "0.8rem", textAlign: "left", transition: "0.3s",
+            background: "rgba(56, 189, 248, 0.12)",
+            color: "#38bdf8",
+            border: "1px solid rgba(56, 189, 248, 0.4)",
+            boxShadow: "0 0 16px rgba(56, 189, 248, 0.15)",
+            marginTop: 4,
+          }}
+        >
+          <Box size={18} /> 3D Models Studio
+        </button>
         <div style={{ marginTop: "auto", fontSize: "0.65rem", color: "var(--muted-foreground)", lineHeight: 1.6,
           borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 14 }}>
           {reflexCrit > 0 && (
@@ -796,8 +1156,9 @@ export default function App() {
             transition={{ duration: 0.18, ease: "easeOut" }}
           >
             {view === "overview" && <Overview payload={payload} onSelect={setView} reflexProps={reflexProps} dojoProps={dojoProps} onUnlock={() => setMode("landing")} />}
-            {view === "reports" && <Reports payload={payload} />}
-            {view !== "overview" && view !== "reports" && (
+            {view === "reports" && <Reports payload={payload} dojoProps={dojoProps} />}
+            {view === "repo_audit" && <RepoAuditSection lastRecord={dojoProps.lastRepoAuditRecord} onStartAudit={(url) => dojoProps.startRepoAudit?.(url)} />}
+            {view !== "overview" && view !== "reports" && view !== "repo_audit" && (
               <PillarPage payload={payload} pk={view} reflexProps={reflexProps} onSelectMetric={setSelected} dojoProps={dojoProps} />
             )}
           </motion.div>
@@ -810,12 +1171,16 @@ export default function App() {
             contributions={modalContributions} scopeLabel={modalScopeLabel} onClose={() => setSelected(null)} dojoProps={dojoProps} />
         )}
       </AnimatePresence>
+
+      {show3DPlayground && (
+        <Ascii3DPlayground onClose={() => setShow3DPlayground(false)} />
+      )}
       </div>
     </div>
   )
 }
 
-function ProLockedPanels(_props: { onUnlock?: () => void }) {
+function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, marginTop: 40 }}>
       {/* Autonomous Remediation Queue (Pro) */}
@@ -831,7 +1196,7 @@ function ProLockedPanels(_props: { onUnlock?: () => void }) {
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
           <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>AUTONOMOUS REMEDIATION · PRO</div>
-          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
+          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" onClick={() => onUnlock?.()} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
           </a>
         </div>
@@ -850,7 +1215,7 @@ function ProLockedPanels(_props: { onUnlock?: () => void }) {
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
           <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>CROSS-HARNESS FLEET VIEW · PRO</div>
-          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
+          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" onClick={() => onUnlock?.()} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
           </a>
         </div>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { RepoAuditRecord } from '../types'
 
 export type PillarSlug = 'bow' | 'sword' | 'brush' | 'arts'
 export type RoninStatus = 'idle' | 'running' | 'done' | 'error'
@@ -43,9 +44,11 @@ export interface DojoProps {
   reflexOutput: Record<string, string[]>
   /** Last pillar that received an auto-remediation run (cleared on next auto_remediation event). */
   lastAutoRemediationPillar: PillarSlug | null
+  lastRepoAuditRecord?: RepoAuditRecord | null
   toggle: (pillar: PillarSlug) => void
   run: (pillar: PillarSlug) => void
   exec: (command: string, scope?: string) => void
+  startRepoAudit?: (repoUrl: string) => void
   cancelReflex: (cancelKey: string) => Promise<void>
 }
 
@@ -71,6 +74,7 @@ export function useDojo(): DojoProps {
   const [reflexPendingApprovals, setReflexPendingApprovals] = useState<Map<string, PendingApproval>>(new Map())
   const [reflexOutput, setReflexOutput] = useState<Record<string, string[]>>({})
   const [lastAutoRemediationPillar, setLastAutoRemediationPillar] = useState<PillarSlug | null>(null)
+  const [lastRepoAuditRecord, setLastRepoAuditRecord] = useState<RepoAuditRecord | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const retryCountRef = useRef(0)
@@ -146,6 +150,8 @@ export function useDojo(): DojoProps {
               setReflexOutput((prev) => ({ ...prev, [id]: [...(prev[id] ?? []).slice(-49), line] }))
             } else if (msg.type === 'auto_remediation') {
               setLastAutoRemediationPillar(msg['pillar'] as PillarSlug)
+            } else if (msg.type === 'repo_audit_update') {
+              setLastRepoAuditRecord(msg['record'] as RepoAuditRecord)
             }
           } catch { /* ignore malformed */ }
         }
@@ -190,6 +196,7 @@ export function useDojo(): DojoProps {
     reflexPendingApprovals,
     reflexOutput,
     lastAutoRemediationPillar,
+    lastRepoAuditRecord,
     toggle: (pillar) => send({ type: 'toggle', pillar }),
     run: (pillar) => send({ type: 'run', pillar }),
     exec: (command, scope) => {
@@ -198,6 +205,7 @@ export function useDojo(): DojoProps {
       setExecStatus('idle')
       send({ type: 'exec', command, ...(scope ? { scope } : {}) })
     },
+    startRepoAudit: (repoUrl: string) => send({ type: 'audit_repo', repoUrl }),
     cancelReflex,
   }
 }

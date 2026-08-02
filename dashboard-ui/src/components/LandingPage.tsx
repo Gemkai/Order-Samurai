@@ -367,7 +367,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveVisualTab(tab.id as any)}
+                  onClick={() => setActiveVisualTab(tab.id as "walkthrough" | "menu" | "particles" | "branding")}
                   className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
                     isActive
                       ? "bg-[#ef4444] text-white shadow-lg shadow-[#ef4444]/25 scale-105"
