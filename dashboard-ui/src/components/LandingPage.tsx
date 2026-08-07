@@ -157,9 +157,9 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               transition={{ delay: 0.1 }}
               className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.15]"
             >
-              The missing <em className="italic text-[#ef4444] not-italic">discipline</em> for{" "}
+              Your agents lack <em className="italic text-[#ef4444] not-italic">discipline</em>. Change that by enrolling them in the{" "}
               <span className="bg-gradient-to-r from-[#ef4444] via-[#f97316] to-[#eab308] bg-clip-text text-transparent">
-                autonomous agent fleets.
+                Order Samurai Dojo.
               </span>
             </motion.h1>
 
@@ -334,6 +334,73 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               <p className="mt-3 text-xs text-slate-400 leading-relaxed">
                 Order Samurai intercepts subagent calls in real-time, redacts secrets from stdout, blocks malicious CLI payloads fail-closed, and tracks empirical ROI—100% on your local machine.
               </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Target Audience & Persona Pitches Section */}
+      <section id="dojo-pitches" className="relative z-10 py-20 border-t border-white/5 bg-[#090d16]">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <span className="px-3 py-1 text-xs font-mono font-semibold uppercase tracking-wider bg-[#ef4444]/10 text-[#ef4444] border border-[#ef4444]/20 rounded-full">
+              Dojo Targets & Impact
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mt-4">
+              Engineered for Builders, Solopreneurs, and Custom Harnesses
+            </h2>
+            <p className="mt-4 text-slate-400 text-base">
+              Whether you are running raw agents or developing complex local tooling, the Dojo enforces discipline where generic prompts fail.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Pitch 1: Solopreneurs */}
+            <div className="bg-[#0e1422]/60 border border-white/10 rounded-2xl p-8 hover:border-[#3b82f6]/40 transition-all flex flex-col justify-between shadow-xl backdrop-blur-sm group">
+              <div>
+                <div className="w-12 h-12 rounded-xl bg-[#3b82f6]/10 border border-[#3b82f6]/20 text-[#3b82f6] flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                  <Users size={24} />
+                </div>
+                <h3 className="text-xl font-bold text-white">Solopreneurs: Protect Your Single-Point-of-Failure Business</h3>
+                <p className="mt-4 text-xs text-slate-400 leading-relaxed">
+                  As a solo developer, you rely on AI agents to act as your team. But a single unchecked command can break your client databases, install compromised dependencies, or wipe local repos. Order Samurai runs as your silent co-pilot, letting you build fast without the risk of a business-ending mistake.
+                </p>
+              </div>
+              <div className="mt-8 pt-4 border-t border-white/5 font-mono text-[10px] text-slate-500">
+                // Safety rails for one-person operations
+              </div>
+            </div>
+
+            {/* Pitch 2: Custom Harnesses */}
+            <div className="bg-[#0e1422]/60 border border-white/10 rounded-2xl p-8 hover:border-[#ef4444]/40 transition-all flex flex-col justify-between shadow-xl backdrop-blur-sm group">
+              <div>
+                <div className="w-12 h-12 rounded-xl bg-[#ef4444]/10 border border-[#ef4444]/20 text-[#ef4444] flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                  <Terminal size={24} />
+                </div>
+                <h3 className="text-xl font-bold text-white">Custom Harness Builders: Power Up Your Agent Runtimes Safely</h3>
+                <p className="mt-4 text-xs text-slate-400 leading-relaxed">
+                  Developing custom wrappers, CLI interfaces, or workflows for Claude, Codex, or Gemini? Order Samurai acts as a secure local middleware. Wrapping your runtimes directly in standard inputs/outputs, it redacts credentials and isolates execution without adding latency to your pipeline.
+                </p>
+              </div>
+              <div className="mt-8 pt-4 border-t border-white/5 font-mono text-[10px] text-slate-500">
+                // Sits seamlessly between your harness & the shell
+              </div>
+            </div>
+
+            {/* Pitch 3: Invisible Security Made Visible */}
+            <div className="bg-[#0e1422]/60 border border-white/10 rounded-2xl p-8 hover:border-[#10b981]/40 transition-all flex flex-col justify-between shadow-xl backdrop-blur-sm group">
+              <div>
+                <div className="w-12 h-12 rounded-xl bg-[#10b981]/10 border border-[#10b981]/20 text-[#10b981] flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                  <Eye size={24} />
+                </div>
+                <h3 className="text-xl font-bold text-white">Making the Invisible Visible: Observe Your Peace of Mind</h3>
+                <p className="mt-4 text-xs text-slate-400 leading-relaxed">
+                  Usually, security is under-appreciated because when it works, it is invisible. Nothing breaks, and no keys leak. Order Samurai makes that security tangible. Our dashboard tracks and displays every single exfiltration block, budget save, and runtime kill, showing you exactly how hard your Dojo is working.
+                </p>
+              </div>
+              <div className="mt-8 pt-4 border-t border-white/5 font-mono text-[10px] text-slate-500">
+                // Hard security metrics you can actually see
+              </div>
             </div>
           </div>
         </div>
