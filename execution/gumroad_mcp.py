@@ -22,17 +22,8 @@ def validate_license_key(license_key: str, product_id: str = None) -> dict:
     if not key:
         return {"valid": False, "error": "empty license key"}
 
-    # Local dev simulation fallback
-    if key.startswith("SAMURAI-PRO-KEY") or key.startswith("GUMROAD-PRO-KEY"):
-        return {
-            "valid": True,
-            "license_key": key,
-            "customer_email": "developer@ordersamurai.dev",
-            "status": "active",
-            "simulated": True,
-            "refunded": False,
-        }
-
+    # No key-prefix bypass: every key is verified against Gumroad's API below.
+    # Maintainer/CI Pro testing uses bin/make_dev_license.sh instead.
     pid = product_id or GUMROAD_PRODUCT_ID
     payload = {"product_id": pid, "license_key": key}
     data = urllib.parse.urlencode(payload).encode("utf-8")

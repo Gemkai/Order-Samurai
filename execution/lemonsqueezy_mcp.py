@@ -42,17 +42,14 @@ def validate_license_key(license_key: str, instance_id: str = None) -> dict:
                 "refunded": res_data.get("license_key", {}).get("status") == "refunded",
             }
     except Exception as e:
-        # Fallback offline validation check for local dev simulation
-        if license_key.startswith("SAMURAI-PRO-KEY"):
-            return {
-                "valid": True,
-                "license_key": license_key,
-                "customer_email": "developer@ordersamurai.dev",
-                "status": "active",
-                "simulated": True,
-                "refund_window_days": 14,
-            }
-        return {"valid": False, "error": str(e)}
+        # Fail closed: a network error during validation must never be treated
+        # as a valid license. Maintainer/CI Pro testing uses
+        # bin/make_dev_license.sh instead of a key-prefix bypass here.
+        return {
+            "valid": False,
+            "error": f"Could not reach Lemon Squeezy to validate this license ({e}). "
+                     "Check your network connection and try again.",
+        }
 
 def activate_license_key(license_key: str, instance_name: str) -> dict:
     """Activate a license key for a specific local developer machine instance."""
@@ -72,15 +69,14 @@ def activate_license_key(license_key: str, instance_name: str) -> dict:
                 "license_key": license_key,
             }
     except Exception as e:
-        if license_key.startswith("SAMURAI-PRO-KEY"):
-            return {
-                "activated": True,
-                "instance_id": f"inst_{hash(instance_name) & 0xffffffff}",
-                "instance_name": instance_name,
-                "license_key": license_key,
-                "simulated": True,
-            }
-        return {"activated": False, "error": str(e)}
+        # Fail closed: a network error during activation must never be treated
+        # as a successful activation. Maintainer/CI Pro testing uses
+        # bin/make_dev_license.sh instead of a key-prefix bypass here.
+        return {
+            "activated": False,
+            "error": f"Could not reach Lemon Squeezy to activate this license ({e}). "
+                     "Check your network connection and try again.",
+        }
 
 def create_checkout_link(variant_id: str = "default_pro_199", customer_email: str = None) -> dict:
     """Generate a $199 Pro Lifetime checkout link with 14-day refund guarantee metadata."""

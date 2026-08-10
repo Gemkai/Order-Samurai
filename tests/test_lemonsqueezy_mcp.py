@@ -15,16 +15,17 @@ from lemonsqueezy_mcp import (
     get_order_details,
 )
 
-def test_validate_license_key_simulated():
+def test_validate_license_key_fails_closed_on_network_error():
+    # No live network access in tests, so the real API call fails — this must
+    # fail closed (never a key-prefix bypass to "valid": True).
     res = validate_license_key("SAMURAI-PRO-KEY-2026-7781-9921-X", instance_id="macbook_dev_1")
-    assert res["valid"] is True
-    assert res["status"] == "active"
-    assert res["refund_window_days"] == 14
+    assert res["valid"] is False
+    assert "error" in res
 
-def test_activate_license_key_simulated():
+def test_activate_license_key_fails_closed_on_network_error():
     res = activate_license_key("SAMURAI-PRO-KEY-2026-7781-9921-X", instance_name="dev-workstation")
-    assert res["activated"] is True
-    assert res["instance_name"] == "dev-workstation"
+    assert res["activated"] is False
+    assert "error" in res
 
 def test_create_checkout_link_simulated():
     res = create_checkout_link(variant_id="pro_199", customer_email="buyer@example.com")
