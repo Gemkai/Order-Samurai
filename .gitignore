@@ -33,6 +33,9 @@ test_env/
 
 # ── Generated dashboard artifacts (recomputed by refresh_dashboard.py) ──
 dashboard-ui/dist/
+
+# ── Generated packaging output (bin/build_core_zip.sh) ──
+/dist/
 **/publicwid_payload.json
 wid_payload*.json
 # ...but never the SOURCE schema contract (the pattern above is for GENERATED payloads;
