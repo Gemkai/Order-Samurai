@@ -368,3 +368,289 @@ def test_human_improvement_cannot_raise_autonomous_rate(monkeypatch, tmp_path):
     assert result["events"] == []
     assert result["human_correlated"] == 1
     assert result["human_correlated_improved"] == 1
+
+
+# ---------------------------------------------------------------------------
+# FIX A — windowed headline (2026-08-08 seq 9a)
+# ---------------------------------------------------------------------------
+# A lifetime count froze Self_Correction_Rate at one number: 18 days of ZERO
+# autonomous attempts read exactly like a healthy engine. `now` is injected so no
+# test ever depends on the wall clock.
+
+NOW = datetime(2026, 8, 8, 12, 0, tzinfo=timezone.utc)
+
+
+def _ts(days_ago: float) -> str:
+    return (NOW - timedelta(days=days_ago)).isoformat()
+
+
+def _empty_history(tmp_path: Path) -> Path:
+    hist = tmp_path / "hist.jsonl"
+    hist.write_text("", encoding="utf-8")
+    return hist
+
+
+def test_efficacy_counts_only_attempts_inside_the_window(tmp_path):
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(5), "done", reflex_id="metric:bow:Error_Rate"),
+        _exec_row(_ts(10), "no_change", reflex_id="metric:bow:Error_Rate"),
+        _exec_row(_ts(200), "done", reflex_id="metric:bow:Error_Rate"),   # outside 30d
+        _exec_row(_ts(300), "done", reflex_id="metric:bow:Error_Rate"),   # outside 30d
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["attempted"] == 2
+    assert result["completed"] == 1
+    assert result["window_days"] == 30
+
+
+def test_efficacy_keeps_lifetime_counts_alongside_the_window(tmp_path):
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(5), "done", reflex_id="metric:bow:Error_Rate", improved=True),
+        _exec_row(_ts(200), "done", reflex_id="metric:bow:Error_Rate", improved=True),
+        _exec_row(_ts(300), "done", reflex_id="metric:bow:Error_Rate", improved=False),
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert (result["attempted"], result["improved"]) == (1, 1)
+    assert (result["attempted_lifetime"], result["improved_lifetime"]) == (3, 2)
+    assert result["completed_lifetime"] == 3
+    assert result["applied_lifetime"] == 3
+
+
+def test_efficacy_windowed_improvement_rate_is_the_in_window_ratio(tmp_path):
+    exec_log = tmp_path / "exec_log.jsonl"
+    rows = [_exec_row(_ts(1 + i), "done", reflex_id="metric:bow:Error_Rate",
+                      improved=(i == 0)) for i in range(4)]
+    rows += [_exec_row(_ts(100 + i), "done", reflex_id="metric:bow:Error_Rate",
+                       improved=True) for i in range(6)]
+    _write_exec_log(exec_log, rows)
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["improvement_rate"] == 25.0            # 1 of 4 in-window
+    assert result["attempted_lifetime"] == 10            # lifetime would have said 70%
+
+
+def test_efficacy_empty_window_reports_a_data_gap_not_a_zero(tmp_path):
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(60), "done", reflex_id="metric:bow:Error_Rate", improved=True),
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["attempted"] == 0
+    assert result["improvement_rate"] is None            # never a fabricated 0%
+    assert result["data_gap"] is True
+    assert result["data_gap_detail"] == "no autonomous attempts in 30d"
+    assert result["attempted_lifetime"] == 1
+
+
+def test_efficacy_without_a_window_stays_lifetime(tmp_path):
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(5), "done", reflex_id="metric:bow:Error_Rate"),
+        _exec_row(_ts(400), "done", reflex_id="metric:bow:Error_Rate"),
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log)
+    assert result["attempted"] == 2
+    assert result["window_days"] is None
+    assert result["data_gap"] is False
+
+
+def test_window_kill_switch_restores_lifetime_counting(tmp_path, monkeypatch):
+    monkeypatch.setenv("REMEDIATION_WINDOW", "false")
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(5), "done", reflex_id="metric:bow:Error_Rate"),
+        _exec_row(_ts(400), "done", reflex_id="metric:bow:Error_Rate"),
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["attempted"] == 2
+    assert result["data_gap"] is False
+
+
+# ---------------------------------------------------------------------------
+# FIX B — tier 2, the engine's own `improved` verdict (2026-08-08 seq 9b)
+# ---------------------------------------------------------------------------
+
+def test_engine_verdict_rows_become_direct_improved_events(tmp_path):
+    # Mirrors the live distribution: many autonomous rows carrying a boolean verdict,
+    # a small minority true. The headline read 3 while the log recorded 11.
+    exec_log = tmp_path / "exec_log.jsonl"
+    rows = [_exec_row(_ts(1 + i), "done", skill="simplify",
+                      reflex_id="metric:arts:Simplify_Age", improved=(i < 2))
+            for i in range(10)]
+    _write_exec_log(exec_log, rows)
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["applied"] == 10
+    assert result["improved"] == 2
+    assert result["flat"] == 8            # a false boolean is flat, never "regressed"
+    assert result["regressed"] == 0
+    assert all(e["evidence"] == "engine_verdict" for e in result["events"])
+
+
+def test_engine_verdict_row_without_a_metric_scoped_reflex_id_still_counts(tmp_path):
+    # correlation:* ids name no metric, but the engine's verdict is still real.
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(1), "done", skill="model-selector",
+                  reflex_id="correlation:cost_and_quality_tradeoff", improved=True),
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["improved"] == 1
+    assert result["events"][0]["metric"] == "correlation:cost_and_quality_tradeoff"
+
+
+def test_engine_verdict_never_counts_a_row_that_has_a_numeric_pair(tmp_path):
+    # Double-count guard: one physical run with BOTH kinds of evidence is ONE event,
+    # and the numeric measurement wins over the boolean (which disagrees here).
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(1), "done", reflex_id="metric:bow:Error_Rate",
+                  metric_before=5.0, metric_after=1.0, improved=False),
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["applied"] == 1
+    assert result["improved"] == 1                       # numeric 5.0 -> 1.0 wins
+    assert result["events"][0]["evidence"] == "fire_time"
+
+
+def test_engine_verdict_row_is_excluded_from_snapshot_correlation(tmp_path):
+    # The same run must not be counted again by the flag -> use -> next-snapshot path.
+    bad = _flagged_value()
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(2), "done", reflex_id="metric:bow:Error_Rate", improved=True),
+    ])
+    hist = tmp_path / "hist.jsonl"
+    _write_history(hist, [(_ts(3), bad), (_ts(1), 0.0)])
+    result = rem.efficacy(history_path=hist, records=[], exec_log_path=exec_log,
+                          window_days=30, now=NOW)
+    assert result["applied"] == 1
+    assert result["events"][0]["evidence"] == "engine_verdict"
+
+
+def test_engine_verdict_kill_switch_restores_two_tier_behaviour(tmp_path, monkeypatch):
+    monkeypatch.setenv("REMEDIATION_ENGINE_VERDICT", "false")
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(1), "done", reflex_id="metric:bow:Error_Rate", improved=True),
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["attempted"] == 1
+    assert result["applied"] == 0        # no direct event, no snapshots to correlate
+    assert result["improved"] == 0
+
+
+def test_engine_verdict_ignores_proposal_only_and_readonly_channels(tmp_path):
+    # A direct event must never sit outside the `attempted` denominator it divides into.
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(1), "done", reflex_id="metric:bow:Error_Rate",
+                  improved=True, propose_only=True),
+        _exec_row(_ts(2), "done", reflex_id="metric:arts:Raw_Pending",
+                  improved=True, kind="mechanism", read_only=True),
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["attempted"] == 0
+    assert result["applied"] == 0
+    assert result["improved"] == 0
+
+
+def test_engine_verdict_row_from_a_human_dashboard_click_is_not_counted(tmp_path):
+    exec_log = tmp_path / "exec_log.jsonl"
+    row = _exec_row(_ts(1), "done", reflex_id="metric:bow:Error_Rate", improved=True)
+    row["source"] = "dashboard"
+    _write_exec_log(exec_log, [row])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["attempted"] == 0
+    assert result["improved"] == 0
+
+
+# ---------------------------------------------------------------------------
+# FIX B, settled-status gate — `improved` on an error/timeout row is the default
+# written by a run that never finished, not a verdict. Grading it "flat" would
+# claim the metric was observed and did not move.
+# ---------------------------------------------------------------------------
+
+def test_engine_verdict_does_not_grade_a_crashed_run(tmp_path):
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(1), "error", reflex_id="metric:bow:Error_Rate", improved=False),
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["attempted"] == 1      # a crashed remediation IS a failed attempt
+    assert result["applied"] == 0        # ...but it is not a measured event
+    assert result["flat"] == 0
+    assert result["events"] == []
+
+
+def test_engine_verdict_does_not_grade_a_timed_out_run(tmp_path):
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(1), "timeout", reflex_id="metric:bow:Error_Rate", improved=False),
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["attempted"] == 1
+    assert result["applied"] == 0
+    assert result["flat"] == 0
+
+
+def test_engine_verdict_does_not_grade_a_crashed_run_claiming_improvement(tmp_path):
+    # An unsettled run cannot certify a success either — the gate is on the run
+    # reaching an outcome, not on which way the boolean happens to point.
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(1), "error", reflex_id="metric:bow:Error_Rate", improved=True),
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["attempted"] == 1
+    assert result["improved"] == 0
+    assert result["applied"] == 0
+
+
+def test_engine_verdict_grades_a_settled_no_change_run_as_flat(tmp_path):
+    # no_change is a terminal outcome, not a crash: the engine ran to completion and
+    # judged the metric unmoved. That IS a verdict and stays a graded event.
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(1), "no_change", reflex_id="metric:bow:Error_Rate", improved=False),
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["applied"] == 1
+    assert result["flat"] == 1
+    assert result["events"][0]["evidence"] == "engine_verdict"
+
+
+def test_engine_verdict_denominator_keeps_unsettled_runs_out_of_the_numerator(tmp_path):
+    # Mixed distribution: the graded channel sees only the settled runs, while every
+    # run — settled or not — stays in the improvement_rate denominator.
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(_ts(1), "done", reflex_id="metric:bow:Error_Rate", improved=True),
+        _exec_row(_ts(2), "no_change", reflex_id="metric:bow:Error_Rate", improved=False),
+        _exec_row(_ts(3), "error", reflex_id="metric:bow:Error_Rate", improved=False),
+        _exec_row(_ts(4), "timeout", reflex_id="metric:bow:Error_Rate", improved=False),
+    ])
+    result = rem.efficacy(history_path=_empty_history(tmp_path), records=[],
+                          exec_log_path=exec_log, window_days=30, now=NOW)
+    assert result["attempted"] == 4
+    assert result["applied"] == 2
+    assert result["improved"] == 1
+    assert result["flat"] == 1
+    assert result["improvement_rate"] == 25.0    # 1 improved of 4 attempts
+    assert result["success_rate"] == 50.0        # 1 improved of 2 graded events

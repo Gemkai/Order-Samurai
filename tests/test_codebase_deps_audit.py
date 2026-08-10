@@ -225,6 +225,26 @@ class ClassifyLicenceTests(unittest.TestCase):
     def test_flags_proprietary_string_as_unknown(self) -> None:
         self.assertEqual(classify_licence("Proprietary"), "unknown")
 
+    def test_clears_spdx_or_expression_when_all_operands_permissive(self) -> None:
+        self.assertEqual(classify_licence("Apache-2.0 OR BSD-3-Clause"), "permissive")
+
+    def test_clears_spdx_and_expression_when_all_operands_permissive(self) -> None:
+        self.assertEqual(classify_licence("MIT AND PSF-2.0"), "permissive")
+
+    def test_flags_spdx_expression_with_copyleft_operand_as_copyleft(self) -> None:
+        self.assertEqual(classify_licence("MIT OR GPL-2.0"), "copyleft")
+
+    def test_flags_spdx_expression_with_unknown_operand_as_unknown(self) -> None:
+        self.assertEqual(classify_licence("MIT AND Proprietary"), "unknown")
+
+    def test_clears_pep639_spdx_ids(self) -> None:
+        for expr in ("PSF-2.0", "MIT-0", "CNRI-Python", "0BSD"):
+            self.assertEqual(classify_licence(expr), "permissive", expr)
+
+    def test_clears_prose_bsd_variants_via_any_token(self) -> None:
+        self.assertEqual(classify_licence("Modified BSD License"), "permissive")
+        self.assertEqual(classify_licence("3-Clause BSD License"), "permissive")
+
 
 class ScanLicencesTests(unittest.TestCase):
 
@@ -345,6 +365,25 @@ class RunAuditTests(unittest.TestCase):
         self.assertEqual(exit_code, 2)
         self.assertFalse(written["scanner_ok"]["pip_audit"])
 
+    def test_npm_scan_skipped_by_default_is_not_a_scanner_failure(self) -> None:
+        audit = self._run(npm_audit_fn=None)
+        self.assertEqual(audit["npm_audits"], [])
+        self.assertNotIn("npm", audit["scanner_ok"])
+        self.assertNotIn("npm", audit["scanner_errors"])
+        self.assertNotIn("npm", audit["scanner_details"])
+        self.assertTrue(all(audit["scanner_ok"].values()))
+
+    def test_cli_runs_npm_scan_only_with_the_npm_flag(self) -> None:
+        audit = self._run(npm_audit_fn=None)
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "dependency_audit.json"
+            with mock.patch.object(deps_audit, "run_audit", return_value=audit) as run:
+                self.assertEqual(deps_audit.main(["--out", str(out), "--json"]), 0)
+                self.assertIsNone(run.call_args.kwargs["npm_audit_fn"])
+                deps_audit.main(["--out", str(out), "--json", "--npm"])
+                self.assertIs(run.call_args.kwargs["npm_audit_fn"],
+                              deps_audit._real_npm_audits)
+
     def test_failed_npm_scan_remains_explicit(self) -> None:
         audit = self._run(npm_audit_fn=lambda: {
             "audits": [], "scanner_ok": False,
@@ -412,6 +451,49 @@ class IdempotencyTests(unittest.TestCase):
             now_fn=lambda: FROZEN_TS,
         )
         self.assertEqual(sorted(calls), ["audit", "licence", "npm", "outdated"])
+
+
+class GovernanceRootResolutionTests(unittest.TestCase):
+    """Root resolution must hold in BOTH supported layouts (see tests/_layout.py):
+    nested live repo (Governance/Order Samurai/bin/…) and the flat product pack
+    (<pack>/bin/…), where a bare parents[2] walks out of the pack entirely."""
+
+    def _resolve(self, script_path: Path) -> Path:
+        with mock.patch.dict(deps_audit.os.environ, clear=False):
+            deps_audit.os.environ.pop("GOVERNANCE_ROOT", None)
+            return deps_audit._resolve_governance_root(script_path)
+
+    def test_env_override_wins(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            override = Path(td) / "custom-root"
+            override.mkdir()
+            with mock.patch.dict(deps_audit.os.environ,
+                                 {"GOVERNANCE_ROOT": str(override)}):
+                got = deps_audit._resolve_governance_root(Path(td) / "bin" / "x.py")
+        self.assertEqual(got, override.resolve())
+
+    def test_nested_repo_layout_resolves_governance_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            gov = Path(td) / "Governance"
+            (gov / "agentica_core").mkdir(parents=True)
+            script = gov / "Order Samurai" / "bin" / "codebase_deps_audit.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("", encoding="utf-8")
+            self.assertEqual(self._resolve(script), gov.resolve())
+
+    def test_flat_product_pack_stays_inside_the_pack(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            pack = Path(td) / "Order Samurai(product)"
+            (pack / "agentica_core").mkdir(parents=True)
+            script = pack / "bin" / "codebase_deps_audit.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("", encoding="utf-8")
+            got = self._resolve(script)
+        self.assertEqual(got, pack.resolve())
+        self.assertNotEqual(got, Path(td).resolve())  # must NOT escape the pack
+
+    def test_live_module_root_contains_agentica_core(self) -> None:
+        self.assertTrue((deps_audit.GOVERNANCE_ROOT / "agentica_core").is_dir())
 
 
 if __name__ == "__main__":

@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "SUSPECT",
+  "rationale": "The breach itself appears genuinely real (evidence.jsonl's re_measured:3 vs baseline_snapshot:1 is a real, checkable elevation) -- this is not a REFUTE case. But the same reflex already fired twice in the last 24h with improved:false (both rows visible in evidence.jsonl), which is exactly the cooldown/thrash pattern rival's own pre-mode Step 2 names explicitly: 'fired twice with improved:false -> SUSPECT (stuck, needs human)'. A third autonomous fire risks repeating the same failed fix without human review, regardless of whether the underlying breach is real."
+}

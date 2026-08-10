@@ -156,8 +156,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         state = _load_state(args.canary)
-    except ValueError:
-        # File exists but is not valid JSON — a corrupt write, not a missing canary.
+    except (ValueError, OSError):
+        # File exists but is not valid JSON, or can't be read at all (permission
+        # denied, or a directory sitting where a file was expected) — a corrupt
+        # write, not a missing canary. Never let a read failure crash this
+        # read-only, always-report-something mechanism.
         state = {"gate_working": True, "last_run": None}
 
     report = classify(state, datetime.now(timezone.utc))

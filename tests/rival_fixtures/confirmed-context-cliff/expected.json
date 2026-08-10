@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "CONFIRMED",
+  "rationale": "evidence.jsonl has exactly 10 session rows, exactly 3 with exceeded_budget:true and peak_tokens above 180000 (s1: 195000, s3: 210000, s6: 199000) -- a genuine 30% rate, matching the claimed re_measured value exactly. No cherry-picking: the full 10-session window is used, not a subset. The proposed fix (a token-optimization pass) is proportionate to a real, verifiable regression."
+}

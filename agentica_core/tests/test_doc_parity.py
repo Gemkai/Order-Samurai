@@ -76,3 +76,44 @@ def test_has_doc_multiple_docs_only_one_matches(tmp_path, monkeypatch):
     _make_doc(tmp_path, "---\nmodule: other_module\n---\n", name="other.md")
     assert doc_parity._has_doc("aggregate.py") is True
     assert doc_parity._has_doc("reflex_engine.py") is False
+
+
+# --- no-data-looks-healthy sweep (2026-08-08) -------------------------------
+# `doc_parity_issues: 0` is this metric's PERFECT score. Before this, an unreadable
+# source produced exactly that: _changed_py_files() never checked git's return code,
+# so a non-repo REPO (exit 128, empty stdout) yielded [] -> 0 stale -> flawless parity.
+# Worse, scouts/__init__.py let that value OVERWRITE the real file-derived count.
+# None is now the data-gap signal and the caller omits it.
+
+def test_dead_repo_reports_none_not_a_perfect_score(monkeypatch):
+    monkeypatch.setattr(doc_parity, "REPO", "/nonexistent-repo-path-for-this-test")
+    result = doc_parity.run()
+    assert result["doc_parity_issues"] is None, "an unreadable source must not read as 0"
+    assert result["data_gap"]
+
+
+def test_failed_git_command_reports_none(monkeypatch):
+    """Exit 128 with empty stdout is the shape Global Anti-Pattern #1 warns about."""
+    monkeypatch.setattr(Path, "is_dir", lambda self: True)
+
+    class _Failed:
+        returncode = 128
+        stdout = ""
+        stderr = "fatal: not a git repository"
+
+    monkeypatch.setattr(doc_parity.subprocess, "run", lambda *a, **k: _Failed())
+    assert doc_parity._changed_py_files() is None
+
+
+def test_empty_result_from_a_WORKING_repo_is_still_zero(monkeypatch):
+    """The distinction that matters: ran-and-found-nothing is a real 0, not a gap."""
+    monkeypatch.setattr(Path, "is_dir", lambda self: True)
+
+    class _Ok:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr(doc_parity.subprocess, "run", lambda *a, **k: _Ok())
+    assert doc_parity._changed_py_files() == []
+    assert doc_parity.run()["doc_parity_issues"] == 0

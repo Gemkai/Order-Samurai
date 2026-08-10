@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "REFUTED",
+  "rationale": "The metric's configured comparison window is 30 days (evidence.jsonl's summary row: configured_comparison_window_days: 30), but the scout computed its number over a single day (window_days: 1) instead -- rival's category (b), threshold/window mismatch. Re-deriving the metric over the correct 30-day window using the daily values in evidence.jsonl gives a mean of 82%, well above both the 80% warn and 65% fail thresholds. The scout picked the single worst day (62%, explicitly flagged in the fixture as 'the value the scout cited') rather than the properly-windowed aggregate."
+}

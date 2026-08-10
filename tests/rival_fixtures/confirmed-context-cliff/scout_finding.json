@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:brush:Fixture_Context_Cliff_Events",
+  "real": true,
+  "evidence": {
+    "re_measured": 30,
+    "snapshot": 5,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "3 of the last 10 sessions (evidence.jsonl) exceeded the 180k-token context budget before compaction (30%), up from a 5% baseline snapshot.",
+  "proposed_fix": "/token-optimizer",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

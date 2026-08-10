@@ -44,6 +44,23 @@ Legacy hand-edited ticket with a non-numeric field.
 ---
 """
 
+# _KV_RE captures backtick content and _parse_md strips it, so a
+# Remediation Command field present but holding only whitespace between the
+# backticks yields fields["Remediation Command"] == "" -- a value, not a
+# missing key, so the "/unknown" .get() default never kicks in.
+_BLANK_REMEDIATION_TICKET = """\
+# Needs Human: blank-remediation
+
+- **Remediation Command**: `   `
+- **Metric ID**: `Some_Metric`
+- **Pillar**: `bow`
+- **Consecutive Failed Runs**: `1`
+
+## Recommended Intervention
+Ticket with a present-but-blank Remediation Command field.
+---
+"""
+
 
 def _backlog_dir(tmp_path: Path) -> Path:
     d = tmp_path / "state" / "backlog"
@@ -73,3 +90,14 @@ def test_malformed_consecutive_failed_runs_alone_is_handled(tmp_path):
     migrated, skipped = migrate(tmp_path, dry_run=True)
     assert migrated == 0
     assert skipped == 1
+
+
+def test_blank_remediation_command_value_does_not_crash(tmp_path):
+    backlog = _backlog_dir(tmp_path)
+    (backlog / "needs_human_blank.md").write_text(_BLANK_REMEDIATION_TICKET, encoding="utf-8")
+
+    # A present-but-whitespace-only Remediation Command must not raise
+    # IndexError from "".split()[0] -- it should fall back like a missing field.
+    migrated, skipped = migrate(tmp_path, dry_run=True)
+    assert migrated == 1
+    assert skipped == 0

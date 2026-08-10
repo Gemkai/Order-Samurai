@@ -147,6 +147,25 @@ def test_wait_timeout_raises_rather_than_writing_unlocked(osr: Path) -> None:
     assert "backlog: FAILED" in r.stdout, r.stdout
 
 
+def test_armed_empty_payload_exits_nonzero(osr: Path) -> None:
+    """`{}` is what sensei_cycle_live.sh substitutes when the claude call fails;
+    an armed run fed it used to exit 0 — a total write-back failure reported as
+    a successful cycle."""
+    r = _run_payload(osr, "{}")
+
+    assert r.returncode != 0, r.stdout
+    assert "empty" in r.stdout.lower()
+    assert _items(osr) == []  # nothing was invented to write
+
+
+def test_dry_empty_payload_stays_informational_exit_zero(osr: Path) -> None:
+    """Only ARMED escalates: the dry path prints what it would do and exits 0."""
+    r = _run_payload(osr, "{}", SENSEI_ARM="0")
+
+    assert r.returncode == 0, r.stdout
+    assert "DRY" in r.stdout
+
+
 def test_required_post_failure_exits_nonzero(osr: Path) -> None:
     payload = json.dumps({
         "post_verdicts": [{"reflex_id": "metric:bow:Error_Rate", "verdict": "CONFIRMED"}],

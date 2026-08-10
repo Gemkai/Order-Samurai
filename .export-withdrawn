@@ -39,3 +39,7 @@ tests/test_self_harness_cycle.py
 tests/test_sensei_parity.py
 tests/test_sensei_replay_parity.py
 tests/test_sensei_heartbeat_row.py
+tests/test_attack_path_correlator.py
+tests/test_detections.py
+tests/test_exploit_confirmation.py
+tests/test_sarif_writer.py

@@ -4,6 +4,7 @@
  "description": "Classifies every allowed top-level entry of the AgenticaOS repo root. Anything unclassified surfaces as a WARN in doctor.py (verify_agentica_root_hygiene). File entries may use glob patterns: HANDOFF*.md covers both the plain root HANDOFF.md and the HANDOFF-<workstream>.md form. That pattern read HANDOFF-*.md until 2026-07-29 and so required a hyphen, leaving the ordinary HANDOFF.md permanently unclassified — a standing WARN that pushed the live count above the meditation cycle's A-prime baseline and halted the cycle before it could work any backlog item.",
  "directories": {
   "live": [
+   "Apps",
    "Data",
    "Execution",
    "Governance",

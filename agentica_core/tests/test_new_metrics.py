@@ -4,6 +4,8 @@ Cache_Hit_Rate. (Canary_Failures retired 2026-07-11; Loop_Breaker_Fires
 retired 2026-07-19 — dead emitter, metric-surface review Part E item 3.)
 """
 import json
+import sys
+import types
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -453,3 +455,465 @@ class TestCacheHitRate:
         assert env["is_simulated"] is False
         assert env["tier"] == "AUTO"
         assert env["val"] != "—"  # not the "—" no-data placeholder
+
+
+def _exec_line(reflex_id, ts, improved):
+    return json.dumps({
+        "timestamp": ts, "reflex_id": reflex_id, "improved": improved,
+        "source": "reflex_engine", "status": "done",
+    })
+
+
+def _write_exec_log(root, *lines):
+    d = root / "state"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "exec_log.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+class TestMeanTimeToHeal:
+    def setup_method(self):
+        agg._MTTH_CACHE.update(t=0.0, v=None)
+
+    def teardown_method(self):
+        agg._MTTH_CACHE.update(t=0.0, v=None)
+
+    def test_missing_exec_log_returns_data_gap_not_fake_zero(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(agg, "_ORDER_SAMURAI_ROOT", tmp_path)
+        result = agg._mean_time_to_heal([])
+        assert result["val"] is None
+        assert result["data_gap"] is True
+        assert result["calibrated"] is True
+
+    def test_computes_span_first_fire_to_first_heal(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(agg, "_ORDER_SAMURAI_ROOT", tmp_path)
+        _write_exec_log(tmp_path,
+            _exec_line("metric:bow:X", "2026-06-08T00:00:00Z", False),
+            _exec_line("metric:bow:X", "2026-06-08T00:02:00Z", True),   # heal at +120s
+            _exec_line("metric:bow:X", "2026-06-08T00:05:00Z", True),   # later heal ignored
+        )
+        result = agg._mean_time_to_heal([])
+        assert result["val"] == 120
+        assert result["calibrated"] is True
+        assert "data_gap" not in result
+
+    def test_still_open_reflex_excluded_not_counted_as_zero(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(agg, "_ORDER_SAMURAI_ROOT", tmp_path)
+        _write_exec_log(tmp_path,
+            # healed reflex: 60s span
+            _exec_line("metric:bow:A", "2026-06-08T00:00:00Z", False),
+            _exec_line("metric:bow:A", "2026-06-08T00:01:00Z", True),
+            # still-open reflex: never improved -> must be EXCLUDED, not averaged as 0
+            _exec_line("metric:bow:B", "2026-06-08T00:00:00Z", False),
+            _exec_line("metric:bow:B", "2026-06-08T09:00:00Z", False),
+        )
+        result = agg._mean_time_to_heal([])
+        assert result["val"] == 60  # mean over the ONE healed reflex only
+
+    def test_no_reflex_ever_healed_returns_data_gap(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(agg, "_ORDER_SAMURAI_ROOT", tmp_path)
+        _write_exec_log(tmp_path,
+            _exec_line("metric:bow:A", "2026-06-08T00:00:00Z", False),
+            _exec_line("metric:bow:A", "2026-06-08T00:01:00Z", False),
+        )
+        result = agg._mean_time_to_heal([])
+        assert result["val"] is None
+        assert result["data_gap"] is True
+
+    def test_heal_on_first_fire_is_zero_span_not_data_gap(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(agg, "_ORDER_SAMURAI_ROOT", tmp_path)
+        _write_exec_log(tmp_path,
+            _exec_line("metric:bow:A", "2026-06-08T00:00:00Z", True),
+        )
+        result = agg._mean_time_to_heal([])
+        assert result["val"] == 0  # a genuine same-attempt heal, not a data gap
+        assert "data_gap" not in result
+
+    def test_ignores_records_argument_and_out_of_order_lines(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(agg, "_ORDER_SAMURAI_ROOT", tmp_path)
+        _write_exec_log(tmp_path,
+            _exec_line("metric:bow:A", "2026-06-08T00:03:00Z", True),   # heal, listed first
+            _exec_line("metric:bow:A", "2026-06-08T00:00:00Z", False),  # earlier fire
+        )
+        fake_records = [{"reflex_id": "junk", "improved": True, "timestamp": "x"}] * 20
+        result = agg._mean_time_to_heal(fake_records)
+        assert result["val"] == 180  # start sorted to 00:00, heal at +180s
+
+    def test_registered_in_registry_under_bow_autonomic_lower_is_better(self):
+        entry = next((e for e in agg.REGISTRY if e[2] == "Mean_Time_To_Heal"), None)
+        assert entry is not None, "Mean_Time_To_Heal must be registered in aggregate.REGISTRY"
+        pillar, group, key, reducer, tier, higher_is_better, is_count = entry
+        assert pillar == "bow"
+        assert group == "Autonomic"
+        assert tier == "AUTO"
+        assert higher_is_better is False  # faster heal is better
+        assert is_count is False
+        assert reducer is agg._mean_time_to_heal
+
+    def test_build_pillars_reports_live_not_simulated(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(agg, "_ORDER_SAMURAI_ROOT", tmp_path)
+        _write_exec_log(tmp_path,
+            _exec_line("metric:bow:A", "2026-06-08T00:00:00Z", False),
+            _exec_line("metric:bow:A", "2026-06-08T00:01:00Z", True),
+        )
+        pillars = agg.build_pillars([])
+        env = pillars["bow"]["Autonomic"]["Mean_Time_To_Heal"]
+        assert env["is_simulated"] is False
+        assert env["tier"] == "AUTO"
+        assert env["val"] != "—"
+
+
+def _install_fake_principle_audit(tmp_path, monkeypatch, rule_ids, violations, *, window=90):
+    """Redirect _dead_rule_count's config-tier source to a controlled tmp fixture.
+
+    Creates USERPROFILE/.claude/scripts (so the existence guard passes) and a
+    principle_violations.jsonl, then injects a fake `principle_audit` module carrying
+    the canonical PATTERNS / VIOLATIONS_FILE / RETIREMENT_WINDOW_DAYS the reducer reads.
+    `violations` is a list of (rule_id, iso_ts) pairs (naive ISO, as principle_audit
+    writes them)."""
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    (tmp_path / ".claude" / "scripts").mkdir(parents=True, exist_ok=True)
+    data_dir = tmp_path / ".claude" / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    vfile = data_dir / "principle_violations.jsonl"
+    vfile.write_text(
+        "".join(json.dumps({"ts": ts, "rule_id": rid}) + "\n" for rid, ts in violations),
+        encoding="utf-8",
+    )
+    fake = types.ModuleType("principle_audit")
+    fake.PATTERNS = [{"rule_id": r} for r in rule_ids]
+    fake.VIOLATIONS_FILE = vfile
+    fake.RETIREMENT_WINDOW_DAYS = window
+    monkeypatch.setitem(sys.modules, "principle_audit", fake)
+    return vfile
+
+
+def _iso(days_ago=0):
+    return (datetime.now() - timedelta(days=days_ago)).isoformat(timespec="seconds")
+
+
+class TestDeadRuleCount:
+    """AUTO-014 Dead-Rule Detection: dead governance rules (0 hits in the 90d window),
+    read from principle_audit.py's canonical PATTERNS + principle_violations.jsonl."""
+
+    def setup_method(self):
+        agg._DEAD_RULE_CACHE.update(t=0.0, v=None)
+
+    def teardown_method(self):
+        agg._DEAD_RULE_CACHE.update(t=0.0, v=None)
+
+    def test_missing_scripts_dir_returns_data_gap_not_fake_zero(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))  # no .claude/scripts
+        result = agg._dead_rule_count([])
+        assert result["val"] is None
+        assert result["data_gap"] is True
+        assert result["calibrated"] is True
+
+    def test_missing_violations_file_returns_data_gap(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        (tmp_path / ".claude" / "scripts").mkdir(parents=True)
+        fake = types.ModuleType("principle_audit")
+        fake.PATTERNS = [{"rule_id": "R1"}]
+        fake.VIOLATIONS_FILE = tmp_path / ".claude" / "data" / "nope.jsonl"
+        fake.RETIREMENT_WINDOW_DAYS = 90
+        monkeypatch.setitem(sys.modules, "principle_audit", fake)
+        result = agg._dead_rule_count([])
+        assert result["val"] is None
+        assert result["data_gap"] is True
+
+    def test_counts_rules_with_no_recent_hits(self, tmp_path, monkeypatch):
+        _install_fake_principle_audit(
+            tmp_path, monkeypatch,
+            rule_ids=["R1", "R2", "R3"],
+            violations=[("R1", _iso(1))],  # only R1 fired recently
+        )
+        result = agg._dead_rule_count([])
+        assert result["val"] == 2  # R2, R3 dead
+        assert result["calibrated"] is True
+        assert "data_gap" not in result
+        assert "R2" in result["detail"] and "R3" in result["detail"]
+
+    def test_hits_older_than_window_still_count_as_dead(self, tmp_path, monkeypatch):
+        _install_fake_principle_audit(
+            tmp_path, monkeypatch,
+            rule_ids=["R1", "R2"],
+            violations=[("R1", _iso(1)), ("R2", _iso(200))],  # R2 fired 200d ago
+        )
+        result = agg._dead_rule_count([])
+        assert result["val"] == 1  # R2 outside 90d window -> dead
+        assert "R2" in result["detail"]
+
+    def test_all_rules_fired_returns_honest_zero_not_data_gap(self, tmp_path, monkeypatch):
+        _install_fake_principle_audit(
+            tmp_path, monkeypatch,
+            rule_ids=["R1", "R2"],
+            violations=[("R1", _iso(1)), ("R2", _iso(2))],
+        )
+        result = agg._dead_rule_count([])
+        assert result["val"] == 0  # a real measured zero, honestly LIVE
+        assert result["calibrated"] is True
+        assert "data_gap" not in result
+
+    def test_malformed_lines_are_skipped_like_cmd_retirement(self, tmp_path, monkeypatch):
+        vfile = _install_fake_principle_audit(
+            tmp_path, monkeypatch,
+            rule_ids=["R1", "R2"],
+            violations=[("R1", _iso(1))],
+        )
+        with open(vfile, "a", encoding="utf-8") as f:
+            f.write("not json\n")
+            f.write(json.dumps({"rule_id": "R2"}) + "\n")  # no ts -> KeyError -> skipped
+        result = agg._dead_rule_count([])
+        assert result["val"] == 1  # R2 (undated) not counted as fired -> stays dead
+
+    def test_ignores_records_argument_entirely(self, tmp_path, monkeypatch):
+        _install_fake_principle_audit(
+            tmp_path, monkeypatch,
+            rule_ids=["R1", "R2", "R3"],
+            violations=[("R1", _iso(1))],
+        )
+        junk = [{"rule_id": "R2", "ts": _iso(1)}] * 50
+        result = agg._dead_rule_count(junk)
+        assert result["val"] == 2  # records must not influence the count
+
+    def test_registered_in_registry_under_brush_code_health_as_count(self):
+        entry = next((e for e in agg.REGISTRY if e[2] == "Dead_Rule_Count"), None)
+        assert entry is not None, "Dead_Rule_Count must be registered in aggregate.REGISTRY"
+        pillar, group, key, reducer, tier, higher_is_better, is_count = entry
+        assert pillar == "brush"
+        assert group == "Code Health"
+        assert tier == "AUTO"
+        assert higher_is_better is False  # fewer dead rules is better
+        assert is_count is True
+        assert reducer is agg._dead_rule_count
+
+    def test_build_pillars_reports_live_not_simulated(self, tmp_path, monkeypatch):
+        _install_fake_principle_audit(
+            tmp_path, monkeypatch,
+            rule_ids=["R1", "R2", "R3"],
+            violations=[("R1", _iso(1))],
+        )
+        pillars = agg.build_pillars([])
+        env = pillars["brush"]["Code Health"]["Dead_Rule_Count"]
+        assert env["is_simulated"] is False
+        assert env["tier"] == "AUTO"
+        assert env["val"] == "2"
+        assert env["is_count"] is True
+# ── Compaction_Events (AUTO-010) ──────────────────────────────────────────────
+# Like _cache_hit_rate, _compaction_events ignores the `records` arg entirely —
+# compact_boundary is a structural transcript record, never a SessionEnd telemetry
+# field. Tests point HOME/USERPROFILE at a tmp_path and write fake transcript
+# JSONLs containing real and decoy (prose-mention) lines.
+
+def _compact_boundary_line(trigger="auto"):
+    return {
+        "type": "system",
+        "subtype": "compact_boundary",
+        "timestamp": "2026-07-14T16:14:33.264Z",
+        "uuid": "ad9d989e-0000-0000-0000-000000000000",
+        "compactMetadata": {"trigger": trigger, "preTokens": 1002029, "durationMs": 63248},
+    }
+
+
+class TestCompactionEvents:
+    def setup_method(self):
+        # Every test starts with a cold cache so a prior test's tmp_path result
+        # can't leak in via the TTL.
+        agg._COMPACTION_CACHE.update(t=0.0, v=None)
+
+    def teardown_method(self):
+        agg._COMPACTION_CACHE.update(t=0.0, v=None)
+
+    def test_missing_projects_dir_returns_data_gap_not_fake_zero(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        result = agg._compaction_events([])
+        assert result["val"] is None
+        assert result["data_gap"] is True
+        assert result["calibrated"] is True
+
+    def test_projects_dir_with_no_compaction_returns_real_zero_not_data_gap(self, tmp_path, monkeypatch):
+        # A directory that exists but has no compact_boundary records is a genuine
+        # zero measurement, never a data gap — distinguishes "read the source,
+        # genuinely 0" from "could not read the source".
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        projects_dir = tmp_path / ".claude" / "projects"
+        _write_transcript(projects_dir, "s1.jsonl", [{"type": "user", "message": {}}])
+        result = agg._compaction_events([])
+        assert result["val"] == 0
+        assert "data_gap" not in result
+        assert result["calibrated"] is True
+
+    def test_counts_real_structural_compact_boundary_records(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        projects_dir = tmp_path / ".claude" / "projects"
+        _write_transcript(projects_dir, "s1.jsonl", [
+            {"type": "user", "message": {"content": "hi"}},
+            _compact_boundary_line(),
+        ])
+        result = agg._compaction_events([])
+        assert result["val"] == 1
+        assert result["calibrated"] is True
+
+    def test_prose_mentions_of_compact_are_never_counted(self, tmp_path, monkeypatch):
+        # A naive substring/regex match for "compact" would fabricate hundreds of
+        # hits from sessions merely discussing compaction; only the structural
+        # type=="system"+subtype=="compact_boundary" pair may count.
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        projects_dir = tmp_path / ".claude" / "projects"
+        _write_transcript(projects_dir, "s1.jsonl", [
+            {"type": "assistant", "message": {"content": [
+                {"type": "text", "text": "Discussing Compaction_Events and compact_boundary handling."}
+            ]}},
+            {"type": "user", "message": {"content": "please compact this summary"}},
+        ])
+        result = agg._compaction_events([])
+        assert result["val"] == 0
+        assert "data_gap" not in result
+
+    def test_wrong_subtype_on_system_record_not_counted(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        projects_dir = tmp_path / ".claude" / "projects"
+        _write_transcript(projects_dir, "s1.jsonl", [
+            {"type": "system", "subtype": "other_boundary", "uuid": "x"},
+        ])
+        result = agg._compaction_events([])
+        assert result["val"] == 0
+
+    def test_sums_across_multiple_files(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        projects_dir = tmp_path / ".claude" / "projects"
+        _write_transcript(projects_dir, "s1.jsonl", [_compact_boundary_line()])
+        _write_transcript(projects_dir, "s2.jsonl", [_compact_boundary_line(trigger="manual")])
+        result = agg._compaction_events([])
+        assert result["val"] == 2
+
+    def test_ignores_malformed_lines(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        projects_dir = tmp_path / ".claude" / "projects"
+        proj = projects_dir / "proj1"
+        proj.mkdir(parents=True)
+        path = proj / "s1.jsonl"
+        good = json.dumps(_compact_boundary_line())
+        path.write_text(good + "\nnot valid json compact_boundary\n", encoding="utf-8")
+        result = agg._compaction_events([])
+        assert result["val"] == 1
+
+    def test_ignores_records_argument_entirely(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        projects_dir = tmp_path / ".claude" / "projects"
+        _write_transcript(projects_dir, "s1.jsonl", [_compact_boundary_line()])
+        fake_records = [{"total_cost": 999.0, "model_tier": "CLOUD"}] * 50
+        result = agg._compaction_events(fake_records)
+        assert result["val"] == 1
+
+    def test_registered_in_registry_under_brush_as_auto_count(self):
+        entry = next((e for e in agg.REGISTRY if e[2] == "Compaction_Events"), None)
+        assert entry is not None, "Compaction_Events must be registered in aggregate.REGISTRY"
+        pillar, group, key, reducer, tier, is_percent, is_count = entry
+        assert pillar == "brush"
+        assert tier == "AUTO"
+        assert is_percent is False
+        assert is_count is True
+        assert reducer is agg._compaction_events
+
+    def test_build_pillars_reports_live_not_simulated(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        projects_dir = tmp_path / ".claude" / "projects"
+        _write_transcript(projects_dir, "s1.jsonl", [_compact_boundary_line()])
+        pillars = agg.build_pillars([])
+        env = pillars["brush"]["Token Efficiency"]["Compaction_Events"]
+        assert env["is_simulated"] is False
+        assert env["tier"] == "AUTO"
+        assert env["val"] != "—"  # not the "—" no-data placeholder
+
+
+# ── Daemon_Restart_Count (AUTO-012) ────────────────────────────────────────────
+# Real source is service_supervisor.py's own log (~/.claude/data/
+# service_supervisor.log), one line per event: "<ISO-ts> <service>: <message>".
+# Prior cycles scanned state/autonomic_events.jsonl, which this supervisor never
+# writes to — see _daemon_restart_count.
+
+def _supervisor_log(tmp_path, lines):
+    data_dir = tmp_path / ".claude" / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    path = data_dir / "service_supervisor.log"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+class TestDaemonRestartCount:
+    def test_missing_log_file_returns_data_gap_not_fake_zero(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        result = agg._daemon_restart_count([])
+        assert result["val"] is None
+        assert result["data_gap"] is True
+        assert result["calibrated"] is True
+
+    def test_log_with_restarts_returns_correct_count(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        _supervisor_log(tmp_path, [
+            "2026-07-06T17:48:12 qdrant: spawn failed — binary not on PATH",
+            "2026-07-06T21:31:57 qdrant: restart successful",
+            "2026-07-06T21:32:03 ollama: restart successful",
+        ])
+        result = agg._daemon_restart_count([])
+        assert result["val"] == 2
+        assert result["calibrated"] is True
+        assert "data_gap" not in result
+        assert "2 successful restarts" in result["detail"]
+        assert "1 failed spawn attempts" in result["detail"]
+
+    def test_log_with_only_failures_returns_honest_zero(self, tmp_path, monkeypatch):
+        # An existing log with zero restart lines is an honest 0, not a data gap.
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        _supervisor_log(tmp_path, [
+            "2026-07-16T04:25:32 qdrant: spawn failed — binary not on PATH",
+            "2026-07-16T04:44:33 qdrant: spawn failed — binary not on PATH",
+        ])
+        result = agg._daemon_restart_count([])
+        assert result["val"] == 0
+        assert result["calibrated"] is True
+        assert "data_gap" not in result
+        assert "0 successful restarts" in result["detail"]
+        assert "2 failed spawn attempts" in result["detail"]
+
+    def test_malformed_lines_are_skipped_not_crashed(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        _supervisor_log(tmp_path, [
+            "",
+            "not a valid supervisor log line at all",
+            "2026-07-06T21:31:57 qdrant: restart successful",
+            "   ",
+        ])
+        result = agg._daemon_restart_count([])
+        assert result["val"] == 1
+        assert "data_gap" not in result
+
+    def test_ignores_records_argument_entirely(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        _supervisor_log(tmp_path, ["2026-07-06T21:31:57 qdrant: restart successful"])
+        fake_records = [{"total_cost": 999.0, "model_tier": "CLOUD"}] * 50
+        result = agg._daemon_restart_count(fake_records)
+        assert result["val"] == 1
+
+    def test_registered_in_registry_under_bow_as_auto_count(self):
+        entry = next((e for e in agg.REGISTRY if e[2] == "Daemon_Restart_Count"), None)
+        assert entry is not None, "Daemon_Restart_Count must be registered in aggregate.REGISTRY"
+        pillar, group, key, reducer, tier, is_percent, is_count = entry
+        assert pillar == "bow"
+        assert group == "Autonomic"
+        assert tier == "AUTO"
+        assert is_percent is False
+        assert is_count is True
+        assert reducer is agg._daemon_restart_count
+
+    def test_build_pillars_reports_live_not_simulated(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        _supervisor_log(tmp_path, [
+            "2026-07-06T21:31:57 qdrant: restart successful",
+            "2026-07-06T21:32:03 ollama: restart successful",
+        ])
+        pillars = agg.build_pillars([])
+        env = pillars["bow"]["Autonomic"]["Daemon_Restart_Count"]
+        assert env["is_simulated"] is False
+        assert env["tier"] == "AUTO"
+        assert env["val"] != "—"

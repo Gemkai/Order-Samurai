@@ -31,6 +31,17 @@ METRIC_CONFIG: dict[str, dict] = {
     # REMAP 2026-07-08 audit: audit-mechanisms REPORTS orphans; removing one is human
     # work (0/8 improved, audit_only failure_mode) — advisory, never auto-fire.
     "Mechanism_Orphans":        {"skill": "audit-mechanisms",             "command": "/audit-mechanisms",                    "dir": "lower",  "warn": 1,     "fail": 3, "auto_remediable": False, "weight": 1.0},
+    # Scheduled_Job_Failures (2026-08-09): count of launchd jobs whose LAST RUN exited
+    # non-zero, from mechanism_audit's check_launchd_exit_status (category
+    # "launchd_failing"). The fleet had 59 loaded jobs and NO metric asked whether any
+    # of them actually succeeded -- Mechanism_Orphans covers producer/consumer wiring,
+    # Mechanism_Liveness counts runs, and launchd_stale asks "ran recently?" using log
+    # mtime, which cannot distinguish success from failure (a failing run writes its log
+    # too). Found on 2026-08-09 with 6 jobs failing silently, incl. a weekly vector-store
+    # backup that had produced nothing since 2026-08-02 and a HITL digest whose email
+    # path was dead while an item sat pending. NOT auto_remediable: each failure has its
+    # own cause and fixing one blind is how you paper over a backup that is not running.
+    "Scheduled_Job_Failures":   {"skill": "audit-mechanisms",             "command": "/audit-mechanisms",                    "dir": "lower",  "warn": 1,     "fail": 3, "auto_remediable": False, "weight": 1.0},
     # Remediation_Delta (2026-08-01, metric-gap remediation, phase B2): magnitude
     # companion to Self_Correction_Rate's yes/no judgment -- median(3 post-firing) -
     # median(3 pre-firing) history values per remediation attempt, sign-normalized so
@@ -79,7 +90,7 @@ METRIC_CONFIG: dict[str, dict] = {
     # RETUNE 2026-07-08 audit: policy-enforcement-audit finds unenforced policy, it
     # doesn't stop violations (stuck 0/2) — advisory only. Window mismatch (S6) fixed
     # in aggregate.py: numerator now shares the payload window with Session_Count.
-    "Rule_Violations":          {"skill": "policy-enforcement-audit",     "command": "/policy-enforcement-audit",            "dir": "lower",  "warn": 1,     "fail": 5,  "per": "session", "readonly": True, "auto_remediable": False, "weight": 2.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "policy_enforcement_audit.py", "args": [], "read_only": True, "timeout_s": 120}},
+    "Rule_Violations":          {"skill": "policy-enforcement-audit",     "command": "/policy-enforcement-audit",            "dir": "lower",  "warn": 1,     "fail": 5,  "per": "session", "readonly": True, "auto_remediable": False, "weight": 2.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "policy_enforcement_audit.py", "args": ["--json"], "read_only": True, "timeout_s": 120}},
     # Canary_Failures RETIRED 2026-07-11 (C/D/F plan step 5): behavioral_canary.py
     # was never scheduled on this host — a permanently dark weight-3 metric is
     # registry noise, and the old mapping was a documented misroute. Re-add only
@@ -204,8 +215,13 @@ METRIC_CONFIG: dict[str, dict] = {
     # DEMOTE 2026-08-01 (metric-gap remediation, phase A2, frozen criterion >=8
     # attempts AND 0 improved): wiki is 0/24 lifetime improved across its mapped
     # metrics — advisory, never auto-fire.
-    "Raw_Pending":              {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 5,     "fail": 15, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "wiki_compile.py", "args": [], "read_only": True, "timeout_s": 120}, "auto_remediable": False},
-    "Wiki_Orphans":             {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 2,     "fail": 10, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "wiki_link.py", "args": ["--json"], "read_only": True, "timeout_s": 120}, "auto_remediable": False},
+    # PROBATION COHORT (user-ratified 2026-08-08): auto_remediable restored for these two only.
+    # #104 demoted five routes on 2026-08-01 for 0% efficacy — evidence the bare-prompt defect
+    # (reflex-engine.ts spawned skills with only '/wiki' and no directive) largely explains. These
+    # two are the lowest-blast-radius of the five; the other three (Simplify_Age, Revision_Ratio,
+    # Doc_Parity_Issues) stay demoted until this cohort shows real efficacy over ~a week.
+    "Raw_Pending":              {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 5,     "fail": 15, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "wiki_compile.py", "args": [], "read_only": True, "timeout_s": 120}},
+    "Wiki_Orphans":             {"skill": "wiki",                         "command": "/wiki",                                "dir": "lower",  "warn": 2,     "fail": 10, "weight": 1.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "wiki_link.py", "args": ["--json"], "read_only": True, "timeout_s": 120}},
     # OKF / <BRAND>³ knowledge health (scouts.knowledge_signals -> arts/Knowledge group).
     # Thresholds mirror verify_knowledge.py constants — change both together.
     "OKF_Conformance":          {"skill": "wiki",                         "command": "python3 Knowledge/okf/okf_tools.py validate Knowledge/vault --list 20", "dir": "higher", "warn": 95, "fail": 80, "auto_remediable": False, "weight": 1.0},  # validate lists offenders; fixing frontmatter is editorial
@@ -375,6 +391,7 @@ _GRADED_METRIC_PILLARS: dict[str, tuple[str, ...]] = {
     "Latency_P95": ("bow",),
     "Avg_Session_Turns": ("bow",),
     "Mechanism_Orphans": ("bow",),
+    "Scheduled_Job_Failures": ("bow",),
     "Governance_Pass_Rate": ("bow",),
     "MCP_Smoke_Fails": ("bow",),
     "Open_CVEs": ("sword",),

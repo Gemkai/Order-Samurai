@@ -129,6 +129,26 @@
   "baselineRequiredFiles": [
     "settings.json"
   ],
+  "homeRoot": {
+    "description": "Visible top-level $HOME entries this estate sanctions. Anything visible and unlisted WARNs as home-root clutter (2026-08-02 audit follow-up: the ~/.claude policies could not see sprawl landing in $HOME itself). Hidden entries are app-managed and out of scope.",
+    "allowlist": [
+      "AgenticaOS",
+      "AgenticaOS-backups",
+      "AgenticaOS-bot",
+      "Applications",
+      "Brewfile",
+      "Desktop",
+      "Documents",
+      "Downloads",
+      "Library",
+      "Movies",
+      "Music",
+      "OrbStack",
+      "Pictures",
+      "Projects",
+      "Public"
+    ]
+  },
   "boundaryRules": [
     {
       "name": "external-runtime-isolation",

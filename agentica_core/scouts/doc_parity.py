@@ -23,8 +23,18 @@ REPO = os.environ.get("ORDER_SAMURAI_ROOT") or str(Path(__file__).resolve().pare
 DOCS_ROOT = Path(REPO) / "docs" / "solutions"
 
 
-def _changed_py_files() -> list[str]:
-    """Return .py file paths changed in the last 7 days (added or modified)."""
+def _changed_py_files() -> list[str] | None:
+    """Return .py file paths changed in the last 7 days (added or modified).
+
+    None means the git query FAILED — distinct from `[]`, which means it ran and found
+    nothing changed. Collapsing the two is the "no data looks healthy" bug: an unreadable
+    source rendered as a confident `doc_parity_issues: 0`, i.e. perfect documentation
+    parity, which is also the best possible score this metric can report. Global
+    Anti-Pattern #1 (a git call in a directory that is not a repo exits 128 and prints
+    nothing to stdout) is exactly how that happens in practice, and nothing here checked
+    the return code."""
+    if not Path(REPO).is_dir():
+        return None
     result = subprocess.run(
         [
             "git",
@@ -46,6 +56,8 @@ def _changed_py_files() -> list[str]:
         text=True,
         timeout=30,
     )
+    if result.returncode != 0:
+        return None
     files: list[str] = []
     for line in result.stdout.splitlines():
         line = line.strip()
@@ -110,8 +122,20 @@ def _is_solution_code(py_path: str) -> bool:
 
 
 def run() -> dict:
-    """Scout entry point. Returns doc_parity_issues count and stale_files list."""
-    changed = [f for f in _changed_py_files() if _is_solution_code(f)]
+    """Scout entry point. Returns doc_parity_issues count and stale_files list.
+
+    On an unreadable source, `doc_parity_issues` is None and `data_gap` says why —
+    never 0. The caller must omit the metric rather than record the None; see
+    scouts/__init__.py, which mirrors the `vulnerability_window_days is not None`
+    check already used two blocks above it."""
+    raw = _changed_py_files()
+    if raw is None:
+        return {
+            "doc_parity_issues": None,
+            "stale_files": [],
+            "data_gap": f"git log failed or {REPO} is not a directory",
+        }
+    changed = [f for f in raw if _is_solution_code(f)]
     stale: list[str] = [f for f in changed if not _has_doc(f)]
     return {
         "doc_parity_issues": len(stale),

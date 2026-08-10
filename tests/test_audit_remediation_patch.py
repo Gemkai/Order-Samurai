@@ -80,6 +80,20 @@ def test_real_credentials_file_still_flagged():
     assert any("credentials" in f for f in run_static_checks(patch))
 
 
+def test_credentials_file_under_space_containing_dir_still_flagged():
+    # Regression: the gitignore/credentials check used a `\S+` regex on the diff
+    # header to pull the target path, which cannot match a space. This repo's own
+    # "Order Samurai" subtree has a literal space, so `+++ b/Governance/Order
+    # Samurai/config/credentials.json` truncated to "Governance/Order" -> basename
+    # "order", silently defeating the check for every credentials/.env file under
+    # a space-containing directory (check_path_scope has no credentials pattern,
+    # so nothing else catches this).
+    patch = ('--- a/Governance/Order Samurai/config/credentials.json\n'
+             '+++ b/Governance/Order Samurai/config/credentials.json\n'
+             '@@ -1 +1 @@\n+{"key": "v"}\n')
+    assert any("credentials" in f for f in run_static_checks(patch))
+
+
 def test_env_local_still_flagged():
     patch = "--- a/.env.local\n+++ b/.env.local\n@@ -1 +1 @@\n+SECRET=1\n"
     assert any(".env" in f for f in run_static_checks(patch))

@@ -1230,7 +1230,14 @@ def _coef_block_calibrated(block: dict, min_samples: int = _CALIBRATION_MIN_SAMP
     )
 
 
-def _estimated_agent_time_saved(records: list[dict], repo_root: Path | None = None) -> dict:  # noqa: ARG001
+def _estimated_agent_time_saved(records: list[dict], repo_root: Path | None = None) -> dict:
+    """Est. Agent Hours Saved — this week's completed backlog items priced at their
+    per-kind benchmark minutes.
+
+    2026-08-08 class sweep: `records` is no longer ignored. It is not a data source here
+    (the values come from MEDITATION_STATE.json) but it IS what tells the reducer WHICH
+    week it is being asked about — see _target_week_anchor. Without it, backfill_history's
+    per-week replay stamped the current week's hours onto every historical row."""
     if repo_root is None:
         repo_root = _ORDER_SAMURAI_ROOT
     state_file = repo_root / "state" / "MEDITATION_STATE.json"
@@ -1248,8 +1255,8 @@ def _estimated_agent_time_saved(records: list[dict], repo_root: Path | None = No
         
         coef_data = json.loads(coef_path.read_text(encoding="utf-8", errors="ignore"))
         ops_coef = coef_data.get("operations", {})
-        
-        now = datetime.now(timezone.utc)
+
+        now = _target_week_anchor(records)
         this_week = now.strftime("%G-W%V")
         last_week = (now - timedelta(days=7)).strftime("%G-W%V")
 
@@ -1305,6 +1312,15 @@ def _estimated_agent_time_saved(records: list[dict], repo_root: Path | None = No
         return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
 
 
+# Self_Correction_Rate is a REGISTRY reducer: build_pillars() hands it `records` and
+# nothing else, so aggregate()'s window_days cannot reach it as an argument. aggregate()
+# publishes the window it is currently building here (the refresh is single-threaded);
+# direct build_pillars() callers get this default. Without a window the rate counted the
+# whole exec_log lifetime — one frozen number that 18 days of zero autonomous attempts
+# could not move, which is precisely the failure this metric exists to surface.
+_ACTIVE_WINDOW_DAYS = 30
+
+
 def _self_correction_rate(records: list[dict]) -> dict:
     """AUTO-005: Self-Correction Rate — the autonomic self-healing IMPROVEMENT rate:
     % of ALL autonomous-remediation attempts that actually IMPROVED their target metric
@@ -1319,15 +1335,23 @@ def _self_correction_rate(records: list[dict]) -> dict:
     do — so success_rate silently dropped the majority of no-op/unmeasured runs from
     its denominator, turning a single-digit real improvement rate into a ~52% headline.
     A window with zero attempted remediations is a data gap (nothing to rate), never a
-    fabricated 0%."""
+    fabricated 0%.
+
+    2026-08-08 (seq 9a): windowed. The counters now cover `_ACTIVE_WINDOW_DAYS` of
+    exec_log instead of its whole lifetime, so an engine that has stopped firing shows
+    up as a data gap ("no autonomous attempts in Nd") rather than holding its last
+    lifetime rate forever. Lifetime totals remain in the efficacy dict."""
     try:
-        eff = remediation.efficacy(records=records)
+        eff = remediation.efficacy(records=records, window_days=_ACTIVE_WINDOW_DAYS)
         attempted = eff.get("attempted", 0) or 0
         rate = eff.get("improvement_rate")
         if not attempted or rate is None:
-            return {"val": None, "data_gap": True, "calibrated": True}
+            return {"val": None, "data_gap": True, "calibrated": True,
+                    "detail": eff.get("data_gap_detail") or "no judgeable remediation attempts"}
         return {"val": rate, "calibrated": True,
-                "detail": f"{eff.get('improved', 0)}/{attempted} remediation attempts improved their metric"}
+                "detail": (f"{eff.get('improved', 0)}/{attempted} remediation attempts improved "
+                           f"their metric in the last {eff.get('window_days')}d "
+                           f"({eff.get('improved_lifetime', 0)}/{eff.get('attempted_lifetime', 0)} lifetime)")}
     except Exception as e:
         return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
 
@@ -1374,16 +1398,24 @@ def _remediation_delta(records: list[dict]) -> dict:  # noqa: ARG001
     normalized by dir) across every skill's attempts this window, from
     remediation_delta.compute(). A window with no attempts scored on both sides yet
     is a data gap (nothing to rate), never a fabricated 0. OBSERVATIONAL — see
-    insights.METRIC_CONFIG["Remediation_Delta"]."""
+    insights.METRIC_CONFIG["Remediation_Delta"].
+
+    2026-08-08 (seq 9d): the detail no longer reports one lumped "N pending". Most of
+    that number was never drainable — attempts missing PRE-firing history, which is
+    permanent — and attempts with no METRIC_RULES entry were dropped in silence. The
+    three buckets are reported separately: pending / unscoreable / unrated."""
     try:
         d = remediation_delta.compute()
         val = d.get("overall")
-        pending = d.get("pending", 0)
+        counts = (f"{d.get('pending', 0)} pending, {d.get('unscoreable', 0)} unscoreable "
+                  f"(no pre-firing history — permanent), {d.get('unrated', 0)} unrated "
+                  f"(no metric rule)")
         if val is None:
             return {"val": None, "data_gap": True, "calibrated": True,
-                    "detail": f"{pending} attempt(s) pending — fewer than 3 real history values on one side"}
+                    "detail": f"no attempt scored on both sides — {counts}"}
         return {"val": val, "calibrated": True,
-                "detail": f"median delta across {len(d.get('by_skill', {}))} skill(s); {pending} pending"}
+                "detail": (f"median delta {val}% of pre-firing median across "
+                           f"{len(d.get('by_skill', {}))} skill(s); {counts}")}
     except Exception as e:
         return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
 
@@ -1411,18 +1443,101 @@ def _verifier_falsifiability(records: list[dict]) -> dict:  # noqa: ARG001
         return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
 
 
+def _record_set_week(records: list[dict]) -> str | None:
+    """The latest ISO week ('%G-W%V') actually present in `records`, or None when the
+    set carries no parseable timestamp. Zero-padded %G-W%V strings order
+    lexicographically, so max() is the newest week."""
+    weeks = [w for w in (iso_week(r.get("timestamp", "")) for r in records) if w]
+    return max(weeks) if weeks else None
+
+
+def _target_week_anchor(records: list[dict]) -> datetime:
+    """The instant a WEEKLY reducer should treat as "now" — the Monday of the newest
+    ISO week in `records`, falling back to wall-clock when the set is empty or carries
+    no parseable timestamp.
+
+    2026-08-08 metric-honesty class sweep. Every weekly reducer here opened with
+    `now = datetime.now(timezone.utc)`. That is correct for a live refresh (the newest
+    record IS today, so this helper returns the same week) but wrong for a REPLAY:
+    backfill_history.py feeds build_pillars() one historical ISO week of telemetry at a
+    time, and a wall-clock `now` made every one of those rows describe the CURRENT week
+    instead — re-stamping today's state across the whole rebuilt series and fabricating
+    a flat history. Anchoring on Monday keeps `anchor - 7d` inside the prior ISO week
+    regardless of which weekday the records fall on.
+
+    Kill switch: AGENTICA_METRIC_WEEK_FROM_RECORDS=false|0|no restores the wall-clock
+    week for every reducer that calls this. Default is the fixed behaviour. (Shared
+    house idiom — remediation._kill_switch_off.)
+    """
+    if remediation._kill_switch_off("AGENTICA_METRIC_WEEK_FROM_RECORDS"):
+        return datetime.now(timezone.utc)
+    week = _record_set_week(records)
+    if week is None:
+        return datetime.now(timezone.utc)
+    return datetime.strptime(f"{week}-1", "%G-W%V-%u").replace(tzinfo=timezone.utc)
+
+
 def _estimated_cost_savings(records: list[dict], repo_root: Path | None = None) -> dict:
+    """Estimated_Cost_Savings — cost-per-task efficiency gain vs the prior week, priced
+    at the target week's cost-bearing task volume.
+
+    2026-08-08 (metric-honesty class sweep, goal data-honesty-cost-savings-v2). Three
+    defects, all instances of the class Self_Correction_Rate was fixed for:
+
+    (ii) WALL-CLOCK-IN-REDUCER — the target week came from datetime.now(), not from the
+    record set, so a replayed historical week matched no records and wrote a structural
+    0.0 into every rebuilt history row. Now anchored via _target_week_anchor() (see
+    there for the mechanism and its AGENTICA_METRIC_WEEK_FROM_RECORDS kill switch);
+    live refreshes are unaffected, a replay of week N prices week N.
+
+    (iii) STRUCTURALLY-SIGNED — `if this_cpt < prior_cpt` floored the result at 0.0, so
+    a week where cost-per-task got WORSE was indistinguishable from a week where it held
+    flat: the bad direction had no representation at all. The floor is removed rather
+    than the metric renamed, because renaming the registry key would have to ripple
+    through insights/state_report/ronin_metrics/the dashboard — all outside this change's
+    scope — whereas an unfloored signed value is what the consumers already treat it as
+    (insights' brush lead branches on zero-vs-nonzero, and a negative reads correctly as
+    a regression). A negative value now means cost-per-task rose.
+
+    (iv) NO-DATA-LOOKS-HEALTHY (window variants) — under a window shorter than one ISO
+    week (refresh_dashboard's 1d variant) the record set structurally cannot contain a
+    whole week, so the number was a partial-week figure presented with the same
+    confidence as the 30d one. Such a build now returns a data gap with an explicit
+    reason instead of a truncated dollar figure.
+
+    Kill switches (both default to the fixed behaviour):
+      AGENTICA_COST_SAVINGS_V2=false|0|no        — restores the positive-only floor and
+                                                   drops the short-window suppression.
+      AGENTICA_METRIC_WEEK_FROM_RECORDS=false|.. — restores the wall-clock target week
+                                                   (shared with the other weekly reducers).
+    """
     if repo_root is None:
         repo_root = _ORDER_SAMURAI_ROOT
 
     # Resolve history path relative to repo_root
     history_path = repo_root.parent.parent / "Data" / "telemetry" / "metrics_history.jsonl"
-        
+
     try:
-        now = datetime.now(timezone.utc)
-        this_week = now.strftime("%G-W%V")
-        last_week = (now - timedelta(days=7)).strftime("%G-W%V")
-        
+        # Shared house idiom (remediation._kill_switch_off): env var defaults to the
+        # FIXED behaviour; an operator can only opt BACK to the old semantics.
+        v2 = not remediation._kill_switch_off("AGENTICA_COST_SAVINGS_V2")
+
+        anchor = _target_week_anchor(records)
+        this_week = anchor.strftime("%G-W%V")
+        last_week = (anchor - timedelta(days=7)).strftime("%G-W%V")
+
+        # A build whose telemetry window is shorter than an ISO week cannot hold one, so
+        # there is no weekly figure to report — suppressed outright rather than shown as
+        # a truncated partial-week dollar amount. Read-only use of the window aggregate()
+        # published (see _ACTIVE_WINDOW_DAYS); this changes no other metric's windowing.
+        if v2 and _ACTIVE_WINDOW_DAYS < 7:
+            return {
+                "val": None, "week_delta": 0.0, "calibrated": False,
+                "estimate_by_design": True, "data_gap": True,
+                "detail": (f"suppressed — a {_ACTIVE_WINDOW_DAYS}d telemetry window cannot "
+                           f"cover ISO week {this_week}; this is a weekly figure"),
+            }
+
         # Component 1: cost-per-task improvement x this week's cost-bearing volume.
         # A raw spend drop vs last week is NOT savings — it also falls when less
         # work happens. Efficiency gain per task at this week's volume is.
@@ -1439,9 +1554,10 @@ def _estimated_cost_savings(records: list[dict], repo_root: Path | None = None) 
 
         comp1_savings = 0.0
         comp1_present = this_cpt is not None and prior_cpt is not None
-        if this_cpt is not None and prior_cpt is not None and this_cpt < prior_cpt:
+        if comp1_present and (v2 or this_cpt < prior_cpt):
+            # Unfloored under v2: a rise in cost-per-task yields a NEGATIVE saving.
             comp1_savings = (prior_cpt - this_cpt) * n_tasks
-        
+
         # This metric is now the REAL cost-per-task saving only. The former
         # component 2 (efficient_runs x $0.05) was an estimate coefficient with no
         # per-event $ sample, so it could never calibrate and only dragged the whole
@@ -1458,7 +1574,9 @@ def _estimated_cost_savings(records: list[dict], repo_root: Path | None = None) 
         if last_cpt is not None:
             prior_prior_cpt = _get_prior_week_val(history_path, "brush/Token Efficiency/Cost_Per_Task",
                                                   before_week=last_week)
-            if prior_prior_cpt is not None and last_cpt < prior_prior_cpt:
+            # Same unfloored rule as the current week, so week_delta compares like
+            # with like instead of a signed value against a clamped one.
+            if prior_prior_cpt is not None and (v2 or last_cpt < prior_prior_cpt):
                 last_comp1_savings = (prior_prior_cpt - last_cpt) * last_n_tasks
         week_delta = val - last_comp1_savings
 
@@ -1467,6 +1585,11 @@ def _estimated_cost_savings(records: list[dict], repo_root: Path | None = None) 
         # true the hero falls back to the measured Cost-per-Task rather than show
         # a confident $0 saving.
         data_gap = not comp1_present
+        detail = (
+            f"no prior-week cost-per-task baseline before {this_week}" if not comp1_present
+            else (f"week {this_week}: cost-per-task {prior_cpt:.4g} → {this_cpt:.4g} "
+                  f"across {n_tasks} cost-bearing session(s)")
+        )
 
         # calibrated stays False by design: even with matched definitions this is
         # a modeled counterfactual ("last week's unit price held at this week's
@@ -1485,7 +1608,8 @@ def _estimated_cost_savings(records: list[dict], repo_root: Path | None = None) 
             # Cost_Per_Task every week. Unlike the arts hero (which sets calibrated=True),
             # this one keeps False and lets the flag carry the honesty.
             "estimate_by_design": True,
-            "data_gap": data_gap
+            "data_gap": data_gap,
+            "detail": detail,
         }
     except Exception as e:
         return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
@@ -1551,7 +1675,7 @@ def _doc_parity_latency_days(records: list[dict], repo_root: Path) -> float:  # 
     return round(gap_seconds / 86400, 1)  # days
 
 
-def _craft_improvements(records: list[dict], repo_root: Path | None = None) -> dict:  # noqa: ARG001
+def _craft_improvements(records: list[dict], repo_root: Path | None = None) -> dict:
     """Real, measured craft wins this week — NOT a synthetic hours estimate.
 
     The former Estimated_Human_Time_Saved multiplied real signals (vibe Δ, doc-parity
@@ -1565,6 +1689,10 @@ def _craft_improvements(records: list[dict], repo_root: Path | None = None) -> d
     and doc-parity deltas (real but continuous, not counts) ride in `detail` and are
     each tracked as their own metrics on the Arts pillar. Everything here is measured,
     so calibrated is True by design — there is no coefficient left to calibrate.
+
+    2026-08-08 class sweep: the target week comes from `records` (see
+    _target_week_anchor) so a backfill replay of week N counts week N's deliverables
+    instead of re-stamping the current week's onto every historical row.
     """
     if repo_root is None:
         repo_root = _ORDER_SAMURAI_ROOT
@@ -1573,7 +1701,7 @@ def _craft_improvements(records: list[dict], repo_root: Path | None = None) -> d
     history_path = repo_root.parent.parent / "Data" / "telemetry" / "metrics_history.jsonl"
 
     try:
-        now = datetime.now(timezone.utc)
+        now = _target_week_anchor(records)
         this_week = now.strftime("%G-W%V")
         last_week = (now - timedelta(days=7)).strftime("%G-W%V")
 
@@ -1636,7 +1764,7 @@ def _craft_improvements(records: list[dict], repo_root: Path | None = None) -> d
         return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
 
 
-def _estimated_human_time_saved(records: list[dict], repo_root: Path | None = None) -> dict:  # noqa: ARG001
+def _estimated_human_time_saved(records: list[dict], repo_root: Path | None = None) -> dict:
     """Est. Human Hours Saved — an ESTIMATE BY DESIGN (restored per user decision
     2026-07-08 as the Arts hero, with Craft_Improvements as the measured fallback).
 
@@ -1647,7 +1775,11 @@ def _estimated_human_time_saved(records: list[dict], repo_root: Path | None = No
     The envelope therefore carries estimate_by_design=True and the UI labels the
     value "est." — never "awaiting calibration" (it is not waiting for anything).
     Only positive improvements convert to hours; a regression never produces
-    negative "hours saved"."""
+    negative "hours saved" — a deliberate asymmetry, kept in the 2026-08-08 class sweep
+    because the coefficients only model time an improvement AVOIDS, and there is no
+    symmetric coefficient for the hours a regression costs. What that sweep did change:
+    the target week now comes from `records` via _target_week_anchor, so a backfill
+    replay of week N reports week N instead of the current week."""
     if repo_root is None:
         repo_root = _ORDER_SAMURAI_ROOT
     state_file = repo_root / "state" / "MEDITATION_STATE.json"
@@ -1662,7 +1794,7 @@ def _estimated_human_time_saved(records: list[dict], repo_root: Path | None = No
         c_vibe = float(craft.get("vibe_alignment_hrs_per_point", {}).get("benchmark", 0))
         c_doc = float(craft.get("doc_parity_latency_hrs_per_day", {}).get("benchmark", 0))
 
-        now = datetime.now(timezone.utc)
+        now = _target_week_anchor(records)
         this_week = now.strftime("%G-W%V")
         last_week = (now - timedelta(days=7)).strftime("%G-W%V")
 
@@ -1776,7 +1908,7 @@ def _vault_health_metrics() -> dict | None:
         return None
 
 
-def _mechanism_liveness(records: list[dict]) -> dict:  # noqa: ARG001
+def _mechanism_liveness(records: list[dict]) -> dict:
     """AUTO-019: Mechanism Liveness — real count of mechanism_run events (registered
     mechanisms that ran AND had their output consumed, the 3-step Mechanism Rule) in
     the CANONICAL cross-platform stream (Data/telemetry/autonomic_events.jsonl).
@@ -1790,11 +1922,15 @@ def _mechanism_liveness(records: list[dict]) -> dict:  # noqa: ARG001
 
     A window with zero mechanism_run events anywhere in the stream is a genuine data
     gap (nothing observed yet), never a fabricated zero — mirrors _kill_chains_open's
-    honesty rule for a dead/unwired emitter."""
+    honesty rule for a dead/unwired emitter.
+
+    2026-08-08 class sweep: `records` is not this metric's data source but it does say
+    WHICH week is being asked about (see _target_week_anchor), so a backfill replay of
+    week N counts week N's mechanism_run events rather than the current week's."""
     path = default_events_path()
     if not path.exists():
         return {"val": None, "data_gap": True, "calibrated": True}
-    now = datetime.now(timezone.utc)
+    now = _target_week_anchor(records)
     this_week = now.strftime("%G-W%V")
     last_week = (now - timedelta(days=7)).strftime("%G-W%V")
     this_count = last_count = 0
@@ -1992,6 +2128,275 @@ def r_governance_work_volume(recs):  # noqa: ARG001
         return None
 
 
+_DEAD_RULE_CACHE: dict = {"t": 0.0, "v": None}
+
+
+def _dead_rule_count(records: list[dict]) -> dict:  # noqa: ARG001
+    """AUTO-014 (Dead-Rule Detection): how many governance anti-pattern rules have NOT
+    fired within the retirement window — cruft rules that scan every session but never
+    catch anything. A direct Brush architecture-hygiene signal (dead rules are dead
+    weight to retire).
+
+    Reads the canonical rule set and the real firing log straight from the config
+    tier's principle_audit.py (~/.claude/scripts): its PATTERNS list is the full
+    denominator and ~/.claude/data/principle_violations.jsonl records every hit with a
+    `ts`. A rule absent from the last RETIREMENT_WINDOW_DAYS of hits is "dead" — exactly
+    the retirement-candidate set `principle_audit.py --retirement` prints. This mirrors
+    cmd_retirement byte-for-byte (same cutoff, same `ts`>=cutoff test, same skip-on-
+    error) so the metric can never disagree with the canonical tool. Importing the
+    module for PATTERNS (rather than hardcoding the rule ids) means the count tracks the
+    audit's own rule set and can never silently drift when a rule is added or removed.
+
+    Ignores `records` (the telemetry stream carries no rule-firing data) and reads the
+    source directly with a short TTL cache. Returns a data_gap envelope — never a
+    fabricated 0 — when the config tier, its rule set, or its violation log is
+    unreadable, so an absent source grades SIMULATED instead of faking "0 dead rules"."""
+    now = time.monotonic()
+    if (_DEAD_RULE_CACHE["v"] is not None
+            and now - _DEAD_RULE_CACHE["t"] < _SCOUT_CACHE_TTL_SEC):
+        return _DEAD_RULE_CACHE["v"]
+
+    def _gap() -> dict:
+        r = {"val": None, "data_gap": True, "calibrated": True}
+        _DEAD_RULE_CACHE.update(t=now, v=r)
+        return r
+
+    scripts_dir = Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".claude" / "scripts"
+    if not scripts_dir.exists():
+        return _gap()
+    import sys
+    # Put scripts_dir on sys.path only for this import, then take it back off.
+    # Leaving ~/.claude/scripts (and its sibling ~/.claude) behind permanently
+    # shadows other imports for the rest of the process: ~/.claude/execution is a
+    # REGULAR package, so it beats a platform's namespace-portion `execution` even
+    # when that platform's root is inserted at sys.path[0] -- which broke
+    # load_verifiers("claude") with a bogus ModuleNotFoundError.
+    saved_path = list(sys.path)
+    sys.path.insert(0, str(scripts_dir))
+    try:
+        import principle_audit as pa  # canonical rule set + violation log paths
+    except Exception:
+        return _gap()
+    finally:
+        sys.path[:] = saved_path
+    patterns = getattr(pa, "PATTERNS", None)
+    violations_file = getattr(pa, "VIOLATIONS_FILE", None)
+    window_days = getattr(pa, "RETIREMENT_WINDOW_DAYS", 90)
+    if not patterns or violations_file is None:
+        return _gap()
+    rule_ids = [p.get("rule_id") for p in patterns if isinstance(p, dict) and p.get("rule_id")]
+    if not rule_ids:
+        return _gap()
+    if not Path(violations_file).exists():
+        return _gap()
+    cutoff = datetime.now() - timedelta(days=window_days)
+    seen: set[str] = set()
+    try:
+        with open(violations_file, encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                try:
+                    v = json.loads(line)
+                    if datetime.fromisoformat(v["ts"]) >= cutoff:
+                        seen.add(v["rule_id"])
+                except Exception:
+                    continue
+    except OSError:
+        return _gap()
+    dead = sorted(rid for rid in rule_ids if rid not in seen)
+    result = {"val": len(dead), "calibrated": True,
+              "detail": f"{len(dead)}/{len(rule_ids)} rules dead ({window_days}d, 0 hits): "
+                        + (", ".join(dead) or "none")}
+    _DEAD_RULE_CACHE.update(t=now, v=result)
+    return result
+
+
+_MTTH_CACHE: dict = {"t": 0.0, "v": None}
+
+
+def _mean_time_to_heal(records: list[dict]) -> dict:  # noqa: ARG001
+    """AUTO-018 (Mean Time to Heal): mean elapsed seconds from a reflex's FIRST
+    autonomous remediation fire to the FIRST fire that actually healed its target
+    (improved=true), read directly from Order Samurai's state/exec_log.jsonl.
+
+    This measures the REMEDIATION-effort span, NOT detection-to-heal latency: exec_log
+    records the moment a remediation ran, not the moment the metric first went bad (no
+    such detection timestamp is logged anywhere on this host), so the clock starts at
+    the first remediation attempt for a reflex_id, not at the degradation itself. The
+    metric is named for what it truly measures.
+
+    Per reflex_id: sort its events by timestamp, take the first event's time as the
+    start and the first event with improved==True as the heal; the span is their
+    difference in seconds (0 when a reflex heals on its first attempt). Reflexes that
+    never reached improved==True are STILL OPEN and are EXCLUDED from the mean (never
+    counted as 0 — that would fabricate a heal that never happened). If no reflex_id
+    has ever healed, returns a data_gap envelope, never a fabricated duration.
+
+    Mirrors _self_correction_rate / _cache_hit_rate: it ignores the `records` arg
+    (which carries no per-event reflex_id/improved timing) and reads the source file
+    directly with a short TTL cache so repeated aggregate() calls don't re-scan."""
+    now = time.monotonic()
+    if (_MTTH_CACHE["v"] is not None
+            and now - _MTTH_CACHE["t"] < _SCOUT_CACHE_TTL_SEC):
+        return _MTTH_CACHE["v"]
+    exec_log = _ORDER_SAMURAI_ROOT / "state" / "exec_log.jsonl"
+    if not exec_log.exists():
+        result = {"val": None, "data_gap": True, "calibrated": True}
+        _MTTH_CACHE.update(t=now, v=result)
+        return result
+    by_reflex: dict[str, list[tuple[datetime, bool]]] = defaultdict(list)
+    try:
+        with open(exec_log, encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if '"reflex_id"' not in line:  # cheap pre-filter before json.loads
+                    continue
+                try:
+                    entry = json.loads(line)
+                except Exception:
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                rid = entry.get("reflex_id")
+                ts = entry.get("timestamp")
+                if not rid or not ts or "improved" not in entry:
+                    continue
+                try:
+                    dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    continue
+                by_reflex[rid].append((dt, entry.get("improved") is True))
+    except OSError:
+        result = {"val": None, "data_gap": True, "calibrated": True}
+        _MTTH_CACHE.update(t=now, v=result)
+        return result
+    spans: list[float] = []
+    for events in by_reflex.values():
+        events.sort(key=lambda e: e[0])
+        start = events[0][0]
+        heal = next((dt for dt, improved in events if improved), None)
+        if heal is not None:
+            spans.append(max(0.0, (heal - start).total_seconds()))
+    if not spans:
+        # No reflex has ever reached improved=true — nothing has healed yet, so there
+        # is no real duration to report (never a fabricated 0).
+        result = {"val": None, "data_gap": True, "calibrated": True}
+    else:
+        result = {"val": round(sum(spans) / len(spans)), "calibrated": True,
+                  "detail": f"{len(spans)} reflex(es) healed; mean first-fire→first-heal span (s)"}
+    _MTTH_CACHE.update(t=now, v=result)
+    return result
+
+
+_COMPACTION_CACHE: dict = {"t": 0.0, "v": None}
+
+
+def _compaction_events(records: list[dict]) -> dict:  # noqa: ARG001
+    """AUTO-010 (Compaction Events): count of REAL context-compaction events, read
+    directly from Claude Code session transcripts (~/.claude/projects/**/*.jsonl).
+
+    Compaction has no telemetry emitter on this host — the `records` stream every
+    other reducer here consumes never carries it — so, like _cache_hit_rate, this
+    reducer ignores `records` and scans the transcripts directly, with a short TTL
+    cache so repeated aggregate() calls in one refresh don't re-scan.
+
+    UNLIKE _cache_hit_rate/_agent_spawn_events, this scans the FULL transcript
+    corpus rather than a bounded recent-file window: compact_boundary is a RARE
+    event (measured 2026-07-16: exactly 2 real events across 843 transcripts, at
+    recency ranks 93 and 254 — a 40-60 file recent-window, the house convention for
+    high-frequency signals like cache reads, would silently miss BOTH and always
+    read 0, which is worse than a small honest count). A cheap substring
+    pre-filter keeps the full scan fast (measured ~0.36s across 843 files on this
+    host), so the TTL cache exists only to dedupe repeat calls within one refresh,
+    not to bound cost.
+
+    A compaction event is a STRUCTURAL record: {"type": "system", "subtype":
+    "compact_boundary", ...}. This must NOT be a substring/prose match — a naive
+    regex for "compact" hits hundreds of unrelated lines where sessions merely
+    DISCUSS compaction (this very metric's own name, quoted back in past
+    governance transcripts). Only the structural type+subtype pair is counted.
+
+    Returns a data_gap envelope (never a fabricated 0) only when the projects
+    directory itself is missing/unreadable. A genuine full-corpus count of 0 (or
+    2, or any small number) is an honest real measurement, not a data gap."""
+    now = time.monotonic()
+    if (_COMPACTION_CACHE["v"] is not None
+            and now - _COMPACTION_CACHE["t"] < _SCOUT_CACHE_TTL_SEC):
+        return _COMPACTION_CACHE["v"]
+    projects_dir = Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".claude" / "projects"
+    if not projects_dir.exists():
+        result = {"val": None, "data_gap": True, "calibrated": True}
+        _COMPACTION_CACHE.update(t=now, v=result)
+        return result
+    jsonls = list(projects_dir.rglob("*.jsonl"))
+    count = 0
+    for jl in jsonls:
+        try:
+            with open(jl, encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    if '"compact_boundary"' not in line:  # cheap pre-filter before json.loads
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except Exception:
+                        continue
+                    if (isinstance(entry, dict) and entry.get("type") == "system"
+                            and entry.get("subtype") == "compact_boundary"):
+                        count += 1
+        except OSError:
+            continue
+    result = {"val": count, "calibrated": True,
+              "detail": f"{count} compact_boundary event(s) across {len(jsonls)} scanned transcripts"}
+    _COMPACTION_CACHE.update(t=now, v=result)
+    return result
+_DAEMON_LOG_LINE_RE = re.compile(r"^(?P<ts>\S+)\s+(?P<service>[\w.-]+):\s*(?P<message>.*)$")
+
+
+def _daemon_restart_count(records: list[dict]) -> dict:  # noqa: ARG001
+    """AUTO-012 (Daemon Restart Count): count of successful autonomic-daemon restarts,
+    read from ~/.claude/scripts/service_supervisor.py's own log
+    (~/.claude/data/service_supervisor.log). Prior cycles only scanned
+    state/autonomic_events.jsonl, which the supervisor never writes to — this is the
+    real, previously-unwired source (BLOCKER LIFTED 2026-07-16).
+
+    Each line is `<ISO-ts> <service>: <message>`. A restart counts when the message
+    is "restart successful"; lines that don't match the expected shape are skipped
+    as malformed rather than crashing the reducer. Failed-spawn attempts ("spawn
+    failed — ...") are real supporting signal surfaced in the detail string, but are
+    NOT folded into the graded count — a successful restart and a failed spawn are
+    different events.
+
+    Returns a data_gap envelope (never a fabricated 0) when the log file doesn't
+    exist yet. An existing log with zero restart lines is an honest 0, not a gap."""
+    home = Path(os.environ.get("USERPROFILE", str(Path.home())))
+    log_path = home / ".claude" / "data" / "service_supervisor.log"
+    if not log_path.exists():
+        return {"val": None, "data_gap": True, "calibrated": True}
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError as e:
+        return {"val": None, "error": f"source unavailable: {e}", "calibrated": False}
+
+    restarts = 0
+    failed_spawns = 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        m = _DAEMON_LOG_LINE_RE.match(line)
+        if not m:
+            continue  # malformed line — skipped, not counted either way
+        message = m.group("message")
+        if "restart successful" in message:
+            restarts += 1
+        elif "spawn failed" in message:
+            failed_spawns += 1
+
+    return {
+        "val": restarts,
+        "calibrated": True,
+        "detail": f"{restarts} successful restarts, {failed_spawns} failed spawn attempts",
+    }
+
+
 REGISTRY: list[tuple[str, str, str, Callable | None, str, bool, bool]] = [
     ("bow", "Activity", "Error_Rate", r_error_rate, "DERIVED", True, False),
     # Latency_P50 consolidated into Latency_P95 (2026-07-08 audit): the median was
@@ -2043,7 +2448,12 @@ REGISTRY: list[tuple[str, str, str, Callable | None, str, bool, bool]] = [
     # Context pressure — sessions whose max context exceeded ~140k tokens (absolute, window-
     # agnostic; models here are ~1M-window). Reads transcripts directly like Cache_Hit_Rate.
     ("brush", "Token Efficiency", "Context_Cliff_Events", r_context_cliff_events, "DERIVED", True, False),
+    # AUTO-010: Compaction Events — count of real compact_boundary records read
+    # directly from session transcripts (structural match, never a prose regex);
+    # see _compaction_events. A waste signal (more compaction = more context lost).
+    ("brush", "Token Efficiency", "Compaction_Events", _compaction_events, "AUTO", False, True),
     ("brush", "Code Health", "Revision_Ratio", r_revision_ratio, "DERIVED", True, False),
+    ("brush", "Code Health", "Dead_Rule_Count", _dead_rule_count, "AUTO", False, True),
     ("brush", "Orchestration", "Subagent_Efficiency_Index", _subagent_efficiency_index, "DERIVED", False, False),
     ("brush", "Orchestration", "MCP_vs_CLI_Ratio", r_mcp_vs_cli, "DERIVED", True, False),
     ("brush", "Architecture", "Architecture_Scorecard_Grade", None, "AUTO", False, False),
@@ -2085,7 +2495,15 @@ REGISTRY: list[tuple[str, str, str, Callable | None, str, bool, bool]] = [
     ("bow", "Autonomic", "Self_Correction_Rate", _self_correction_rate, "AUTO", True, False),
     ("bow", "Autonomic", "Remediation_Delta", _remediation_delta, "AUTO", False, False),
     ("bow", "Autonomic", "Mitigation_Route_Validity", _mitigation_route_validity, "AUTO", True, False),
+    # AUTO-018: Mean Time to Heal — mean seconds from a reflex's first remediation
+    # fire to its first improved=true fire, read from state/exec_log.jsonl; still-open
+    # reflexes excluded. Lower is better. See _mean_time_to_heal.
+    ("bow", "Autonomic", "Mean_Time_To_Heal", _mean_time_to_heal, "AUTO", False, False),
     ("bow", "Autonomic", "Mechanism_Liveness", _mechanism_liveness, "AUTO", False, True),
+    # AUTO-012: Daemon Restart Count — real source is service_supervisor.py's own
+    # log (~/.claude/data/service_supervisor.log), never state/autonomic_events.jsonl.
+    # See _daemon_restart_count.
+    ("bow", "Autonomic", "Daemon_Restart_Count", _daemon_restart_count, "AUTO", False, True),
     # AUTO-017: Lesson Graduation Rate — real skill-lesson ledger
     # (~/.claude/data/skill_improve_queue.jsonl) vs. proven-effective graduation
     # classification (~/.claude/data/auto_eureka_skills.md RULE section); see
@@ -2177,13 +2595,28 @@ def derive_verifier_metrics(results: list[dict]) -> dict:
     }
 
 
+_SNAPSHOT_GLOBAL_REDUCERS = frozenset({
+    r_context_cliff_events, _kill_chains_disrupted, _kill_chains_open,
+    _mitigation_route_validity, _remediation_delta, _verifier_falsifiability,
+    _pending_chain_proposals, _lesson_graduation_rate, _cache_hit_rate,
+    r_skill_routing_adherence, r_governance_work_volume, _dead_rule_count,
+    _mean_time_to_heal, _compaction_events, _daemon_restart_count,
+})
+
+
 def build_pillars(records: list[dict], *, verifier_results: list[dict] | None = None,
                   orphan_count: int | None = None, secret_fails: int | None = None,
                   security_signals: dict | None = None,
-                  knowledge_signals: dict | None = None) -> dict:
+                  knowledge_signals: dict | None = None,
+                  shared_reducer_cache: dict[Callable, Any] | None = None) -> dict:
     pillars: dict[str, dict] = {p: {} for p in PILLARS}
     for pillar, group, key, fn, live_tier, is_pct, is_cnt in REGISTRY:
-        val = fn(records) if fn else None
+        if fn and shared_reducer_cache is not None and fn in _SNAPSHOT_GLOBAL_REDUCERS:
+            if fn not in shared_reducer_cache:
+                shared_reducer_cache[fn] = fn(records)
+            val = shared_reducer_cache[fn]
+        else:
+            val = fn(records) if fn else None
         # Tier honesty for dict reducers (audit S1): unwrap BEFORE the simulated
         # check. A dead-source reducer returning {"val": None} without an "error"
         # key must grade SIMULATED — never as a live metric, where _health(None)
@@ -2250,6 +2683,12 @@ def build_pillars(records: list[dict], *, verifier_results: list[dict] | None = 
         # bow/Reliability) were dead. Removal, never faking.
         if "mechanism_orphans" in s:
             _set(pillars, "bow", "Autonomic", "Mechanism_Orphans", _env(s["mechanism_orphans"], "AUTO", is_count=True))
+        # Scheduled_Job_Failures: "is the fleet actually succeeding?", which no other
+        # metric asked. Mechanism_Orphans covers wiring, Mechanism_Liveness counts runs,
+        # and the launchd_stale check uses log mtime — blind to a job that runs on time
+        # and fails, because that job writes its log too. See insights.METRIC_CONFIG.
+        if "scheduled_job_failures" in s:
+            _set(pillars, "bow", "Autonomic", "Scheduled_Job_Failures", _env(s["scheduled_job_failures"], "AUTO", is_count=True))
         if "doc_parity_issues" in s:
             _set(pillars, "arts", "Docs", "Doc_Parity_Issues", _env(s["doc_parity_issues"], "AUTO", is_count=True))
         if "scorecard_grade" in s:
@@ -2372,7 +2811,8 @@ def _norm(s: str) -> str:
 
 
 def build_project_scores(all_records: list[dict], proj_platform: dict[str, str],
-                         root: Path = _PROJECTS_ROOT) -> dict:
+                         root: Path = _PROJECTS_ROOT,
+                         shared_reducer_cache: dict[Callable, Any] | None = None) -> dict:
     """Roster the real project folders in Desktop/Projects, match each to telemetry
     (alias or normalized name match), and return its four itemized pillar scores."""
     by_tproj: dict[str, list] = {}
@@ -2402,7 +2842,7 @@ def build_project_scores(all_records: list[dict], proj_platform: dict[str, str],
                 recs.extend(rs)
                 plats[proj_platform.get(tp, "")] += len(rs)
         if recs:
-            pillars = build_pillars(recs)
+            pillars = build_pillars(recs, shared_reducer_cache=shared_reducer_cache)
             scores = insights.annotate(pillars)
             metrics: dict[str, float] = {}
             for groups in pillars.values():
@@ -2462,11 +2902,23 @@ def _within_days(ts: str, days: int) -> bool:
 # Signals that must NOT be summed across platforms when merging security_signals:
 # scores (non-additive by nature) and platform-independent scouts that return the
 # same value for every platform (summing triple-counts them — Doc_Parity_Issues
-# showed 30 while the scout said 10).
+# showed 30 while the scout said 10). knowledge_prompted is the same class of bug:
+# it reads the single shared autonomic_events.jsonl stream via
+# scouts._count_autonomic_events, which ignores runtime_root/platform.
 _NON_ADDITIVE_SIG = frozenset({
     "scorecard_grade",
     "doc_parity_issues",
     "governance_findings_critical", "governance_findings_high", "governance_findings_total_ch",
+    "knowledge_prompted",
+})
+
+# Signals that are genuinely per-platform (unlike _NON_ADDITIVE_SIG) but whose combined
+# value across platforms is the worst case, not a total: vulnerability_window_days is
+# "age of the longest-open unpatched CVE" (scouts/vulnerability_window.py) — summing two
+# platforms' windows (e.g. 10 + 15 = 25) produces a number with no real-world meaning,
+# where the true combined exposure window is max(10, 15) = 15.
+_MAX_SIG = frozenset({
+    "vulnerability_window_days",
 })
 
 
@@ -2474,6 +2926,10 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
               window_days: int = 30,
               write_history: bool = False) -> dict:
     platforms = platforms if platforms is not None else list_platforms()
+    # Publish this build's window for the REGISTRY reducers that cannot take it as an
+    # argument (see _ACTIVE_WINDOW_DAYS). Set first, before any build_pillars() call.
+    global _ACTIVE_WINDOW_DAYS  # noqa: PLW0603
+    _ACTIVE_WINDOW_DAYS = window_days
     this_week = iso_week(timestamp) if timestamp else None
     if not this_week:
         this_week = datetime.now(timezone.utc).strftime("%G-W%V")
@@ -2485,6 +2941,7 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
     all_verifier: list[dict] = []
     merged_sig: dict[str, int] = {}
     proj_platform: dict[str, str] = {}
+    shared_reducer_cache: dict[Callable, Any] = {}
     for p in platforms:
         recs = load_records(p)
         counts[p] = len(recs)
@@ -2506,13 +2963,19 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
         for k, v in sig.items():
             if k in _NON_ADDITIVE_SIG:
                 merged_sig[k] = v  # scores & platform-independent scouts — never sum
+            elif k in _MAX_SIG:
+                merged_sig[k] = max(merged_sig[k], v) if k in merged_sig else v
             else:
                 merged_sig[k] = merged_sig.get(k, 0) + v
-        per_platform[p] = build_pillars(recs, verifier_results=vres, security_signals=sig)
+        per_platform[p] = build_pillars(
+            recs, verifier_results=vres, security_signals=sig,
+            shared_reducer_cache=shared_reducer_cache)
         # weekly radar: telemetry windowed to the current ISO week + current security/governance
         wrecs = [r for r in recs if iso_week(r.get("timestamp", "")) == this_week]
         week_counts[p] = len(wrecs)
-        per_platform_week[p] = build_pillars(wrecs, verifier_results=vres, security_signals=sig)
+        per_platform_week[p] = build_pillars(
+            wrecs, verifier_results=vres, security_signals=sig,
+            shared_reducer_cache=shared_reducer_cache)
         all_records.extend(recs)
         all_verifier.extend(vres)
         for r in recs:
@@ -2530,10 +2993,10 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
     windowed = [r for r in all_records if _within_days(r.get("timestamp", ""), window_days)]
     combined = build_pillars(windowed, verifier_results=all_verifier,
                              orphan_count=orphans, secret_fails=fails, security_signals=merged_sig,
-                             knowledge_signals=ksig)
+                             knowledge_signals=ksig, shared_reducer_cache=shared_reducer_cache)
     lifetime = build_pillars(all_records, verifier_results=all_verifier,
                              orphan_count=orphans, secret_fails=fails, security_signals=merged_sig,
-                             knowledge_signals=ksig)
+                             knowledge_signals=ksig, shared_reducer_cache=shared_reducer_cache)
     category_scores_lifetime = insights.annotate(lifetime)
 
     # analytical layer: scores, remediation, trend history, summaries.
@@ -2566,13 +3029,17 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
         if pr:
             proj_platform.setdefault(pr, "git")
     windowed_git = [r for r in git_recs if _within_days(r.get("timestamp", ""), window_days)]
-    by_project = build_project_scores(windowed + windowed_git, proj_platform)
+    by_project = build_project_scores(
+        windowed + windowed_git, proj_platform,
+        shared_reducer_cache=shared_reducer_cache)
 
     # per-tier pillar breakdown — telemetry-only (scouts are point-in-time, not tier-specific
     # so they are SIMULATED in tier views, which is honest).
     tier_names = sorted({r.get("model_tier") for r in windowed if r.get("model_tier")})
     by_tier: dict[str, dict] = {
-        tier: build_pillars([r for r in windowed if r.get("model_tier") == tier])
+        tier: build_pillars(
+            [r for r in windowed if r.get("model_tier") == tier],
+            shared_reducer_cache=shared_reducer_cache)
         for tier in tier_names
     }
     by_tier_scores: dict[str, dict] = {
@@ -2608,7 +3075,7 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
         "advisory_reflexes": advisory_reflexes,
         # Windowed (not lifetime) so these sections track the payload's window and the
         # dashboard's 7d/30d/all-time filter instead of showing month-old events forever.
-        "remediation_efficacy": remediation.efficacy(records=windowed),
+        "remediation_efficacy": remediation.efficacy(records=windowed, window_days=window_days),
         "top_usage": _top_usage(windowed, window_days),
         "architecture": architecture_breakdown(_SCORECARDS.get("claude")),
         # The one legitimate composite — count + decomposed list (never a hero KPI). Built from

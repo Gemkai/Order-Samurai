@@ -7,14 +7,44 @@ import re
 from pathlib import Path
 
 # Ensure Governance directory is on sys.path so we can import agentica_core
-GOV_ROOT = os.environ.get("GOVERNANCE_ROOT") or str(Path(__file__).resolve().parents[2])
+def _resolve_gov_root():
+    if os.environ.get("GOVERNANCE_ROOT"):
+        return os.environ["GOVERNANCE_ROOT"]
+    p1 = Path(__file__).resolve().parents[1]
+    if (p1 / "agentica_core").exists():
+        return str(p1)
+    return str(Path(__file__).resolve().parents[2])
+
+GOV_ROOT = _resolve_gov_root()
 if GOV_ROOT not in sys.path:
     sys.path.insert(0, GOV_ROOT)
 
 try:
     from agentica_core.llm.gateway import gateway
-except ImportError:
-    print(f"Error: Cannot import agentica_core from {GOV_ROOT}. Set GOVERNANCE_ROOT env var.")
+except ModuleNotFoundError as exc:
+    # Name the ACTUAL missing module and the interpreter that lacked it. The
+    # 2026-07-20/26 'audit_rejected' failures (exit 2) were NOT a bad
+    # GOVERNANCE_ROOT — the reflex engine's bare-'python3' spawn resolved to the
+    # CommandLineTools system python, which had no 'requests' (transitive via
+    # agentica_core.llm.gateway). The old blanket message sent the diagnosis in
+    # the wrong direction while the only two real patches ever produced died here.
+    # Keep the literal exception class name in the message: reflex-engine.ts's
+    # AUDIT_ENV_ERROR_RE (/Cannot import agentica_core|ModuleNotFoundError|ImportError/)
+    # classifies this failure from stdout+stderr, and a message that doesn't
+    # contain one of those three tokens gets misclassified as 'audit_rejected'
+    # (a genuine security veto) instead of 'audit_env_error' -- reintroducing
+    # the exact misdiagnosis that killed the only two real patches this system
+    # ever produced. Don't reword this without checking that regex.
+    print(f"Error: ModuleNotFoundError: Module '{exc.name}' not found under "
+          f"interpreter {sys.executable} (GOVERNANCE_ROOT={GOV_ROOT}). Install "
+          f"the missing module for THIS interpreter, or fix the PATH the reflex "
+          f"engine resolves 'python3' from.")
+    sys.exit(2)
+except ImportError as exc:
+    # Non-module-shaped import failure (broken symbol, circular import): keep the
+    # GOVERNANCE_ROOT hint, but name the real error and the interpreter too.
+    print(f"Error: Cannot import agentica_core from {GOV_ROOT} under interpreter "
+          f"{sys.executable}: {exc}. Set GOVERNANCE_ROOT env var.")
     sys.exit(2)
 
 SYSTEM_PROMPT = """You are a senior security checker auditing a proposed codebase patch for safety.
@@ -91,13 +121,18 @@ def run_static_checks(patch_content: str) -> list[str]:
     if re.search(r"spawn\([^)]*(\+|\$\{)", added) or re.search(r"exec\([^)]*(\+|\$\{)", added):
         failures.append("Potential CLI argument injection (CWE-88): raw concatenation in spawn/exec call.")
 
-    # 3. gitignore check (inspects diff headers, so it reads the raw patch).
+    # 3. gitignore check (inspects diff headers via the same space-safe
+    # _patch_target_paths parser check_path_scope uses -- a `\S+` regex on the
+    # raw header cannot match a path with a space, e.g. this repo's own
+    # "Order Samurai" subtree, silently defeating the check).
     # Judged on the basename: committed templates (.env.example) and docs that
     # merely mention credentials in their name are not env/credential files
     # (2026 sweep PR #80 — a benign .env.example/credentials-doc edit was
     # silently killing valid autonomous remediations at this gate).
-    for m in re.finditer(r"^\+\+\+\s+b/(\S+)", patch_content, re.MULTILINE):
-        base = m.group(1).rsplit("/", 1)[-1].lower()
+    for path, flag in _patch_target_paths(patch_content):
+        if flag == "BINARY" or not path:
+            continue
+        base = path.rsplit("/", 1)[-1].lower()
         is_env = base == ".env" or (base.startswith(".env.") and base not in
                                     (".env.example", ".env.sample", ".env.template", ".env.dist"))
         is_cred = "credentials" in base and not base.endswith((".md", ".rst", ".txt"))
@@ -136,7 +171,8 @@ def run_static_checks(patch_content: str) -> list[str]:
 # contains a space) parses correctly.
 PROTECTED_PATH_PATTERNS = [
     re.compile(r"^Governance/Order Samurai/execution/audit_remediation_patch\.py$"),  # the checker itself
-    re.compile(r"^Governance/Order Samurai/bin/(bushido_check|remeasure_gate|render_surface_env)\.py$"),  # sibling gates
+    re.compile(r"^Governance/Order Samurai/bin/"),  # ALL of bin/ — see REMEDIABLE_BIN_ALLOWLIST
+    re.compile(r"^Governance/Order Samurai/prompts/"),  # the meditation/ronin prompts that govern the NEXT patch
     re.compile(r"^Governance/api/src/"),          # the reflex engine + server + state
     re.compile(r"^Governance/Order Samurai/state/"),  # runtime + governance-control state (hitl_queue, skill_metadata, verdicts)
     re.compile(r"^Governance/Order Samurai/harness/"),  # declared editable-surface control plane
@@ -181,6 +217,28 @@ def _patch_target_paths(patch_content: str):
         yield (path, "QUOTED" if quoted else "")
 
 
+# Carve-out for PROTECTED_PATH_PATTERNS: paths that match a protected pattern but are
+# nonetheless legitimate autonomous-remediation targets. Exact repo-relative paths only —
+# no globs, so a carve-out can never widen by accident.
+#
+# EMPTY BY MEASUREMENT, NOT BY OVERSIGHT (2026-08-09). When bin/ was widened from 3 named
+# gates to the whole directory, the obvious worry was starving the autonomous loop of
+# legitimate targets. Measured before assuming: across all 165 rows of
+# state/exec_log.jsonl, applied remediations have touched bin/ EXACTLY ZERO times. And on
+# inspection all 50 files there are governance machinery — gates and audits, the
+# ronin/samurai CLIs, the remediation pipeline itself, or escalation channels. Two worth
+# naming: bin/wiki_link.py carries the breach thresholds that decide whether a metric is
+# failing (lowering them was the explicitly-rejected shortcut in the
+# remediation-first-live-fire goal), and bin/hitl_alerts.py IS the human escalation path.
+# An agent editing either could suppress its own alarm. Seeding this list with "probably
+# safe" guesses would hand back exactly the self-modification surface the widening closes.
+#
+# TO ADD ONE: append the exact path and the evidence that a real remediation needed it —
+# an exec_log row or a blocked patch. The rejection message below names this list, so a
+# genuinely-blocked remediation is self-diagnosing rather than a mystery.
+REMEDIABLE_BIN_ALLOWLIST: frozenset[str] = frozenset()
+
+
 def check_path_scope(patch_content: str) -> list[str]:
     failures: list[str] = []
     for path, flag in _patch_target_paths(patch_content):
@@ -195,9 +253,15 @@ def check_path_scope(patch_content: str) -> list[str]:
         if path.startswith("/") or re.match(r"^[A-Za-z]:[\\/]", path):
             failures.append(f"Absolute path in patch target: {path}")
             continue
+        if path in REMEDIABLE_BIN_ALLOWLIST:
+            continue  # explicitly ratified remediation target — see that list's rationale
         for pat in PROTECTED_PATH_PATTERNS:
             if pat.search(path):
-                failures.append(f"Patch touches a protected control-plane path: {path}")
+                failures.append(
+                    f"Patch touches a protected control-plane path: {path} "
+                    f"(if this is a legitimate remediation target, add it to "
+                    f"REMEDIABLE_BIN_ALLOWLIST in {Path(__file__).name} with evidence)"
+                )
                 break
     # dedupe, preserve order
     seen, out = set(), []

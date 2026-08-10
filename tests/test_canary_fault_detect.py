@@ -22,6 +22,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from bin.canary_fault_detect import classify, main  # type: ignore[import-not-found]
+from bin import canary_fault_detect
 
 
 # Fixed reference clock for every fixture — deterministic, no wall-time.
@@ -190,6 +191,41 @@ class NonDictCanaryFileTests(unittest.TestCase):
         exit_code, report = self._verdict_for('"gate ok"')
         self.assertEqual(report["fault_class"], "corrupt")
         self.assertEqual(exit_code, 1)
+
+
+# ---------------------------------------------------------------------------
+# Unreadable canary path — exists() is True but reading it raises OSError
+# ---------------------------------------------------------------------------
+
+class UnreadableCanaryFileTests(unittest.TestCase):
+    """A canary path that exists but can't be read as text (permission-denied
+    file, or a directory where a file was expected) must not crash main() with
+    an uncaught OSError -- it should degrade to the same 'corrupt write'
+    handling as unparseable JSON, per the module's own read-only contract."""
+
+    def test_directory_at_canary_path_is_graded_corrupt_not_a_crash(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            # exists() is True for a directory, but read_text() raises
+            # IsADirectoryError (an OSError subclass) -- deterministic across
+            # platforms and independent of file permissions/root privileges.
+            canary_dir = Path(td) / "security_gate_canary.json"
+            canary_dir.mkdir()
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                exit_code = main(["--canary", str(canary_dir), "--json"])
+        report = json.loads(out.getvalue())
+        self.assertEqual(report["fault_class"], "corrupt")
+        self.assertEqual(exit_code, 1)
+
+    def test_load_state_propagates_os_error_for_unreadable_path(self) -> None:
+        # Direct unit check on the loader itself: reading a directory as text
+        # raises OSError, not ValueError -- the caller's except clause must
+        # catch both, not just ValueError.
+        with tempfile.TemporaryDirectory() as td:
+            canary_dir = Path(td) / "security_gate_canary.json"
+            canary_dir.mkdir()
+            with self.assertRaises(OSError):
+                canary_fault_detect._load_state(canary_dir)
 
 
 # ---------------------------------------------------------------------------

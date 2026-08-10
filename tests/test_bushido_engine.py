@@ -42,6 +42,18 @@ from agentica_core.bushido_engine import (  # noqa: E402
 )
 
 
+@pytest.fixture(autouse=True)
+def _pull_only_semantics(monkeypatch):
+    """Pin this module to the PULL-only approval semantics it was written for.
+
+    Push-on-approve (BUSHIDO_PUSH_ON_APPROVE, default ON) is covered end-to-end in
+    test_bushido_push_on_approve.py; here the switch is off so these cases keep
+    asserting the byte-identical legacy behaviour. It is also a safety belt: with
+    the switch on, an `approve` below would POST to a real localhost API.
+    """
+    monkeypatch.setenv("BUSHIDO_PUSH_ON_APPROVE", "false")
+
+
 # ── compute_tier matrix ───────────────────────────────────────────────────────
 
 def test_hard_stop_irreversible_and_high_blast():

@@ -193,6 +193,28 @@ class ClassifySpawnTests(unittest.TestCase):
         self.assertEqual(verdict, "justified_isolation")
         self.assertIn("adversarial", reason)
 
+    def test_gate_substring_inside_investigate_does_not_trigger_isolation(self) -> None:
+        # "gate" is an ISOLATION_KEYWORDS entry and a substring of "investigate" —
+        # a plain single spawn describing investigation work must not be
+        # spuriously classified justified_isolation off that substring collision.
+        verdict, _ = classify_spawn(
+            description="investigate the flaky test failure",
+            prompt="",
+            turn_spawn_count=1,
+        )
+        self.assertEqual(verdict, "wasteful_serial")
+
+    def test_full_substring_inside_fully_does_not_trigger_fanout(self) -> None:
+        # "full" is a FANOUT_KEYWORDS entry and a substring of "fully" — an
+        # ordinary single spawn must not be spuriously classified
+        # justified_fanout off that substring collision.
+        verdict, _ = classify_spawn(
+            description="fully implement the caching layer",
+            prompt="",
+            turn_spawn_count=1,
+        )
+        self.assertEqual(verdict, "wasteful_serial")
+
     def test_isolation_keyword_beyond_500_chars_in_prompt_does_not_match(self) -> None:
         # adversarial keyword placed after 500 chars in prompt — should NOT trigger isolation
         prompt = "x" * 501 + " adversarial review "

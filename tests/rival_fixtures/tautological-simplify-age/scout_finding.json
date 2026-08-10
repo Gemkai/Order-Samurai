@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:arts:Fixture_Days_Since_Simplify_Pass",
+  "real": true,
+  "evidence": {
+    "re_measured": "exec_log entry shows improved:true (see evidence.jsonl)",
+    "snapshot": "Days_Since_Simplify_Pass was elevated before the run",
+    "source_file": "evidence.jsonl",
+    "window_days": 7
+  },
+  "root_cause": "Days_Since_Simplify_Pass is confirmed improved because evidence.jsonl shows the /simplify run completed with improved:true.",
+  "proposed_fix": "/simplify",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "skill"
+}

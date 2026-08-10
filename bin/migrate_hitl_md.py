@@ -90,8 +90,9 @@ def migrate(repo_root: Path, dry_run: bool = False) -> tuple[int, int]:
             skipped += 1
             continue
 
-        skill = (fields.get("Remediation Command", "/unknown")
-                 .lstrip("/").split()[0])
+        remediation_cmd = fields.get("Remediation Command") or "/unknown"
+        remediation_parts = remediation_cmd.lstrip("/").split()
+        skill = remediation_parts[0] if remediation_parts else "unknown"
         metric_id = fields.get("Metric ID", "")
         pillar = fields.get("Pillar") or None
         try:
@@ -113,7 +114,7 @@ def migrate(repo_root: Path, dry_run: bool = False) -> tuple[int, int]:
         wi = WorkItem(
             skill=skill,
             source="reflex",
-            command=fields.get("Remediation Command", f"/{skill}"),
+            command=remediation_cmd,
             blast_radius=blast,
             reversible=reversible,
             metric_id=metric_id or None,

@@ -30,6 +30,9 @@ def isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Pat
     state = tmp_path / "hitl_alert_state.json"
     monkeypatch.setattr(hitl_alerts, "QUEUE_PATH", queue)
     monkeypatch.setattr(hitl_alerts, "STATE_PATH", state)
+    monkeypatch.setattr(hitl_alerts, "PATCH_DIR", tmp_path)
+    monkeypatch.setattr(hitl_alerts, "BACKLOG_PATH", tmp_path / "PROPOSED_BACKLOG.json")
+    monkeypatch.setattr(hitl_alerts, "FLEET_PROBE_PATH", tmp_path / "fleet_probe.json")
     monkeypatch.setattr(hitl_alerts, "_now", lambda: FIXED_NOW)
     return queue, state
 
@@ -61,7 +64,7 @@ def test_malformed_queue_is_an_error(isolated, raw: str) -> None:
 def test_valid_empty_queue_remains_distinct_from_read_failure(isolated) -> None:
     queue, _ = isolated
     queue.write_text('{"items": []}', encoding="utf-8")
-    assert hitl_alerts.load_queue() == ([], [])
+    assert hitl_alerts.load_queue() == ([], [], [])
 
 
 def test_notify_nonzero_exit_is_not_recorded_as_delivered(
@@ -217,3 +220,537 @@ def test_resend_requires_a_confirmed_message_id(
 
     monkeypatch.setattr(urllib.request, "urlopen", lambda *args, **kwargs: _ResendResponse(body))
     assert hitl_alerts._send_resend("subject", "body", "owner@example.test", "key") is expected
+
+
+# ── pending-patch surfacing (propose-only lane consumers, 2026-08-08) ────────
+
+
+import os  # noqa: E402  (test helpers below need utime)
+
+
+def _plant_patch(tmp_path: Path, name: str = "pending_remediation_metric_arts_Test.patch") -> Path:
+    p = tmp_path / name
+    p.write_text("diff --git a/x b/x\n", encoding="utf-8")
+    one_day_before_fixed_now = datetime(2026, 8, 1, 12, 0, tzinfo=timezone.utc).timestamp()
+    os.utime(p, (one_day_before_fixed_now, one_day_before_fixed_now))
+    return p
+
+
+def test_planted_pending_patch_is_returned_by_load_queue(isolated, tmp_path: Path) -> None:
+    queue, _ = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    _plant_patch(tmp_path)
+    _, _, patches = hitl_alerts.load_queue()
+    assert [p["name"] for p in patches] == ["pending_remediation_metric_arts_Test.patch"]
+
+
+def test_patch_surface_kill_switch_hides_patches(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, _ = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    _plant_patch(tmp_path)
+    monkeypatch.setenv("HITL_PATCH_SURFACE", "false")
+    assert hitl_alerts.load_queue() == ([], [], [])
+
+
+def test_digest_dry_run_includes_planted_patch_with_age(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, state = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    state.write_text("{}", encoding="utf-8")
+    _plant_patch(tmp_path)
+    monkeypatch.setenv("HITL_DIGEST_TO", "owner@example.test")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    captured: dict = {}
+
+    def fake_send(subject: str, body: str, to: str) -> bool:
+        captured.update(subject=subject, body=body, to=to)
+        return True
+
+    monkeypatch.setattr(hitl_alerts, "_send_mail_app", fake_send)
+    # A pending patch alone is a send-trigger: the propose-only lane's output must
+    # not go back to having zero consumers on an empty approval queue.
+    assert hitl_alerts.do_email(force=False) == 0
+    assert "VALIDATED PATCHES AWAITING REVIEW (1):" in captured["body"]
+    assert "pending_remediation_metric_arts_Test.patch · waiting 1d" in captured["body"]
+    assert "review_pending_patch.py" in captured["body"]
+
+
+def test_notify_banner_fires_for_patch_only_backlog(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, state = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    # Fleet health is a separate concern from this test's patch-backlog assertion;
+    # disabling it keeps the subprocess call count meaningful (no fleet_probe refresh,
+    # no fleet banner) without coupling this test to that unrelated feature.
+    monkeypatch.setenv("HITL_FLEET_ALARM", "false")
+    calls: list[list[str]] = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(list(argv))
+        return SimpleNamespace(returncode=0, stderr=b"dispatched\n")
+
+    monkeypatch.setattr(hitl_alerts.subprocess, "run", fake_run)
+    _plant_patch(tmp_path)
+    assert hitl_alerts.do_notify() == 0
+    assert len(calls) == 1
+    assert "Order Samurai: 1 approval(s) waiting" in calls[0]
+    saved = json.loads(state.read_text())
+    assert saved["last_pending_ids"] == ["pending_remediation_metric_arts_Test.patch"]
+
+
+# ── reflex_patch dedup (a pending patch and its queue enqueue are the same event) ──
+
+
+def _reflex_patch_pending_item(patch_name: str, item_id: str = "hitl-patch-1") -> dict:
+    """A pending hitl_queue.json item shaped like _enqueuePendingPatchHitl's output
+    (reflex-engine.ts), including a directory-with-a-space in the embedded path — the
+    real Order Samurai root does contain one, and the dedup match must survive it."""
+    patch_path = f"<REPO_ROOT>/Governance/Order Samurai/state/{patch_name}"
+    return {
+        "id": item_id,
+        "status": "pending",
+        "source": "reflex_patch",
+        "command": "/repair",
+        "pillar": "Arts",
+        "metric_id": "arts:Test",
+        "enqueued_at": "2026-08-01T12:00:00+00:00",
+        "context": (
+            "Validated propose-only remediation patch awaiting review. "
+            f"reflex_id=arts:Test skill=/repair patch={patch_path}. "
+            "It passed the maker-checker audit and the pytest gate; auto-apply is off, so "
+            "the live repo is untouched until a human applies it."
+        ),
+    }
+
+
+def test_load_queue_dedupes_reflex_patch_item_against_its_disk_patch(
+    isolated, tmp_path: Path
+) -> None:
+    queue, _ = isolated
+    patch = _plant_patch(tmp_path)
+    queue.write_text(
+        json.dumps({"items": [_reflex_patch_pending_item(patch.name)]}), encoding="utf-8"
+    )
+    pending, expired, patches = hitl_alerts.load_queue()
+    assert pending == []
+    assert [p["name"] for p in patches] == [patch.name]
+
+
+def test_load_queue_keeps_reflex_patch_item_once_its_patch_is_gone(
+    isolated, tmp_path: Path
+) -> None:
+    # Nothing on disk names "...Gone.patch" — either the context never parsed, or the
+    # patch was already archived without the queue item being resolved. Either way this
+    # is a genuinely unresolved-looking approval, not a duplicate — it must stay visible.
+    queue, _ = isolated
+    queue.write_text(
+        json.dumps({
+            "items": [_reflex_patch_pending_item(
+                "pending_remediation_metric_arts_Gone.patch", "hitl-patch-2"
+            )]
+        }),
+        encoding="utf-8",
+    )
+    pending, expired, patches = hitl_alerts.load_queue()
+    assert [i["id"] for i in pending] == ["hitl-patch-2"]
+    assert patches == []
+
+
+def test_load_queue_does_not_dedupe_non_reflex_patch_items(
+    isolated, tmp_path: Path
+) -> None:
+    # A normal bushido pending item that happens to mention a patch filename in free
+    # text must never be mistaken for that patch's queue duplicate — only source ==
+    # 'reflex_patch' is eligible.
+    queue, _ = isolated
+    patch = _plant_patch(tmp_path)
+    item = _pending()
+    item["context"] = f"unrelated note mentioning {patch.name}"
+    queue.write_text(json.dumps({"items": [item]}), encoding="utf-8")
+    pending, expired, patches = hitl_alerts.load_queue()
+    assert [i["id"] for i in pending] == ["hitl-test-1"]
+    assert [p["name"] for p in patches] == [patch.name]
+
+
+def test_notify_does_not_double_count_a_reflex_patch_and_its_disk_patch(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, state = isolated
+    patch = _plant_patch(tmp_path)
+    queue.write_text(
+        json.dumps({"items": [_reflex_patch_pending_item(patch.name)]}), encoding="utf-8"
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(list(argv))
+        return SimpleNamespace(returncode=0, stderr=b"dispatched\n")
+
+    monkeypatch.setattr(hitl_alerts.subprocess, "run", fake_run)
+    assert hitl_alerts.do_notify() == 0
+    assert "Order Samurai: 1 approval(s) waiting" in calls[0]
+
+
+# ── digest delivery-lag alarm ────────────────────────────────────────────────
+
+
+def _ack_recorder(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+    calls: list[list[str]] = []
+
+    def fake_run(argv, **kwargs):
+        calls.append(list(argv))
+        return SimpleNamespace(returncode=0, stderr=b"dispatched\n")
+
+    monkeypatch.setattr(hitl_alerts.subprocess, "run", fake_run)
+    return calls
+
+
+def test_lag_alarm_fires_when_digest_is_stale_with_pending_items(
+    isolated, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, state = isolated
+    queue.write_text(json.dumps({"items": [_pending()]}), encoding="utf-8")
+    state.write_text(json.dumps({"last_email_date": "2026-07-30"}), encoding="utf-8")
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    lag_calls = [c for c in calls if any("LAGGING" in a for a in c)]
+    assert len(lag_calls) == 1
+    assert any("2026-07-30" in a for a in lag_calls[0])
+    assert json.loads(state.read_text())["last_lag_banner_at"] == FIXED_NOW.isoformat()
+
+
+def test_lag_alarm_stays_quiet_one_day_behind(
+    isolated, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, state = isolated
+    queue.write_text(json.dumps({"items": [_pending()]}), encoding="utf-8")
+    state.write_text(json.dumps({"last_email_date": "2026-08-01"}), encoding="utf-8")
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    assert not any("LAGGING" in a for c in calls for a in c)
+    assert "last_lag_banner_at" not in json.loads(state.read_text())
+
+
+def test_lag_alarm_stays_quiet_with_nothing_pending(
+    isolated, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, state = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    state.write_text(json.dumps({"last_email_date": "2026-07-20"}), encoding="utf-8")
+    # Fleet health is orthogonal to this test's lag-alarm assertion; disabling it means
+    # the only subprocess calls possible are the ones this test actually cares about.
+    monkeypatch.setenv("HITL_FLEET_ALARM", "false")
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    assert calls == []
+
+
+def test_lag_alarm_honors_its_reminder_cadence(
+    isolated, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, state = isolated
+    queue.write_text(json.dumps({"items": [_pending()]}), encoding="utf-8")
+    recent = datetime(2026, 8, 2, 11, 0, tzinfo=timezone.utc).isoformat()
+    state.write_text(
+        json.dumps({"last_email_date": "2026-07-30", "last_lag_banner_at": recent}),
+        encoding="utf-8",
+    )
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    assert not any("LAGGING" in a for c in calls for a in c)
+    assert json.loads(state.read_text())["last_lag_banner_at"] == recent
+
+
+def test_lag_alarm_kill_switch(isolated, monkeypatch: pytest.MonkeyPatch) -> None:
+    queue, state = isolated
+    queue.write_text(json.dumps({"items": [_pending()]}), encoding="utf-8")
+    state.write_text(json.dumps({"last_email_date": "2026-07-30"}), encoding="utf-8")
+    monkeypatch.setenv("HITL_LAG_ALARM", "false")
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    assert not any("LAGGING" in a for c in calls for a in c)
+
+
+# ── fleet health banner (bin/fleet_probe.py -> hitl_alerts.py, 2026-08-09) ───────
+
+
+def _plant_fleet_probe(
+    tmp_path: Path, failing: list[str] | None = None, unreachable: list[str] | None = None
+) -> None:
+    (tmp_path / "fleet_probe.json").write_text(
+        json.dumps({
+            "generated_at": "2026-08-02T11:55:00+00:00",
+            "failing_jobs": failing or [],
+            "unreachable_services": unreachable or [],
+        }),
+        encoding="utf-8",
+    )
+
+
+def test_fleet_banner_fires_on_a_fresh_failure(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, state = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    _plant_fleet_probe(tmp_path, failing=["agentica.vault-sync"])
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    fleet_calls = [c for c in calls if any("fleet health" in a for a in c)]
+    assert len(fleet_calls) == 1
+    assert any("agentica.vault-sync" in a for a in fleet_calls[0])
+    saved = json.loads(state.read_text())
+    assert saved["last_fleet_signature"] == "job:agentica.vault-sync"
+    assert saved["last_fleet_banner_at"] == FIXED_NOW.isoformat()
+
+
+def test_fleet_banner_does_not_refire_on_an_unchanged_failure(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, state = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    _plant_fleet_probe(tmp_path, failing=["agentica.vault-sync"])
+    state.write_text(
+        json.dumps({"last_fleet_signature": "job:agentica.vault-sync",
+                    "last_fleet_banner_at": FIXED_NOW.isoformat()}),
+        encoding="utf-8",
+    )
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    assert not any("fleet health" in a for c in calls for a in c)
+
+
+def test_fleet_banner_refires_when_the_failing_set_changes(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, state = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    _plant_fleet_probe(tmp_path, failing=["agentica.vault-sync", "agentica.hitl-digest"])
+    state.write_text(
+        json.dumps({"last_fleet_signature": "job:agentica.vault-sync",
+                    "last_fleet_banner_at": FIXED_NOW.isoformat()}),
+        encoding="utf-8",
+    )
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    assert any("fleet health" in a for c in calls for a in c)
+
+
+def test_fleet_banner_clears_signature_on_recovery_and_refires_on_recurrence(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A regression test for a real bug caught before it shipped: clearing the stored
+    signature on recovery is what lets an IDENTICAL failure set banner again later,
+    rather than being silently read as 'unchanged'."""
+    queue, state = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    state.write_text(
+        json.dumps({"last_fleet_signature": "job:agentica.vault-sync",
+                    "last_fleet_banner_at": FIXED_NOW.isoformat()}),
+        encoding="utf-8",
+    )
+    _plant_fleet_probe(tmp_path)  # fleet now clean
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    # The probe-refresh subprocess call still fires (it must, every cycle) — only the
+    # BANNER dispatch is what recovery must suppress.
+    assert not any("fleet health" in a for c in calls for a in c)
+    assert json.loads(state.read_text())["last_fleet_signature"] == ""
+
+    # Same failure recurs immediately after — must banner again, not be suppressed.
+    _plant_fleet_probe(tmp_path, failing=["agentica.vault-sync"])
+    assert hitl_alerts.do_notify() == 0
+    assert any("fleet health" in a for c in calls for a in c)
+
+
+def test_fleet_banner_kill_switch(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, _ = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    _plant_fleet_probe(tmp_path, failing=["agentica.vault-sync"])
+    monkeypatch.setenv("HITL_FLEET_ALARM", "false")
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    assert not any("fleet health" in a for c in calls for a in c)
+
+
+def test_fleet_banner_stays_quiet_when_probe_has_not_run(
+    isolated, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, _ = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    # no fleet_probe.json planted at all
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    assert not any("fleet health" in a for c in calls for a in c)
+
+
+def test_fleet_banner_stays_quiet_on_malformed_probe_data(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, _ = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    (tmp_path / "fleet_probe.json").write_text("{truncated", encoding="utf-8")
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    assert not any("fleet health" in a for c in calls for a in c)
+
+
+def test_load_fleet_probe_missing_file_reports_nothing(isolated) -> None:
+    assert hitl_alerts.load_fleet_probe() is None
+
+
+def test_load_fleet_probe_never_equates_malformed_with_empty(isolated, tmp_path: Path) -> None:
+    (tmp_path / "fleet_probe.json").write_text("{truncated", encoding="utf-8")
+    probe = hitl_alerts.load_fleet_probe()
+    assert probe is not None and "error" in probe
+
+
+def test_digest_body_renders_fleet_section_with_issues(isolated, tmp_path: Path) -> None:
+    _plant_fleet_probe(tmp_path, failing=["agentica.vault-sync"], unreachable=["qdrant"])
+    body = hitl_alerts._digest_body([], [], [], None, hitl_alerts.load_fleet_probe())
+    assert "FLEET HEALTH:" in body
+    assert "launchd job failing: agentica.vault-sync" in body
+    assert "service unreachable: qdrant" in body
+
+
+def test_digest_body_renders_fleet_section_when_clean(isolated, tmp_path: Path) -> None:
+    _plant_fleet_probe(tmp_path)
+    body = hitl_alerts._digest_body([], [], [], None, hitl_alerts.load_fleet_probe())
+    assert "FLEET HEALTH: all launchd jobs + local services OK ✔" in body
+
+
+def test_digest_body_renders_fleet_section_as_unreadable_on_malformed_probe(
+    isolated, tmp_path: Path
+) -> None:
+    (tmp_path / "fleet_probe.json").write_text("{truncated", encoding="utf-8")
+    body = hitl_alerts._digest_body([], [], [], None, hitl_alerts.load_fleet_probe())
+    assert "FLEET HEALTH: unreadable" in body
+
+
+def test_once_per_day_guard_still_skips_even_with_patches_waiting(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, state = isolated
+    queue.write_text(json.dumps({"items": [_pending()]}), encoding="utf-8")
+    state.write_text(json.dumps({"last_email_date": "2026-08-02"}), encoding="utf-8")
+    _plant_patch(tmp_path)
+    monkeypatch.setenv("HITL_DIGEST_TO", "owner@example.test")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+
+    def unexpected(*args):
+        raise AssertionError("once-per-day guard must skip before any transport call")
+
+    monkeypatch.setattr(hitl_alerts, "_send_mail_app", unexpected)
+    assert hitl_alerts.do_email(force=False) == 0
+
+
+# ── PROPOSED_BACKLOG read-only section ───────────────────────────────────────
+
+
+def _plant_backlog(tmp_path: Path) -> None:
+    (tmp_path / "PROPOSED_BACKLOG.json").write_text(json.dumps({"items": [
+        {"id": "A-1", "approved": False, "triaged_at": "2026-07-08 triage (user-ratified)"},
+        {"id": "A-2", "approved": False},
+        {"id": "A-3", "approved": True, "triaged_at": "2026-06-01 triage"},
+    ]}), encoding="utf-8")
+
+
+def test_backlog_summary_counts_unapproved_and_oldest_age(isolated, tmp_path: Path) -> None:
+    _plant_backlog(tmp_path)
+    assert hitl_alerts.load_backlog_summary() == {"pending": 2, "oldest_days": 25}
+
+
+def test_backlog_summary_missing_file_reports_nothing(isolated) -> None:
+    assert hitl_alerts.load_backlog_summary() is None
+
+
+def test_backlog_summary_never_equates_malformed_with_empty(isolated, tmp_path: Path) -> None:
+    (tmp_path / "PROPOSED_BACKLOG.json").write_text("{truncated", encoding="utf-8")
+    summary = hitl_alerts.load_backlog_summary()
+    assert summary is not None and "error" in summary
+
+
+def test_backlog_kill_switch(isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _plant_backlog(tmp_path)
+    monkeypatch.setenv("HITL_BACKLOG_SURFACE", "false")
+    assert hitl_alerts.load_backlog_summary() is None
+
+
+def test_digest_body_renders_backlog_section(isolated, tmp_path: Path) -> None:
+    _plant_backlog(tmp_path)
+    body = hitl_alerts._digest_body([], [], [], hitl_alerts.load_backlog_summary())
+    assert "PROPOSED_BACKLOG (read-only): 2 pending (approved:false) · oldest 3wk" in body
+
+
+# ── Mail.app launch preamble ─────────────────────────────────────────────────
+
+
+def test_mail_transport_ensures_mail_running_before_composing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The AppleScript `launch` event -600s when Mail is closed (2026-08-09), so the
+    # pre-launch contract is: _ensure_mail_running() succeeds BEFORE osascript runs,
+    # and the AppleScript itself carries no launch preamble.
+    calls: list = []
+    captured: dict = {}
+
+    monkeypatch.setattr(
+        hitl_alerts, "_ensure_mail_running", lambda: calls.append("ensure") or True
+    )
+
+    def fake_run(argv, **kwargs):
+        calls.append("osascript")
+        captured["script"] = kwargs.get("input", "")
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(hitl_alerts.subprocess, "run", fake_run)
+    assert hitl_alerts._send_mail_app("s", "b", "owner@example.test") is True
+    assert calls == ["ensure", "osascript"]
+    assert "to launch" not in captured["script"]
+    assert "make new outgoing message" in captured["script"]
+
+
+def test_mail_transport_fails_fast_when_mail_cannot_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(hitl_alerts, "_ensure_mail_running", lambda: False)
+
+    def fake_run(argv, **kwargs):  # pragma: no cover - must not be reached
+        raise AssertionError("osascript must not run when Mail cannot start")
+
+    monkeypatch.setattr(hitl_alerts.subprocess, "run", fake_run)
+    assert hitl_alerts._send_mail_app("s", "b", "owner@example.test") is False
+
+
+def test_mail_launch_kill_switch_skips_ensure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        hitl_alerts,
+        "_ensure_mail_running",
+        lambda: (_ for _ in ()).throw(AssertionError("ensure must be skipped")),
+    )
+
+    def fake_run(argv, **kwargs):
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(hitl_alerts.subprocess, "run", fake_run)
+    monkeypatch.setenv("HITL_MAIL_LAUNCH", "false")
+    assert hitl_alerts._send_mail_app("s", "b", "owner@example.test") is True

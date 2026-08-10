@@ -17,12 +17,17 @@ human must clear, and CVEs with no clean fix version. Those surface in the audit
 under `needs_review`, for a human or the /codebase-cleanup-deps-audit skill to judge.
 
 Allowlist note: Python scanners run via `python -m` (`python -m pip ...`,
-`python -m pip_audit ...`). Licence scanning is pure importlib. The npm scanner
-invokes the installed npm executable directly against the three repo-owned lockfiles;
-it never runs package scripts or mutates a dependency.
+`python -m pip_audit ...`), covered by the existing `Bash(python:*)` entry. Licence
+scanning is pure importlib. The npm scanner is OFF by default and runs only with
+`--npm`: `npm audit` sends the repo-owned lockfiles' dependency graph to the npm
+registry — a network call — so wiring it into any unattended invocation requires
+explicit approval (a `Bash(npm audit:*)`-class allowlist decision), not just this
+script's presence behind an allowlisted interpreter. When enabled it is still
+read-only: `--package-lock-only --ignore-scripts`, never running package scripts
+or mutating a dependency.
 
 Usage:
-    python bin/codebase_deps_audit.py [--out PATH] [--json] [--no-licences]
+    python bin/codebase_deps_audit.py [--out PATH] [--json] [--no-licences] [--npm]
 
 Default is scan-and-write (no dependency mutation — a read-only audit): runs the
 scanners, classifies findings, writes dependency_audit.json, prints the report.
@@ -32,6 +37,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -42,7 +48,29 @@ from typing import Callable, Iterable
 # Same canonical location pip-safe-upgrade reads from — the two mechanisms align.
 DEFAULT_AUDIT_PATH = Path.home() / ".claude" / "data" / "dependency_audit.json"
 
-GOVERNANCE_ROOT = Path(__file__).resolve().parents[2]
+def _resolve_governance_root(script_path: Path | None = None) -> Path:
+    """Governance root for npm-project resolution, valid in BOTH layouts.
+
+    A bare `parents[2]` is only correct in the nested live repo
+    (Governance/Order Samurai/bin/…); in the flat product pack
+    (<pack>/bin/…, exported by extract_public.py) it walks OUT of the pack
+    into the surrounding directory. Same bug class as tests/_layout.py, same
+    remedy: honor an explicit GOVERNANCE_ROOT env override (the reflex
+    engine already passes one to sibling scripts), else walk up to the
+    nearest ancestor containing `agentica_core/` — Governance/ in the nested
+    layout, the pack root in the flat one.
+    """
+    env = os.environ.get("GOVERNANCE_ROOT")
+    if env:
+        return Path(env).expanduser().resolve()
+    here = (script_path or Path(__file__)).resolve()
+    for ancestor in here.parents:
+        if (ancestor / "agentica_core").is_dir():
+            return ancestor
+    return here.parents[2]  # historical nested-layout fallback
+
+
+GOVERNANCE_ROOT = _resolve_governance_root()
 DEFAULT_NPM_PROJECTS: tuple[tuple[str, Path], ...] = (
     ("Governance", GOVERNANCE_ROOT),
     ("Governance/api", GOVERNANCE_ROOT / "api"),
@@ -56,8 +84,10 @@ NPM_SCAN_TIMEOUT_S = 180
 # Licences that clear automatically. Anything outside this set (or empty/unknown)
 # is flagged for the LLM/human judgement tail rather than auto-cleared.
 PERMISSIVE_LICENCES = frozenset(
-    {"mit", "bsd", "apache", "apache 2.0", "apache-2.0", "isc", "python", "psf",
-     "bsd-3-clause", "bsd-2-clause", "mpl-2.0", "unlicense", "zlib"}
+    {"mit", "mit-0", "mit-cmu", "bsd", "0bsd", "apache", "apache 2.0",
+     "apache-2.0", "isc", "python", "python-2.0", "psf", "psfl", "psf-2.0",
+     "cnri-python", "bsd-3-clause", "bsd-2-clause", "mpl-2.0", "unlicense",
+     "zlib", "cc0-1.0"}
 )
 
 # Copyleft markers — flagged explicitly (distinct from "unknown") so a reviewer
@@ -228,19 +258,42 @@ def parse_npm_audit(stdout: str, project: str) -> dict | None:
     }
 
 
+def _is_permissive(low: str) -> bool:
+    """True when a single (already-lowercased) licence term clears the allowlist.
+
+    Any-token matching handles prose variants like "Modified BSD License" or
+    "3-Clause BSD License"; it runs only after the copyleft check, so "GPL with
+    BSD exception" can never reach it.
+    """
+    return low in PERMISSIVE_LICENCES or any(
+        tok in PERMISSIVE_LICENCES for tok in low.split()
+    )
+
+
 def classify_licence(licence: str | None) -> str:
     """Classify a licence string as 'permissive', 'copyleft', or 'unknown'.
 
     Pure rule logic — the deterministic core of the licence scan. 'permissive'
-    auto-clears; 'copyleft' and 'unknown' are surfaced for review.
+    auto-clears; 'copyleft' and 'unknown' are surfaced for review. Accepts both
+    prose ("MIT License") and PEP 639 SPDX expressions ("Apache-2.0 OR
+    BSD-3-Clause"); a composite expression clears only if EVERY operand is
+    permissive — OR is not trusted to pick the permissive branch.
     """
     if not licence or not licence.strip():
         return "unknown"
     low = licence.strip().lower()
     if any(marker in low for marker in COPYLEFT_MARKERS):
         return "copyleft"
-    # First token handles "MIT License", "BSD-3-Clause", "Apache Software License".
-    if low in PERMISSIVE_LICENCES or low.split()[0] in PERMISSIVE_LICENCES:
+    if " and " in low or " or " in low:
+        parts = [
+            p.strip()
+            for p in re.split(r"\band\b|\bor\b", low.replace("(", " ").replace(")", " "))
+            if p.strip()
+        ]
+        if parts and all(_is_permissive(p) for p in parts):
+            return "permissive"
+        return "unknown"
+    if _is_permissive(low):
         return "permissive"
     return "unknown"
 
@@ -384,7 +437,11 @@ def _installed_licences() -> list[tuple[str, str, str | None]]:
         name = meta["Name"] if "Name" in meta else None
         if not name:
             continue
-        licence = meta["License"] if "License" in meta else None
+        # PEP 639: modern packages carry the SPDX expression and drop both the
+        # legacy License field and the trove classifiers — read it first.
+        licence = meta["License-Expression"] if "License-Expression" in meta else None
+        if not licence:
+            licence = meta["License"] if "License" in meta else None
         if not licence or licence in ("UNKNOWN", ""):
             # Fall back to the licence classifier trove, e.g.
             # "License :: OSI Approved :: MIT License".
@@ -487,11 +544,15 @@ def run_audit(
     pip_outdated_fn: Callable[[], str | None] = _real_pip_outdated,
     pip_audit_fn: Callable[[], str | None] = _real_pip_audit,
     licence_fn: Callable[[], list[tuple[str, str, str | None]]] = _installed_licences,
-    npm_audit_fn: Callable[[], dict | list[dict]] = _real_npm_audits,
+    npm_audit_fn: Callable[[], dict | list[dict]] | None = None,
     include_licences: bool = True,
     now_fn: Callable[[], str] = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"),
 ) -> dict:
     """Run every scanner, classify, and assemble the audit dict.
+
+    The npm scanner runs only when a hook is injected (CLI: --npm); the default
+    None skips it without reporting a scanner failure — it queries the npm
+    registry, so it stays opt-in.
 
     Pure given its injected scanner functions — the eval passes fixtures so it
     never shells out. Read-only: it scans and reports, never mutating any
@@ -502,8 +563,17 @@ def run_audit(
     pip_outdated = parse_pip_outdated(pip_outdated_raw or "")
     pip_cves = parse_pip_audit(pip_cves_raw or "")
     licence_flags = scan_licences(licence_fn()) if include_licences else []
-    npm_result = npm_audit_fn()
-    if isinstance(npm_result, dict):
+    npm_result = npm_audit_fn() if npm_audit_fn is not None else None
+    if npm_result is None:
+        # npm scanning is opt-in (--npm / an injected hook): it queries the npm
+        # registry, so a run without it deliberately skips the scan. A skipped
+        # scanner is not a dead one — it contributes no scanner_ok/scanner_errors
+        # entry, so consumers don't read the absence as a failed scan.
+        npm_audits = []
+        npm_ok = None
+        npm_projects = {}
+        npm_errors = {}
+    elif isinstance(npm_result, dict):
         npm_audits = npm_result.get("audits")
         npm_audits = npm_audits if isinstance(npm_audits, list) else []
         npm_ok = npm_result.get("scanner_ok") is True
@@ -537,16 +607,16 @@ def run_audit(
     audit["scanner_ok"] = {
         "pip": _valid_pip_outdated_output(pip_outdated_raw),
         "pip_audit": _valid_pip_audit_output(pip_cves_raw),
-        "npm": npm_ok,
+        **({} if npm_ok is None else {"npm": npm_ok}),
     }
-    audit["scanner_details"] = {"npm": npm_projects}
+    audit["scanner_details"] = {} if npm_ok is None else {"npm": npm_projects}
     audit["scanner_errors"] = {
         **({"pip": "pip outdated did not produce valid JSON"}
            if not audit["scanner_ok"]["pip"] else {}),
         **({"pip_audit": "pip-audit did not produce valid JSON"}
            if not audit["scanner_ok"]["pip_audit"] else {}),
         **({"npm": npm_errors or {"npm": "one or more npm audits failed"}}
-           if not npm_ok else {}),
+           if npm_ok is False else {}),
     }
     return audit
 
@@ -603,9 +673,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-licences", action="store_true",
                         help="skip the (pure, shell-free) licence scan")
     parser.add_argument("--json", action="store_true", help="emit the audit as JSON")
+    parser.add_argument("--npm", action="store_true",
+                        help="also audit the repo-owned npm lockfiles (queries the "
+                             "npm registry — a network call; off by default)")
     args = parser.parse_args(argv)
 
-    audit = run_audit(include_licences=not args.no_licences)
+    audit = run_audit(
+        include_licences=not args.no_licences,
+        npm_audit_fn=_real_npm_audits if args.npm else None,
+    )
 
     try:
         write_audit(audit, args.out)

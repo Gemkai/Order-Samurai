@@ -1,0 +1,1 @@
+{"reflex_id": "metric:bow:Fixture_Mechanism_Orphans", "tier": "CRITICAL", "status": "active", "source": "metric", "note": "dispatch-tier excerpt from today's payload -- no orphan count is present anywhere in this record"}

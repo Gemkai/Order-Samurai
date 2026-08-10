@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:bow:Fixture_Mechanism_Orphans",
+  "real": true,
+  "evidence": {
+    "re_measured": "the reflex was dispatched in the CRITICAL tier of today's payload (see evidence.jsonl)",
+    "snapshot": null,
+    "source_file": "evidence.jsonl",
+    "window_days": 1
+  },
+  "root_cause": "Mechanism_Orphans is a real breach because it was dispatched as a CRITICAL-tier reflex in today's payload.",
+  "proposed_fix": "/audit-mechanisms",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

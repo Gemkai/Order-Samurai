@@ -57,6 +57,17 @@ REQUIRED_RUNTIME_ARTIFACTS = (
 _RANK = {"OK": 0, "WARN": 1, "FAIL": 2}
 _UNRANK = {0: "OK", 1: "WARN", 2: "FAIL"}
 
+# Sibling run_checks() functions don't all name their root-override kwarg
+# `runtime_root_dir` (verify_claude_path_authority uses `runtime_root_path`;
+# verify_claude_runtime_coupling uses `root`). Without this map, calling with
+# `runtime_root_dir=` raises TypeError on those two, which the fallback below
+# catches by calling `run()` with no args at all -- silently scanning the live
+# default runtime instead of the caller-supplied root.
+_ROOT_KWARG_BY_MODULE = {
+    "execution.verify_claude_path_authority": "runtime_root_path",
+    "execution.verify_claude_runtime_coupling": "root",
+}
+
 
 def _make_result(status: str, label: str, detail: str) -> dict[str, str]:
     return {"status": status, "label": label, "detail": detail}
@@ -128,9 +139,13 @@ def run_checks(*, runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
             continue
 
         try:
-            rows = run(runtime_root_dir=runtime) if runtime_root_dir is not None else run()
+            if runtime_root_dir is not None:
+                kwarg = _ROOT_KWARG_BY_MODULE.get(module_name, "runtime_root_dir")
+                rows = run(**{kwarg: runtime})
+            else:
+                rows = run()
         except TypeError:
-            # Sibling may not accept runtime_root_dir; fall back to its default.
+            # Sibling may not accept a root override at all; fall back to its default.
             rows = run()
         except Exception as exc:  # a verifier crash is itself a contract breach
             results.append(_make_result("FAIL", label, f"{module_name} raised: {exc}"))

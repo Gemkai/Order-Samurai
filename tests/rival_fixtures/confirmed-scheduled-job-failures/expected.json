@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "CONFIRMED",
+  "rationale": "evidence.jsonl genuinely contains 4 scheduled_job_failure rows within the claimed 7-day window (2026-08-03, 2026-08-05, 2026-08-06, 2026-08-08), all sharing the same concrete root cause ('Cannot connect to the Docker daemon'), against a 0-failure baseline. The re-measured count (4) matches what's actually in the cited file, the root cause is specific and checkable, and the proposed fix (a read-only audit) is proportionate and low-risk. A competent independent re-derivation of the count from evidence.jsonl should agree."
+}

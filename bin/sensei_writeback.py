@@ -193,6 +193,17 @@ if not ARMED:
     print(f"  schema : {len(rows)} ledger row(s) checked, {bad} violation(s) (warn-only)")
     sys.exit(0)
 
+# An armed cycle always produces SOMETHING (a real run emits ledger rows even
+# when there is nothing to post or escalate). A fully empty payload is exactly
+# what sensei_cycle_live.sh substitutes ({}) when the claude call fails or
+# returns unextractable output — exiting 0 here reported a total write-back
+# failure as a successful cycle. Fail loudly instead; the dry path above stays
+# exit 0 (informational).
+if not (posts or backlog or rows):
+    print("[sensei-writeback] ARMED but payload is empty (no verdicts, backlog "
+          "entries, or ledger rows) — treating as upstream cycle failure.")
+    sys.exit(1)
+
 print("[sensei-writeback] ARMED — writing.")
 writeback_ok = True
 

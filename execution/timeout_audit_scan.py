@@ -27,6 +27,7 @@ payload is a follow-on step, not part of this session's Files-touched scope.
 from __future__ import annotations
 
 import re
+import ast
 from pathlib import Path
 
 _THIS = Path(__file__).resolve()
@@ -54,7 +55,7 @@ _TIMEOUT_KW_RE = re.compile(r"\btimeout\s*=")
 
 def _iter_python_files(root: Path):
     for p in sorted(root.rglob("*.py")):
-        if any(part in _SKIP_DIR_NAMES for part in p.parts):
+        if any(part in _SKIP_DIR_NAMES or part == "tests" for part in p.parts):
             continue
         yield p
 
@@ -87,29 +88,51 @@ def scan_unbounded_wait_loops(path: Path) -> list[tuple[int, str]]:
     for i, line in enumerate(lines):
         if not _WHILE_RE.match(line):
             continue
-        body_text = "\n".join(_loop_body_lines(lines, i))
+        body_text = "\n".join([line, *_loop_body_lines(lines, i)])
         if _SLEEP_RE.search(body_text) and not _DEADLINE_HINT_RE.search(body_text):
             findings.append((i + 1, line.strip()))
     return findings
 
 
 def scan_untimed_remote_calls(path: Path) -> list[tuple[int, str]]:
-    """(line_no, snippet) for each remote/blocking call with no `timeout=`
-    on its line or next few continuation lines (catches a kwarg wrapped
-    across a multi-line call)."""
+    """(line_no, snippet) for each remote/blocking call with no timeout keyword.
+
+    Python's AST owns call boundaries; a fixed continuation-line window misclassified valid calls
+    whenever a payload happened to push ``timeout=`` onto line seven or later.
+    """
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return []
     lines = text.splitlines()
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return []
+
+    def dotted_name(node: ast.AST) -> str:
+        if isinstance(node, ast.Name):
+            return node.id
+        if isinstance(node, ast.Attribute):
+            prefix = dotted_name(node.value)
+            return f"{prefix}.{node.attr}" if prefix else node.attr
+        return ""
+
+    remote_names = {
+        "requests.get", "requests.post", "requests.put", "requests.delete",
+        "requests.patch", "requests.head", "urllib.request.urlopen",
+        "subprocess.run", "subprocess.call", "subprocess.check_output",
+        "subprocess.check_call", "socket.create_connection",
+    }
     findings: list[tuple[int, str]] = []
-    for i, line in enumerate(lines):
-        if not _REMOTE_CALL_RE.search(line):
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or dotted_name(node.func) not in remote_names:
             continue
-        window = "\n".join(lines[i:i + 6])
-        if not _TIMEOUT_KW_RE.search(window):
-            findings.append((i + 1, line.strip()))
-    return findings
+        if not any(keyword.arg == "timeout" for keyword in node.keywords):
+            lineno = getattr(node, "lineno", 1)
+            snippet = lines[lineno - 1].strip() if 0 < lineno <= len(lines) else dotted_name(node.func)
+            findings.append((lineno, snippet))
+    return sorted(findings)
 
 
 def scan_tree(root: Path) -> dict:

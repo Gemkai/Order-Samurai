@@ -155,7 +155,15 @@ def run(runtime_root: Path | None = None) -> dict:  # noqa: ARG001
     """Discover untracked kill chains and write proposals. Returns signal counts."""
     tax = _read_json(_OS_ROOT / "state" / "kill_chain_taxonomy.json")
     if not isinstance(tax, dict):
-        return {"kill_chain_candidates": 0, "chains_checked": 0}
+        # None, not 0. "I checked and found no untracked chains" and "I could not read the
+        # taxonomy" are opposite facts, and 0 is the healthiest value this signal has — so
+        # collapsing them makes a missing source look like a clean bill of health. The
+        # caller omits a None rather than recording it.
+        return {
+            "kill_chain_candidates": None,
+            "chains_checked": None,
+            "data_gap": "state/kill_chain_taxonomy.json missing or unreadable",
+        }
 
     chains = tax.get("chains", [])
     already_tracked = _chain_ids_in_events(days=30)

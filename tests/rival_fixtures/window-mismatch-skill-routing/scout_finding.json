@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:sword:Fixture_Skill_Routing_Adherence",
+  "real": true,
+  "evidence": {
+    "re_measured": 62,
+    "snapshot": 85,
+    "source_file": "evidence.jsonl",
+    "window_days": 1
+  },
+  "root_cause": "Skill_Routing_Adherence dropped to 62% (below the 65% fail threshold), confirming a real regression.",
+  "proposed_fix": "/insights",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "skill"
+}

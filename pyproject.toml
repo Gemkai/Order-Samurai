@@ -1,17 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "order-samurai"
 version = "0.1.0"
+description = "Local-first governance and security layer for autonomous coding agent fleets"
+# No `readme`/`license` keys: this vendored copy carries neither file (both live in the public
+# export pack, built by bin/extract_public.py). Pointing at a missing file fails metadata
+# generation outright, so they are added when the export pack becomes the packaging source.
 requires-python = ">=3.11"
 dependencies = [
     # P4 typed-envelope seam: aggregate.write_payload validates wid_payload.json
     # against schema/wid_payload.schema.json before persisting.
     "jsonschema>=4.0",
+    # agentica_core.llm.gateway is imported by the shipped audit/remediation seams.
+    "requests>=2.31",
     # Required by bin/codebase_deps_audit.py. A missing scanner is an explicit
     # unhealthy audit, never a clean zero-vulnerability verdict.
     "pip-audit>=2.7",
 ]
 
+[project.scripts]
+# Canonical name per the productization scope decision. `samurai` (bin/samurai) stays as-is: the
+# installed hook registrations reference it, so renaming it here would break existing installs.
+order-samurai = "execution.cli:main"
+
+[tool.hatch.build.targets.wheel]
+# The public-export builder places the curated agentica_core closure beside execution. Both are
+# runtime dependencies of the installed CLI; packaging only execution produced a wheel whose
+# live-source verifier failed immediately on `import agentica_core`.
+packages = ["execution", "agentica_core"]
+
 [tool.pytest.ini_options]
+addopts = '-m "not live_machine"'
 markers = [
     "live_machine: requires real platform homes or local services; excluded from CI",
 ]

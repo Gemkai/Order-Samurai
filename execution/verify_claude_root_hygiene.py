@@ -163,9 +163,30 @@ def find_unclassified_entries(*, root: Path, declared_entries: set[str]) -> list
     return sorted(unclassified, key=str.lower)
 
 
+def find_unlisted_home_entries(*, payload: dict, home: Path) -> list[str]:
+    """Return visible top-level $HOME entries absent from homeRoot.allowlist.
+
+    Hidden entries are always exempt: dotfiles/dotdirs at $HOME are app-managed
+    surfaces (every installed tool mints one), not sprawl this policy owns.
+    """
+    allowlist = {
+        _normalize_entry(entry)
+        for entry in (payload.get("homeRoot") or {}).get("allowlist") or []
+    }
+    return sorted(
+        (
+            entry.name
+            for entry in home.iterdir()
+            if not entry.name.startswith(".") and entry.name not in allowlist
+        ),
+        key=str.lower,
+    )
+
+
 def run_checks(
     policy_path: Path = ROOT_HYGIENE_POLICY_PATH,
     root: Path | None = None,
+    home: Path | None = None,
 ) -> list[dict[str, str]]:
     results: list[dict[str, str]] = []
     target_root = root if root is not None else runtime_root()
@@ -243,6 +264,32 @@ def run_checks(
                 f"all required directories and files exist under {target_root}",
             )
         )
+
+    # $HOME clutter check — opt-in via the policy's homeRoot section (2026-08-02
+    # audit follow-up: the ~/.claude policies were blind to sprawl landing in the
+    # home root itself). A policy without homeRoot keeps the old behavior.
+    if payload.get("homeRoot"):
+        target_home = home if home is not None else Path.home()
+        if target_home.is_dir():
+            unlisted_home = find_unlisted_home_entries(payload=payload, home=target_home)
+            if unlisted_home:
+                for name in unlisted_home:
+                    kind = "directory" if (target_home / name).is_dir() else "file"
+                    results.append(
+                        _make_result(
+                            "WARN",
+                            "root_hygiene.claude.home_root",
+                            f"visible top-level {kind} not in homeRoot.allowlist: {name}",
+                        )
+                    )
+            else:
+                results.append(
+                    _make_result(
+                        "OK",
+                        "root_hygiene.claude.home_root",
+                        f"all visible top-level entries under {target_home} are allowlisted",
+                    )
+                )
 
     unclassified = find_unclassified_entries(
         root=target_root,

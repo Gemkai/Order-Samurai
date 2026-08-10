@@ -54,6 +54,21 @@ def test_rejects_edit_to_hooks_and_subbundles():
     assert arp.check_path_scope(_edit(".claude/settings.json"))
 
 
+def test_rejects_edit_to_meditation_prompt():
+    # Self-modification vector: a remediation patch rewriting the prompt that
+    # governs how the NEXT remediation behaves. Only three named bin/ gates were
+    # protected, so prompts/ was reachable with nothing catching it.
+    p = "Governance/Order Samurai/prompts/meditation_cycle.md"
+    fails = arp.check_path_scope(_edit(p))
+    assert any("protected control-plane path" in f for f in fails)
+
+
+def test_rejects_edit_to_ronin_pillar_prompt():
+    p = "Governance/Order Samurai/prompts/ronin_sword.md"
+    fails = arp.check_path_scope(_edit(p))
+    assert any("protected control-plane path" in f for f in fails)
+
+
 def test_rejects_path_traversal():
     fails = arp.check_path_scope(_edit("Governance/../../../etc/cron.d/evil"))
     assert any("traversal" in f for f in fails)
@@ -118,3 +133,49 @@ def test_allows_path_with_space_in_it():
     # handle it; a docs edit under that tree (not state/) is allowed.
     p = "Governance/Order Samurai/Research/METRICS.md"
     assert arp.check_path_scope(_edit(p)) == []
+
+
+# --- bin/ widening + allowlist carve-out (2026-08-09) -----------------------------
+
+def test_rejects_edit_to_any_bin_script_not_just_the_three_named():
+    """bin/ was widened from 3 named gates to the whole directory. Two of these are the
+    reason: wiki_link.py carries the breach thresholds that decide whether a metric is
+    failing (lowering them was the explicitly-rejected shortcut in the
+    remediation-first-live-fire goal), and hitl_alerts.py IS the human escalation path.
+    An agent able to edit either could suppress its own alarm."""
+    for name in ("wiki_link.py", "hitl_alerts.py", "samurai", "meditation_overnight.sh",
+                 "policy_enforcement_audit.py"):
+        p = f"Governance/Order Samurai/bin/{name}"
+        fails = arp.check_path_scope(_edit(p))
+        assert any("protected control-plane path" in f for f in fails), p
+
+
+def test_the_three_original_gates_are_still_rejected():
+    """Regression guard: widening the pattern must not drop its original coverage."""
+    for name in ("bushido_check", "remeasure_gate", "render_surface_env"):
+        p = f"Governance/Order Samurai/bin/{name}.py"
+        assert any("protected control-plane path" in f for f in arp.check_path_scope(_edit(p))), p
+
+
+def test_allowlist_carve_out_permits_exactly_one_path(monkeypatch):
+    """The carve-out must admit the ratified path and NOT its neighbours — exact-match
+    only, so a future entry can never widen by accident (no globs)."""
+    target = "Governance/Order Samurai/bin/wiki_compile.py"
+    monkeypatch.setattr(arp, "REMEDIABLE_BIN_ALLOWLIST", frozenset({target}))
+    assert arp.check_path_scope(_edit(target)) == []
+    neighbour = "Governance/Order Samurai/bin/wiki_link.py"
+    assert any("protected" in f for f in arp.check_path_scope(_edit(neighbour)))
+
+
+def test_allowlist_is_empty_by_measurement():
+    """Empty by evidence, not oversight: 0 of 165 exec_log rows ever touched bin/, and all
+    50 files there are governance machinery. Seeding it with 'probably safe' guesses would
+    hand back the self-modification surface the widening closes. If you add an entry, bring
+    evidence (an exec_log row or a blocked patch) — and update this test deliberately."""
+    assert arp.REMEDIABLE_BIN_ALLOWLIST == frozenset()
+
+
+def test_rejection_message_names_the_allowlist():
+    """A blocked-but-legitimate remediation must be self-diagnosing rather than a mystery."""
+    fails = arp.check_path_scope(_edit("Governance/Order Samurai/bin/samurai"))
+    assert any("REMEDIABLE_BIN_ALLOWLIST" in f for f in fails)

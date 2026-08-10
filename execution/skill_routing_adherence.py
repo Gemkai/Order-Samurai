@@ -49,7 +49,7 @@ def compute_adherence() -> dict:
     # skills invoked per session (leading slug, no leading slash)
     invoked_by_session: dict[str, set] = defaultdict(set)
     for r in invocations:
-        slug = str(r.get("skill", "")).lstrip("/").split()[0]
+        slug = (str(r.get("skill", "")).lstrip("/").split() or [""])[0]
         if slug:
             invoked_by_session[str(r.get("session_id", ""))].add(slug)
 
@@ -61,7 +61,7 @@ def compute_adherence() -> dict:
         cats = d.get("categories") or []
         skills = d.get("skills") or []
         for cat, skill in zip(cats, skills):
-            slug = str(skill).lstrip("/").split()[0]
+            slug = (str(skill).lstrip("/").split() or [""])[0]
             if not slug:
                 continue
             total += 1

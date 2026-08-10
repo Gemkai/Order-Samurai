@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "REFUTED",
+  "rationale": "The reasoning 'this reflex was dispatched in the CRITICAL tier, therefore the breach is real' proves too much (rival's category e) -- EVERY dispatched reflex would trivially satisfy this test, since dispatch tier is computed FROM the same snapshot the scout exists to independently re-verify. evidence.jsonl contains no actual orphan count, no re-measured value, and no threshold comparison anywhere -- the finding cites the payload's own classification as if it were independent confirmation of itself."
+}

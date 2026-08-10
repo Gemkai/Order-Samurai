@@ -153,6 +153,18 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
     if isinstance(ma, dict):
         c = ma.get("counts") or {}
         out["mechanism_orphans"] = int(c.get("orphan", 0)) + int(c.get("critical", 0))
+        # Scheduled_Job_Failures (2026-08-09): launchd jobs whose LAST RUN exited
+        # non-zero, from mechanism_audit's check_launchd_exit_status. Counted off the
+        # findings list rather than `counts` because that rollup is keyed by severity,
+        # not category, and these land under the shared "warning" bucket. Absent key
+        # (an older audit report predating the check) is left unset so the metric reads
+        # as a data gap rather than a fabricated 0 — the house rule for a dark source.
+        f = ma.get("findings")
+        if isinstance(f, list):
+            out["scheduled_job_failures"] = sum(
+                1 for x in f
+                if isinstance(x, dict) and x.get("category") == "launchd_failing"
+            )
 
     dp = _read_json(data / "doc_parity.json")
     if isinstance(dp, dict):
@@ -164,7 +176,11 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
     try:
         from agentica_core.scouts.doc_parity import run as _dp
         dp_live = _dp()
-        out["doc_parity_issues"] = dp_live.get("doc_parity_issues", 0)
+        # `is not None`: the live scout returns None when its git query failed, and this
+        # line OVERWRITES the file-derived value computed just above — so a defaulted 0
+        # would not merely publish a fake healthy number, it would erase a real one.
+        if dp_live.get("doc_parity_issues") is not None:
+            out["doc_parity_issues"] = dp_live["doc_parity_issues"]
     except Exception:
         pass
 
@@ -251,7 +267,12 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
     try:
         from agentica_core.scouts.kill_chain_discovery import run as _kcd
         kcd = _kcd(runtime_root)
-        out["kill_chain_candidates"] = kcd.get("kill_chain_candidates", 0)
+        # `is not None`, not `.get(..., 0)`: the scout reports None when it could not read
+        # the taxonomy, and 0 is this signal's healthiest value — recording the default
+        # would publish "no untracked kill chains" on the strength of an absent source.
+        # Same shape as the vulnerability_window check two blocks above.
+        if kcd.get("kill_chain_candidates") is not None:
+            out["kill_chain_candidates"] = kcd["kill_chain_candidates"]
     except Exception:
         pass
 

@@ -20,6 +20,8 @@ for _p in (REPO_ROOT, GOV_ROOT):
         sys.path.insert(0, str(_p))
 
 from bin.first_blood import (  # type: ignore[import-not-found]
+    _price_for,
+    _tier_for,
     build_report,
     estimate_cost,
     parse_transcript,
@@ -69,6 +71,20 @@ class EstimateCost(unittest.TestCase):
 
     def test_zero_usage_is_zero_cost(self):
         self.assertEqual(estimate_cost("claude-opus-4", 0, 0, 0), 0.0)
+
+    def test_premium_tier_model_does_not_silently_price_at_standard_rate(self):
+        # _tier_for() classifies any "mythos" model as PREMIUM (same bracket as
+        # opus/fable), but _price_for() used a separate keyword list that had no
+        # "mythos" entry, so it fell through to the STANDARD/sonnet default --
+        # an internal contradiction between the tier label and the price used to
+        # compute the very spend-spike signal this tool exists to catch.
+        model = "claude-mythos-preview"
+        self.assertEqual(_tier_for(model), "PREMIUM")
+        self.assertNotEqual(
+            _price_for(model),
+            _price_for("claude-sonnet-4"),
+            "a model _tier_for() grades PREMIUM must not price at the STANDARD/sonnet rate",
+        )
 
 
 # ---------------------------------------------------------------------------

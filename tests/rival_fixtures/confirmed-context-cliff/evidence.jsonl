@@ -1,0 +1,10 @@
+{"session_id": "s1", "date": "2026-08-01", "peak_tokens": 195000, "exceeded_budget": true}
+{"session_id": "s2", "date": "2026-08-02", "peak_tokens": 88000, "exceeded_budget": false}
+{"session_id": "s3", "date": "2026-08-02", "peak_tokens": 210000, "exceeded_budget": true}
+{"session_id": "s4", "date": "2026-08-03", "peak_tokens": 62000, "exceeded_budget": false}
+{"session_id": "s5", "date": "2026-08-04", "peak_tokens": 74000, "exceeded_budget": false}
+{"session_id": "s6", "date": "2026-08-05", "peak_tokens": 199000, "exceeded_budget": true}
+{"session_id": "s7", "date": "2026-08-05", "peak_tokens": 55000, "exceeded_budget": false}
+{"session_id": "s8", "date": "2026-08-06", "peak_tokens": 91000, "exceeded_budget": false}
+{"session_id": "s9", "date": "2026-08-07", "peak_tokens": 40000, "exceeded_budget": false}
+{"session_id": "s10", "date": "2026-08-08", "peak_tokens": 47000, "exceeded_budget": false}

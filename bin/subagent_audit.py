@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -54,6 +55,19 @@ TRIVIAL_KEYWORDS = frozenset({
 TOKEN_PREMIUM_K = 13
 
 
+def _keyword_hit(text: str, keywords: frozenset[str]) -> str | None:
+    """First keyword matched as a whole word/phrase in `text`, or None.
+
+    Word-boundary matching, not `kw in text`: a bare substring check lets short
+    keywords like "gate" or "full" false-positive inside unrelated words
+    ("investigate", "fully"), silently misclassifying wasteful spawns.
+    """
+    for kw in keywords:
+        if re.search(rf"\b{re.escape(kw)}\b", text):
+            return kw
+    return None
+
+
 def classify_spawn(description: str, prompt: str, turn_spawn_count: int) -> tuple[str, str]:
     """Classify one Agent/Task spawn. Returns (verdict, reason).
 
@@ -71,11 +85,12 @@ def classify_spawn(description: str, prompt: str, turn_spawn_count: int) -> tupl
     if turn_spawn_count >= 3 and not any(kw in desc_low for kw in TRIVIAL_KEYWORDS):
         return ("justified_parallel", f"{turn_spawn_count} concurrent spawns in one turn")
 
-    if any(kw in combined for kw in ISOLATION_KEYWORDS):
-        matched = next(kw for kw in ISOLATION_KEYWORDS if kw in combined)
-        return ("justified_isolation", f"isolation keyword: '{matched}'")
+    isolation_hit = _keyword_hit(combined, ISOLATION_KEYWORDS)
+    if isolation_hit:
+        return ("justified_isolation", f"isolation keyword: '{isolation_hit}'")
 
-    if len(prompt) > 800 or any(kw in combined for kw in FANOUT_KEYWORDS):
+    fanout_hit = _keyword_hit(combined, FANOUT_KEYWORDS)
+    if len(prompt) > 800 or fanout_hit:
         reason = (
             "large prompt (fan-out scope)"
             if len(prompt) > 800
@@ -83,9 +98,9 @@ def classify_spawn(description: str, prompt: str, turn_spawn_count: int) -> tupl
         )
         return ("justified_fanout", reason)
 
-    if any(kw in desc_low for kw in TRIVIAL_KEYWORDS):
-        matched = next(kw for kw in TRIVIAL_KEYWORDS if kw in desc_low)
-        return ("wasteful_trivial", f"trivial keyword in description: '{matched}'")
+    trivial_hit = _keyword_hit(desc_low, TRIVIAL_KEYWORDS)
+    if trivial_hit:
+        return ("wasteful_trivial", f"trivial keyword in description: '{trivial_hit}'")
 
     if turn_spawn_count <= 2:
         return ("wasteful_serial", "single/paired spawn with no justified pattern")

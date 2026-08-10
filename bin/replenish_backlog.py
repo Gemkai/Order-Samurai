@@ -191,10 +191,14 @@ def build_items(candidates: list, proposed_items: list, auto_approve: bool,
     # Sort: higher value first, then alphabetical for stability
     fresh.sort(key=lambda c: (-c["value"], c["title"]))
 
-    # `ronin promote` MOVES approved items out of PROPOSED_BACKLOG into
-    # MEDITATION_STATE, so numbering from the proposals alone restarts the counter
-    # after every promote and re-issues an id the backlog already holds (the live
-    # state carries a duplicate AUTO-041 from exactly this path). Reserve both sets.
+    # Reserve ids across BOTH sets. Historically `ronin promote` MOVED approved items
+    # out of PROPOSED_BACKLOG into MEDITATION_STATE, so numbering from the proposals
+    # alone restarted the counter after every promote and re-issued an id the backlog
+    # already held (the live state still carries a duplicate AUTO-041 from that path).
+    # Since 2026-08-08 promote is an in-place status flip and moves nothing, so the
+    # original failure can no longer occur — but the historical MEDITATION_STATE items
+    # still hold ids that must never be reissued, and reserving both sets stays correct
+    # if anything ever moves items again. Kept deliberately, not left behind.
     reserved = list(proposed_items) + list(
         load_backlog_items() if promoted_items is None else promoted_items)
 

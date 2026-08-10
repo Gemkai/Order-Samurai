@@ -28,7 +28,7 @@
       "note": "Lenient budget for non-finishing runs (quota/turn-cap), weaker evidence than a hard error."
     },
     "scout_max_files": {
-      "value": 60,
+      "value": 75,
       "type": "int",
       "min": 10,
       "max": 200,

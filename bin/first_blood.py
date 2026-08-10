@@ -41,17 +41,23 @@ from agentica_core.aggregate import (  # noqa: E402  — SAME reducers the live 
 
 _DEFAULT_LOGS_DIR = Path.home() / ".claude" / "projects"
 
-# Estimated USD per-million-token pricing (public Anthropic list pricing). Always labelled
-# ESTIMATED in the report — this is never a substitute for your actual invoice. Mirrors the
-# estimation approach the SessionEnd emitter (scripts/agentica_emit.py) already uses, so a
-# user who later wires the live hook sees consistent numbers, not a second cost formula.
-_PRICE_PER_M: dict[str, tuple[float, float, float]] = {
-    "opus": (15.0, 75.0, 1.50),
-    "sonnet": (3.0, 15.0, 0.30),
-    "haiku": (0.8, 4.0, 0.08),
-    "fable": (12.0, 60.0, 1.20),
+# Model-family keyword -> (tier label, estimated USD per-million-token pricing). One
+# shared table for both tier classification and pricing (CLAUDE.md Principle #7: DRY
+# at the knowledge level) — two separate keyword lists previously let "mythos" get
+# tagged PREMIUM by _tier_for() while _price_for() had no matching entry and silently
+# fell through to the STANDARD/sonnet rate, undercutting the spend-spike signal for
+# exactly the tier this tool most needs to catch. Always labelled ESTIMATED in the
+# report — never a substitute for your actual invoice. Mirrors the estimation approach
+# the SessionEnd emitter (scripts/agentica_emit.py) already uses, so a user who later
+# wires the live hook sees consistent numbers, not a second cost formula.
+_MODEL_FAMILIES: dict[str, tuple[str, tuple[float, float, float]]] = {
+    "opus": ("PREMIUM", (15.0, 75.0, 1.50)),
+    "fable": ("PREMIUM", (12.0, 60.0, 1.20)),
+    "mythos": ("PREMIUM", (15.0, 75.0, 1.50)),  # no public list price yet — opus-tier estimate
+    "sonnet": ("STANDARD", (3.0, 15.0, 0.30)),
+    "haiku": ("FAST", (0.8, 4.0, 0.08)),
 }
-_DEFAULT_PRICE = _PRICE_PER_M["sonnet"]
+_DEFAULT_PRICE = _MODEL_FAMILIES["sonnet"][1]
 
 # Sessions at/above this estimated cost are flagged as a spend-spike signal — the literal
 # $6,000-overnight failure mode Order Samurai exists to catch. This is one honest, measured
@@ -62,18 +68,15 @@ _SPIKE_THRESHOLD_USD = 5.0
 
 def _tier_for(model: str) -> str:
     m = (model or "").lower()
-    if "opus" in m or "fable" in m or "mythos" in m:
-        return "PREMIUM"
-    if "sonnet" in m:
-        return "STANDARD"
-    if "haiku" in m:
-        return "FAST"
+    for key, (tier, _price) in _MODEL_FAMILIES.items():
+        if key in m:
+            return tier
     return "unknown"
 
 
 def _price_for(model: str) -> tuple[float, float, float]:
     m = (model or "").lower()
-    for key, price in _PRICE_PER_M.items():
+    for key, (_tier, price) in _MODEL_FAMILIES.items():
         if key in m:
             return price
     return _DEFAULT_PRICE

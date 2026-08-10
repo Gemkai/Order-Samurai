@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://order-samurai.local/schema/attack_paths.schema.json",
+  "title": "Order Samurai Attack Path Correlation Table",
+  "description": "Declarative source of truth for execution/attack_path_correlator.py. merge_premium_findings() (and the plain static scan) already correlate findings by file/line proximity -- this table defines attack paths that correlate by MEANING instead: a fixed set of legs that, found TOGETHER anywhere in one audit, are materially worse than either alone. Structurally modeled on state/kill_chain_taxonomy.json's flat, self-describing shape (id/name/status), adapted for repo-audit findings instead of runtime telemetry events -- the two taxonomies are deliberately separate and not merged, since one classifies AGENT behavior and this one classifies CODE-level finding combinations.",
+  "type": "object",
+  "required": ["version", "attack_paths"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "attack_paths": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/attack_path" }
+    }
+  },
+  "definitions": {
+    "attack_path": {
+      "type": "object",
+      "required": ["id", "name", "escalated_severity", "legs", "rationale"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "description": "Stable slug, never reused."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Becomes the escalated finding's title."
+        },
+        "escalated_severity": {
+          "type": "string",
+          "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+          "description": "The severity of the CORRELATED finding this path produces -- independent of, and not required to relate arithmetically to, its legs' individual severities."
+        },
+        "legs": {
+          "type": "array",
+          "minItems": 2,
+          "description": "Every leg must be satisfied by at least one finding in the SAME audit run for this path to fire -- an attack path is never invented from a single leg.",
+          "items": { "$ref": "#/definitions/leg" }
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why this specific combination is materially worse together -- becomes the escalated finding's description, so it must stand alone as a real explanation, not a label."
+        },
+        "remediation": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional combined remediation distinct from either leg's own. Omit to fall back to citing each constituent finding's own remediation."
+        }
+      }
+    },
+    "leg": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 1,
+      "description": "Exactly one of detection_id (a specific execution/detections.json entry) or category (any finding of that category) -- never both, and never neither.",
+      "properties": {
+        "detection_id": {
+          "type": "string",
+          "description": "Matches a specific execution/detections.json 'id' field."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["Secret Leak", "Security Defect"],
+          "description": "Matches ANY finding of this category, regardless of which specific detection produced it."
+        }
+      }
+    }
+  }
+}

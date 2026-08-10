@@ -226,6 +226,200 @@ def _run_local_llm_checks() -> list[dict]:
                        f"{', '.join(m for m in models[:3] if m)})"}]
 
 
+def _run_container_service_checks() -> list[dict]:
+    """WARN when a locally-dependent service (Qdrant, Ollama) is unreachable.
+
+    Complements _run_local_llm_checks (Ollama only) with the other local dependency this
+    fleet leans on. Reuses Governance/bin/fleet_probe.py's reachability check rather than
+    re-deriving it (Anti-Pattern #2) -- that module is also the source of fleet_probe.json,
+    which hitl_alerts.py's 30-min FLEET HEALTH banner reads, so a doctor run and a notifier
+    run agree on what "unreachable" means. Single-shot (attempts=1): doctor runs
+    interactively and from the dojo STEP A-prime gate, where fleet_probe's ~40s DarkWake
+    backoff window would make every doctor invocation noticeably slower for a check that
+    already re-runs every 30 minutes via the notifier.
+
+    Known blind spot (documented, not fixed here): this only answers "is the port
+    answering right now" -- deliberately the narrowest, hardest-to-fake signal available.
+    It does NOT read container status, because `docker ps` can report "Up" while the port
+    inside is still dead moments after a DarkWake-suspended VM resumes (see
+    darkwake-suspends-orbstack-scheduled-jobs memory) -- a container-status check would
+    report false-green through the exact incident this exists to catch.
+    """
+    governance_bin = ROOT_DIR.parent / "bin"
+    if str(governance_bin) not in sys.path:
+        sys.path.insert(0, str(governance_bin))
+    try:
+        from fleet_probe import check_unreachable_services  # type: ignore
+    except Exception as exc:
+        return [{"status": "WARN", "label": "container-services",
+                 "detail": f"fleet_probe import failed ({exc}) -- service reachability unverified"}]
+    try:
+        unreachable = check_unreachable_services(attempts=1)
+    except Exception as exc:
+        return [{"status": "WARN", "label": "container-services",
+                 "detail": f"reachability probe raised ({exc}) -- service reachability unverified"}]
+    if unreachable:
+        return [{"status": "WARN", "label": "container-services",
+                 "detail": f"unreachable: {', '.join(unreachable)} -- check OrbStack/Docker "
+                           f"and whether the host recently resumed from DarkWake"}]
+    return [{"status": "OK", "label": "container-services",
+             "detail": "all locally-dependent services reachable"}]
+
+
+def _resolve_engine_python_bin(exe_name: str, plist_path: Path | None = None) -> tuple[str, str | None]:
+    """Resolve `exe_name` the way the reflex engine's launchd PATH would —
+    NOT doctor's own process PATH.
+
+    The engine is the node process launched by
+    ~/Library/LaunchAgents/com.agentica.order-samurai-api.plist, whose
+    EnvironmentVariables > PATH key is explicit and puts mise python first
+    (see that key's own comment re: SENSEI-7). doctor.py itself is invoked
+    from ronin-daemon.sh, the dojo STEP A-prime gate, and interactive shells
+    — none of which inherit the plist's PATH. Resolving a bare exe_name from
+    doctor's OWN PATH can stay green while the plist's PATH is broken (e.g.
+    reverted to /usr/bin:/bin), because the two PATHs are independent and
+    commonly differ. This reads the plist's actual PATH and resolves
+    `exe_name` against IT, so the canary tests the interpreter the engine
+    will really get.
+
+    Returns (resolved_path_or_bare_exe_name, warning_or_None). Falls back to
+    the bare exe name (doctor's own PATH resolution — the previous, weaker
+    behavior) with a warning string when the plist is missing, unreadable, or
+    has no PATH key, so the canary still runs rather than hard-failing.
+    """
+    import plistlib
+    import shutil
+
+    plist_path = plist_path or (Path.home() / "Library" / "LaunchAgents" /
+                                 "com.agentica.order-samurai-api.plist")
+    if not plist_path.exists():
+        return exe_name, (f"plist not found at {plist_path} — falling back to "
+                           f"doctor's own PATH, which may not match the engine's")
+    try:
+        with open(plist_path, "rb") as fh:
+            plist = plistlib.load(fh)
+        engine_path = plist["EnvironmentVariables"]["PATH"]
+    except (OSError, KeyError, plistlib.InvalidFileException) as exc:
+        return exe_name, (f"could not read PATH from {plist_path}: {exc} — falling "
+                           f"back to doctor's own PATH, which may not match the engine's")
+
+    resolved = shutil.which(exe_name, path=engine_path)
+    if resolved is None:
+        return exe_name, (f"'{exe_name}' not found on the engine's plist PATH "
+                           f"({engine_path}) — falling back to doctor's own PATH")
+    return resolved, None
+
+
+def _run_audit_gate_canary_checks(python_bin: str | None = None,
+                                  script: Path | None = None,
+                                  plist_path: Path | None = None) -> list[dict]:
+    """WARN when the maker-checker audit gate cannot even start under the
+    interpreter the reflex engine spawns.
+
+    The engine invokes execution/audit_remediation_patch.py with a BARE
+    'python3' ('python' on Windows) resolved from ITS OWN process PATH — the
+    plist's EnvironmentVariables > PATH key, not sys.executable and not
+    doctor's own PATH (reflex-engine.ts, maker-checker audit spawn). A PATH
+    that resolves to the CommandLineTools system python (no 'requests',
+    transitive via agentica_core.llm.gateway) kills the audit at import time
+    with exit 2 ('audit_rejected', fail closed) — the exact outage that
+    silently rejected the only two real patches ever produced (2026-07-20/26).
+    The Aug-1 plist PATH change is only 'plausibly fixed' until something
+    re-proves it against THAT PATH specifically; this canary does, on every
+    doctor run: spawn the gate the way the engine does (interpreter resolved
+    from the plist's own PATH via _resolve_engine_python_bin, cwd=Order
+    Samurai, GOVERNANCE_ROOT in env) against a benign synthetic patch. The
+    patch is EMPTY on purpose — empty is the one approve-by-default path that
+    exercises the full import chain without reaching the LLM leg, so the
+    canary stays fast/deterministic and never spends a gemma4:12b call
+    (Ollama liveness is _run_local_llm_checks' job). `python_bin`/`script` are
+    injectable for tests — passing python_bin explicitly (as most tests do)
+    skips plist resolution entirely; `plist_path` is separately injectable so
+    plist-resolution itself can be tested without touching the real one on
+    disk. Kill switches: AUDIT_CANARY_ENABLED=false disables the whole canary
+    (default on); AUDIT_CANARY_RESOLVE_VIA_PLIST=false reverts interpreter
+    resolution to doctor's own bare-PATH lookup, the pre-fix behavior, for
+    rollback (default on — resolve via the plist).
+    """
+    import os
+    import subprocess
+    import tempfile
+
+    label = "audit-gate-canary"
+    if os.environ.get("AUDIT_CANARY_ENABLED", "true").strip().lower() in ("false", "0", "no"):
+        return []
+
+    script = script or (ROOT_DIR / "execution" / "audit_remediation_patch.py")
+    if not script.exists():
+        return [{"status": "WARN", "label": label,
+                 "detail": f"audit script missing at {script} — the maker-checker "
+                           f"gate cannot run at all"}]
+
+    resolve_warning = None
+    if python_bin is None:
+        exe_name = "python" if sys.platform == "win32" else "python3"
+        if os.environ.get("AUDIT_CANARY_RESOLVE_VIA_PLIST", "true").strip().lower() in ("false", "0", "no"):
+            python_bin = exe_name
+        else:
+            python_bin, resolve_warning = _resolve_engine_python_bin(exe_name, plist_path=plist_path)
+    # resolve_warning does NOT short-circuit: the canary still runs against
+    # whatever interpreter it fell back to (matches _resolve_engine_python_bin's
+    # own "still runs rather than hard-failing" contract) -- but a run that
+    # didn't verifiably use the plist's interpreter must not report bare OK,
+    # since "OK" is exactly the claim that was false during the outage.
+
+    patch_path = None
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".patch", prefix="audit_canary_",
+                                         delete=False) as fh:
+            patch_path = fh.name  # left empty: approve-by-default, no LLM call
+        gov_root = str(ROOT_DIR if (ROOT_DIR / "agentica_core").is_dir() else ROOT_DIR.parent)
+        proc = subprocess.run(
+            [python_bin, str(script), "--patch", patch_path],
+            cwd=str(ROOT_DIR),
+            env={**os.environ, "GOVERNANCE_ROOT": gov_root},
+            capture_output=True, text=True, timeout=60,
+        )
+    except FileNotFoundError:
+        return [{"status": "WARN", "label": label,
+                 "detail": f"interpreter '{python_bin}' not on PATH — the reflex "
+                           f"engine's audit spawn fails the same way, so every "
+                           f"remediation patch would be audit_rejected"}]
+    except subprocess.TimeoutExpired:
+        return [{"status": "WARN", "label": label,
+                 "detail": f"audit canary timed out after 60s under '{python_bin}' — "
+                           f"gate liveness unverified"}]
+    finally:
+        if patch_path:
+            try:
+                os.unlink(patch_path)
+            except OSError:
+                pass
+
+    if proc.returncode != 0:
+        # exit 2 is the import-time fail-closed path; surface the script's own
+        # first line, which names the missing module + interpreter.
+        lines = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip().splitlines()
+        first = lines[0].strip()[:300] if lines and lines[0].strip() else "no output"
+        detail = (f"audit gate exited {proc.returncode} under '{python_bin}' "
+                  f"on a benign patch — every remediation patch would be "
+                  f"audit_rejected: {first}")
+        if resolve_warning:
+            detail += (f"; could not confirm this is the engine's actual interpreter "
+                       f"(fell back to doctor's own PATH): {resolve_warning}")
+        return [{"status": "WARN", "label": label, "detail": detail}]
+
+    detail = (f"audit gate imports and approves a benign patch under "
+              f"'{python_bin}'")
+    if resolve_warning:
+        return [{"status": "WARN", "label": label,
+                 "detail": f"{detail}, but could not confirm this is the engine's "
+                           f"actual interpreter (fell back to doctor's own PATH): "
+                           f"{resolve_warning}"}]
+    return [{"status": "OK", "label": label,
+             "detail": f"{detail} (resolved via the engine's own plist PATH)"}]
+
+
 def _run_exec_chain_checks() -> list[dict]:
     """FAIL when exec_log.jsonl's tamper-evident hash chain does not recompute.
 
@@ -363,6 +557,131 @@ def _run_claude_telemetry_checks(max_age_hours: float = 48.0,
              "detail": f"newest record {age_h:.1f}h old (limit {max_age_hours:.0f}h)"}]
 
 
+def _run_factory_checks(repo_root: Path | None = None,
+                        launch_agents_dir: Path | None = None) -> list[dict]:
+    """WARN-only probes for the hands-off factory substrate (plan M0.4, 2026-08-09).
+
+    Four checks, scoped to what exists pre-dispatcher:
+      * queue files reachable and schema-shaped (the dispatcher's poll surface) — a corrupt
+        queue must be visible BEFORE a dispatcher exists to mis-read it;
+      * ``gh auth status`` — merge-submit workers and PR flows die silently without it;
+      * launchd plist source-vs-installed drift — the documented "edited the repo plist,
+        launchd still runs the stale installed copy" failure mode;
+      * factory ledger (``Execution/factory/state/ledger.jsonl``) hash-chain integrity
+        (plan M3.2, architecture doc D3) — added by the ledger milestone itself, not the
+        dispatcher, so verify_chain has a consumer from the day the file can first exist.
+
+    WARN-only like local-llm: the factory is not live yet, so these must be VISIBLE but
+    must not gate doctor's exit code. Dispatcher/merge-lane liveness probes are added by
+    their own milestones (plan M3.1/M1.2), not here.
+    """
+    import importlib.util
+    import json
+    import subprocess
+
+    root = repo_root or Path(__file__).resolve().parents[3]
+    results: list[dict] = []
+
+    # -- queue reachability + schema ------------------------------------------------
+    registry = root / ".planning" / "GOAL_REGISTRY.jsonl"
+    backlog = root / "Governance" / "Order Samurai" / "state" / "PROPOSED_BACKLOG.json"
+    try:
+        bad = 0
+        for line in registry.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                json.loads(line)
+            except ValueError:
+                bad += 1
+        if bad:
+            results.append({"status": "WARN", "label": "factory.queue",
+                            "detail": f"{registry.name}: {bad} unparseable row(s)"})
+        else:
+            results.append({"status": "OK", "label": "factory.queue",
+                            "detail": f"{registry.name} parseable"})
+    except OSError as exc:
+        results.append({"status": "WARN", "label": "factory.queue",
+                        "detail": f"{registry} unreadable: {exc}"})
+    try:
+        data = json.loads(backlog.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("items"), list):
+            results.append({"status": "OK", "label": "factory.queue",
+                            "detail": f"{backlog.name} schema-shaped ({len(data['items'])} items)"})
+        else:
+            results.append({"status": "WARN", "label": "factory.queue",
+                            "detail": f"{backlog.name}: missing top-level items list"})
+    except (OSError, ValueError) as exc:
+        results.append({"status": "WARN", "label": "factory.queue",
+                        "detail": f"{backlog.name} unreadable/unparseable: {exc}"})
+
+    # -- gh auth --------------------------------------------------------------------
+    try:
+        proc = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True,
+                              timeout=15)
+        if proc.returncode == 0:
+            results.append({"status": "OK", "label": "factory.gh-auth",
+                            "detail": "gh auth status: authenticated"})
+        else:
+            results.append({"status": "WARN", "label": "factory.gh-auth",
+                            "detail": f"gh auth status exited {proc.returncode}"})
+    except FileNotFoundError:
+        results.append({"status": "WARN", "label": "factory.gh-auth",
+                        "detail": "gh CLI not found — cannot verify"})
+    except subprocess.TimeoutExpired:
+        results.append({"status": "WARN", "label": "factory.gh-auth",
+                        "detail": "gh auth status timed out"})
+
+    # -- plist source-vs-installed drift -------------------------------------------
+    installed_dir = launch_agents_dir or (Path.home() / "Library" / "LaunchAgents")
+    sources = sorted(
+        list((root / "Governance" / "automation" / "launchd").glob("com.agentica.*.plist"))
+        + list((root / "Governance" / "bin").glob("com.agentica.*.plist"))
+    )
+    drifted = []
+    for src in sources:
+        twin = installed_dir / src.name
+        if not twin.exists():
+            continue  # pre-staged, never installed — normal here
+        try:
+            if src.read_bytes() != twin.read_bytes():
+                drifted.append(src.name)
+        except OSError:
+            drifted.append(f"{src.name} (unreadable)")
+    if drifted:
+        results.append({"status": "WARN", "label": "factory.plist-drift",
+                        "detail": "source != installed: " + ", ".join(drifted)})
+    else:
+        results.append({"status": "OK", "label": "factory.plist-drift",
+                        "detail": f"{len(sources)} source plist(s), no drift vs installed"})
+
+    # -- factory ledger hash-chain integrity (plan M3.2, D3) ------------------------
+    ledger_module_path = root / "Execution" / "factory" / "ledger.py"
+    ledger_log_path = root / "Execution" / "factory" / "state" / "ledger.jsonl"
+    spec = importlib.util.spec_from_file_location("_factory_ledger_probe", ledger_module_path)
+    if spec is None or spec.loader is None:
+        results.append({"status": "WARN", "label": "factory.ledger-chain",
+                        "detail": f"{ledger_module_path} not found — cannot verify"})
+    else:
+        try:
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            verdict = module.verify_chain(ledger_log_path)
+        except (OSError, ValueError, SyntaxError) as exc:
+            results.append({"status": "WARN", "label": "factory.ledger-chain",
+                            "detail": f"could not load/run ledger.verify_chain: {exc}"})
+        else:
+            if verdict["ok"]:
+                results.append({"status": "OK", "label": "factory.ledger-chain",
+                                "detail": f"{verdict['chained']} chained row(s), "
+                                          f"{verdict['unchained']} unchained"})
+            else:
+                results.append({"status": "WARN", "label": "factory.ledger-chain",
+                                "detail": f"broken at seq {verdict['broken_at_seq']}: "
+                                          f"{verdict['reason']}"})
+    return results
+
+
 def main() -> int:
     print("Order Samurai Doctor")
     print("--------------------")
@@ -407,6 +726,14 @@ def main() -> int:
     for result in local_llm_results:
         print(f"[{result['status']}] {result['label']}: {result['detail']}")
 
+    container_service_results = _run_container_service_checks()
+    for result in container_service_results:
+        print(f"[{result['status']}] {result['label']}: {result['detail']}")
+
+    audit_canary_results = _run_audit_gate_canary_checks()
+    for result in audit_canary_results:
+        print(f"[{result['status']}] {result['label']}: {result['detail']}")
+
     # GATE, not spectator: a silent SessionEnd-emitter death ran 15 days undetected
     # in June 2026. A stale stream FAILs doctor (affects exit code), never just WARNs.
     telemetry_results = run_telemetry_freshness_checks()
@@ -421,6 +748,11 @@ def main() -> int:
     # after the fact, which invalidates every efficacy number derived from it.
     exec_chain_results = _run_exec_chain_checks()
     for result in exec_chain_results:
+        print(f"[{result['status']}] {result['label']}: {result['detail']}")
+
+    # Factory substrate probes — WARN-only until the dispatcher/lane exist (plan M0.4).
+    factory_results = _run_factory_checks()
+    for result in factory_results:
         print(f"[{result['status']}] {result['label']}: {result['detail']}")
 
     # Claude architecture score — the enforcement pack's live verdict on the
@@ -447,6 +779,16 @@ def main() -> int:
     local_llm_warn = sum(1 for r in local_llm_results if r["status"] == "WARN")
     local_llm_ok = sum(1 for r in local_llm_results if r["status"] == "OK")
 
+    # WARN-only like local-llm: a dead Qdrant/Ollama must be VISIBLE here, but doctor
+    # itself does not gate on it -- fleet_probe.py's own 30-min banner is the alarm.
+    container_service_warn = sum(1 for r in container_service_results if r["status"] == "WARN")
+    container_service_ok = sum(1 for r in container_service_results if r["status"] == "OK")
+
+    # WARN-only like local-llm: a dead audit gate must be VISIBLE here, but the
+    # remediation pipeline itself already fails closed on it (exit!=0 rejects).
+    audit_canary_warn = sum(1 for r in audit_canary_results if r["status"] == "WARN")
+    audit_canary_ok = sum(1 for r in audit_canary_results if r["status"] == "OK")
+
     # WARN-only family: a schema violation is the observation A3 is collecting,
     # so it must never gate the exit code (see _run_schema_violation_checks).
     schema_clean_warn = sum(1 for r in schema_clean_results if r["status"] == "WARN")
@@ -463,8 +805,13 @@ def main() -> int:
     exec_chain_warn = sum(1 for r in exec_chain_results if r["status"] == "WARN")
     exec_chain_ok = sum(1 for r in exec_chain_results if r["status"] == "OK")
 
-    total_ok = path_counts["OK"] + stale_counts["OK"] + live_source_counts["OK"] + runtime_counts["OK"] + root_counts["OK"] + agentica_root_counts["OK"] + archive_counts["OK"] + telemetry_counts["OK"] + meditation_ts_ok + local_llm_ok + schema_clean_ok + claude_tel_ok + exec_chain_ok + claude_arch_counts["OK"]
-    total_warn = path_counts["WARN"] + stale_counts["WARN"] + live_source_counts["WARN"] + runtime_counts["WARN"] + root_counts["WARN"] + agentica_root_counts["WARN"] + archive_counts["WARN"] + telemetry_counts["WARN"] + meditation_ts_warn + local_llm_warn + schema_clean_warn + exec_chain_warn + claude_arch_counts["WARN"]
+    # WARN-only like local-llm: the factory substrate must be VISIBLE here, but the
+    # factory is not live yet — nothing to gate (see _run_factory_checks).
+    factory_warn = sum(1 for r in factory_results if r["status"] == "WARN")
+    factory_ok = sum(1 for r in factory_results if r["status"] == "OK")
+
+    total_ok = path_counts["OK"] + stale_counts["OK"] + live_source_counts["OK"] + runtime_counts["OK"] + root_counts["OK"] + agentica_root_counts["OK"] + archive_counts["OK"] + telemetry_counts["OK"] + meditation_ts_ok + local_llm_ok + container_service_ok + audit_canary_ok + schema_clean_ok + claude_tel_ok + exec_chain_ok + factory_ok + claude_arch_counts["OK"]
+    total_warn = path_counts["WARN"] + stale_counts["WARN"] + live_source_counts["WARN"] + runtime_counts["WARN"] + root_counts["WARN"] + agentica_root_counts["WARN"] + archive_counts["WARN"] + telemetry_counts["WARN"] + meditation_ts_warn + local_llm_warn + container_service_warn + audit_canary_warn + schema_clean_warn + exec_chain_warn + factory_warn + claude_arch_counts["WARN"]
     total_fail = path_counts["FAIL"] + stale_counts["FAIL"] + live_source_counts["FAIL"] + runtime_counts["FAIL"] + root_counts["FAIL"] + agentica_root_counts["FAIL"] + archive_counts["FAIL"] + telemetry_counts["FAIL"] + claude_tel_fail + exec_chain_fail + claude_arch_counts["FAIL"]
     exit_code = 1 if path_exit or stale_exit or live_source_exit or runtime_exit or root_exit or agentica_root_exit or archive_exit or telemetry_exit or claude_tel_fail or exec_chain_fail or claude_arch_exit else 0
 

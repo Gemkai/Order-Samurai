@@ -192,6 +192,17 @@ def test_graded_metric_pillar_map_matches_registry():
     assert set(insights._GRADED_METRIC_PILLARS) == set(insights.METRIC_RULES)
 
 
+def test_rule_violations_mechanism_requests_the_json_envelope():
+    """policy_enforcement_audit.py builds a breach_confirmed/calibrated/verdict
+    envelope (shape pinned by the Order Samurai suite), but the reflex engine
+    only parses mechanism stdout when the registered args include --json —
+    args [] means the envelope is produced and silently discarded
+    (Anti-Pattern #5: registered but unconsumed)."""
+    mech = insights.METRIC_CONFIG["Rule_Violations"]["mechanism"]
+    assert mech["script"] == "policy_enforcement_audit.py"
+    assert "--json" in mech["args"]
+
+
 def test_observe_metrics_are_not_graded_before_calibration():
     """OBSERVE means visible evidence, not a green/red SLO contribution."""
     for metric in ("Remediation_Delta", "Verifier_Falsifiability"):

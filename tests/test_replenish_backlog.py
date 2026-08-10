@@ -88,11 +88,15 @@ def test_three_column_table_rows_are_not_silently_dropped(tmp_path, monkeypatch)
 
 
 def test_promoted_auto_ids_are_not_reissued(tmp_path, monkeypatch):
-    """`ronin promote` MOVES approved items out of PROPOSED_BACKLOG.json into
-    MEDITATION_STATE.json. Numbering the next id from the proposals alone therefore
-    restarts the counter after every promote and re-issues an id the backlog already
-    holds — the live state carries a duplicate AUTO-041 from exactly this path. The
-    next id must clear both files."""
+    """The next id must clear BOTH files.
+
+    Historically `ronin promote` MOVED approved items out of PROPOSED_BACKLOG.json
+    into MEDITATION_STATE.json, so numbering from the proposals alone restarted the
+    counter after every promote and re-issued an id the backlog already held — the
+    live state still carries a duplicate AUTO-041 from exactly that path. Since
+    2026-08-08 promote is an in-place status flip and moves nothing, so that failure
+    can no longer recur; this test still pins the two-file reservation because the
+    historical MEDITATION_STATE ids remain live and must never be reissued."""
     mod = _load_module()
     state = tmp_path / "MEDITATION_STATE.json"
     state.write_text(

@@ -24,6 +24,11 @@ PROPOSED_FILE="$STATE_DIR/PROPOSED_BACKLOG.json"
 STATE_FILE="$STATE_DIR/MEDITATION_STATE.json"
 LOG_FILE="$ARTIFACTS_DIR/ronin_logs.md"
 
+# Status a PROPOSED_BACKLOG item carries once a human has promoted it. The nightly
+# `/goal` sweep reads PROPOSED_BACKLOG.json and works the items whose status marks
+# them approved for work — this is that mark. See cmd_promote.
+PROMOTED_STATUS="approved_for_work"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -209,13 +214,16 @@ PYEOF
 
   # Proposed backlog count
   if [[ -f "$PROPOSED_FILE" ]]; then
-    _python - <<PYEOF
-import json
+    _python - "$PROPOSED_FILE" "$PROMOTED_STATUS" <<'PYEOF'
+import json, sys
 try:
-    d = json.load(open("$PROPOSED_FILE"))
+    d = json.load(open(sys.argv[1], encoding="utf-8"))
     items    = d.get("items", [])
-    approved = [i for i in items if i.get("approved") is True]
-    print(f"Proposed: {len(items)} items ({len(approved)} approved)")
+    promoted = [i for i in items if i.get("status") == sys.argv[2]]
+    approved = [i for i in items
+                if i.get("approved") is True and i.get("status") != sys.argv[2]]
+    print(f"Proposed: {len(items)} items ({len(approved)} approved, "
+          f"{len(promoted)} promoted -> /goal sweep)")
 except Exception:
     print("Proposed: (parse error)")
 PYEOF
@@ -278,54 +286,71 @@ cmd_propose() {
   _python -m json.tool "$PROPOSED_FILE"
   echo ""
   echo "To approve an item: edit $PROPOSED_FILE and set \"approved\": true"
-  echo "Then run: bash bin/ronin promote"
+  echo "Then run: bash bin/ronin promote  (marks it $PROMOTED_STATUS for the nightly /goal sweep)"
 }
 
 # ---------------------------------------------------------------------------
 # promote
 # ---------------------------------------------------------------------------
+# Promotion is a STATUS TRANSITION inside PROPOSED_BACKLOG.json, not a copy into
+# another file. The nightly `/goal` sweep already reads this file at its absolute
+# path and works the items whose status marks them approved for work, so the
+# promoted item lands in the queue that actually runs. It used to be copied into
+# state/MEDITATION_STATE.json — the backlog of the meditation loop that was paused
+# and launchctl-disabled on 2026-07-30, so nothing ever consumed a promoted item.
+# The human gate is unchanged: only an operator running this command flips a status.
 cmd_promote() {
   [[ -f "$PROPOSED_FILE" ]] || _err "PROPOSED_BACKLOG.json not found: $PROPOSED_FILE"
-  [[ -f "$STATE_FILE" ]]    || _err "MEDITATION_STATE.json not found: $STATE_FILE"
 
-  _python - <<PYEOF
-import json, sys, pathlib
+  PYTHONIOENCODING=utf-8 _python - "$PROPOSED_FILE" "$PROMOTED_STATUS" <<'PYEOF'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
-_REPO = pathlib.Path("$REPO_DIR")
-proposed_path = _REPO / "state" / "PROPOSED_BACKLOG.json"
-state_path = _REPO / "state" / "MEDITATION_STATE.json"
+proposed_path = Path(sys.argv[1])
+promoted_status = sys.argv[2]
 
-with open(proposed_path) as f:
-    proposed = json.load(f)
-with open(state_path) as f:
-    state = json.load(f)
+data = json.loads(proposed_path.read_text(encoding="utf-8"))
+items = data.get("items", [])
 
-approved = [i for i in proposed.get("items", []) if i.get("approved") is True]
+already = [i for i in items if i.get("status") == promoted_status]
+approved = [
+    i for i in items
+    if i.get("approved") is True and i.get("status") != promoted_status
+]
+
 if not approved:
-    print("ronin: No approved items to promote.")
+    if already:
+        print(f"ronin: No new approved items to promote "
+              f"({len(already)} already {promoted_status}, awaiting the /goal sweep).")
+    else:
+        print("ronin: No approved items to promote.")
     sys.exit(0)
 
-# Capture IDs before mutating items
-promoted_ids = {i["id"] for i in approved}
-
-# Merge into backlog (drop 'approved' flag — it's a proposal-only field)
+now = datetime.now(timezone.utc).isoformat()
 for item in approved:
-    item.pop("approved", None)
-    item["status"] = "todo"
+    item["status"] = promoted_status
+    item["promoted_at"] = now
 
-state.setdefault("backlog", []).extend(approved)
+tmp = proposed_path.with_suffix(proposed_path.suffix + ".tmp")
+tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+try:
+    tmp.replace(proposed_path)
+except OSError:
+    import shutil
+    shutil.copyfile(tmp, proposed_path)
+    try:
+        tmp.unlink()
+    except OSError:
+        pass
 
-# Remove promoted items from proposed by ID (not by approved flag — it was already popped)
-proposed["items"] = [i for i in proposed.get("items", []) if i.get("id") not in promoted_ids]
-
-with open(state_path, "w") as f:
-    json.dump(state, f, indent=2)
-with open(proposed_path, "w") as f:
-    json.dump(proposed, f, indent=2)
-
-print(f"ronin: Promoted {len(approved)} item(s) to MEDITATION_STATE.json backlog.")
+print(f"ronin: Promoted {len(approved)} item(s) to status '{promoted_status}' "
+      f"in {proposed_path.name}.")
 for item in approved:
     print(f"  + [{item.get('pillar','?')}] {item.get('id','?')}: {item.get('title','?')}")
+print("Items stay in PROPOSED_BACKLOG.json; the nightly /goal sweep reads that file "
+      "and picks up this status. MEDITATION_STATE.json is not written.")
 PYEOF
 }
 
@@ -437,7 +462,8 @@ Commands:
   disarm                       Create MEDITATION_STOP, SIGTERM daemon
   status                       Show running/stopped, daily spend, cycle count, last log line
   propose                      Pretty-print state/PROPOSED_BACKLOG.json
-  promote                      Move approved==true items from PROPOSED_BACKLOG into MEDITATION_STATE backlog
+  promote                      Mark approved==true items "approved_for_work" in PROPOSED_BACKLOG.json
+                               so the nightly /goal sweep picks them up (does not touch MEDITATION_STATE)
   approve-hitl                 List pending items in state/hitl_queue.json
   approve-hitl <id>            Approve a single queued item (any tier)
   approve-hitl --all           Approve every pending QUEUE-tier item (HITL tier excluded)

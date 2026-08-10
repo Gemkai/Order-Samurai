@@ -81,6 +81,34 @@ class VerifyClaudeRuntimeContractTests(unittest.TestCase):
         self.assertEqual(vc._roll_up(rows[:2]), "WARN")
         self.assertEqual(vc._roll_up(rows[:1]), "OK")
 
+    def test_custom_root_reaches_siblings_with_a_differently_named_param(self) -> None:
+        # verify_claude_path_authority names its root kwarg `runtime_root_path` and
+        # verify_claude_runtime_coupling names it `root` -- not `runtime_root_dir`.
+        # run_checks(runtime_root_dir=...) must still propagate the caller's root to
+        # them, not silently fall back to their own default (the live ~/.claude) via
+        # the blanket `except TypeError: rows = run()` path.
+        import importlib
+
+        path_authority = importlib.import_module("execution.verify_claude_path_authority")
+        runtime_coupling = importlib.import_module("execution.verify_claude_runtime_coupling")
+
+        received: dict = {}
+
+        def path_authority_stub(runtime_root_path=None, allowlist=None):
+            received["path_authority"] = runtime_root_path
+            return []
+
+        def runtime_coupling_stub(*, policy_path=None, anti_drift_path=None, root=None):
+            received["runtime_coupling"] = root
+            return []
+
+        with mock.patch.object(path_authority, "run_checks", path_authority_stub), \
+                mock.patch.object(runtime_coupling, "run_checks", runtime_coupling_stub):
+            vc.run_checks(runtime_root_dir=self.sandbox)
+
+        self.assertEqual(received.get("path_authority"), self.sandbox)
+        self.assertEqual(received.get("runtime_coupling"), self.sandbox)
+
 
 if __name__ == "__main__":
     unittest.main()

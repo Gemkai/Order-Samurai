@@ -26,11 +26,11 @@ the **design catalog below is the roadmap** (untapped candidate rows + `+FIELD`/
 Tier: **AUTO** = verifier/log-derived · **DERIVED** = computed from canonical telemetry. All real.
 Wired reducers in `aggregate.py`: **22** (was 19; +3 added 2026-06-07: Governance_Pass_Rate, Principle_Violations, Loop_Breaker_Fires).
 
-**🏹 Bow (21)** — Activity: Error_Rate, Latency_P50, Latency_P95, Throughput, Tool_Calls, Tool_Diversity, Session_Count, Avg_Session_Turns, MCP_Smoke_Fails · Autonomic: Processes_Reaped, Config_Drift_Rate, Agent_Process_Count, Mechanism_Orphans · Governance: Governance_Pass_Rate, Verifier_Failures, Principle_Violations · Failure: Hook_Failure_Rate, Zombie_Process_Count, Loop_Breaker_Fires · Agent Operation: Lesson_Graduation_Rate
+**🏹 Bow (23)** — Activity: Error_Rate, Latency_P50, Latency_P95, Throughput, Tool_Calls, Tool_Diversity, Session_Count, Avg_Session_Turns, MCP_Smoke_Fails · Autonomic: Processes_Reaped, Config_Drift_Rate, Agent_Process_Count, Mechanism_Orphans, Mean_Time_To_Heal, Daemon_Restart_Count · Governance: Governance_Pass_Rate, Verifier_Failures, Principle_Violations · Failure: Hook_Failure_Rate, Zombie_Process_Count, Loop_Breaker_Fires · Agent Operation: Lesson_Graduation_Rate
 
 **⚔️ Sword (11)** — Vulnerability: Open_CVEs · Code Security: Boundary_Violations, Secrets_Detected, Gate_Fires, Secret_Scrubs · Governance: Rule_Violations · Audit Trail: Canary_Failures, Gate_Canary_Fault · Posture: Security_Scorecard · Supply Chain: Skill_Safety_Findings, Deprecated_Deps
 
-**🖌️ Brush (13)** — Token Efficiency: Total_Cost, Token_Spend, Cost_Per_Task, Token_Execution_Density, Model_Tier_Mix, Local_Routing_Share, MCP_vs_CLI_Ratio, Cache_Hit_Rate · Code Health: Revision_Ratio, Hardcoded_Path_Incidents, Root_Hygiene_Issues · Orchestration: Subagent_Spawns · Architecture: Architecture_Scorecard_Grade
+**🖌️ Brush (14)** — Token Efficiency: Total_Cost, Token_Spend, Cost_Per_Task, Token_Execution_Density, Model_Tier_Mix, Local_Routing_Share, MCP_vs_CLI_Ratio, Cache_Hit_Rate, Compaction_Events · Code Health: Revision_Ratio, Hardcoded_Path_Incidents, Root_Hygiene_Issues · Orchestration: Subagent_Spawns · Architecture: Architecture_Scorecard_Grade
 
 **🎭 Arts (9)** — Output Quality: Slop_Density · Interaction: Frustration_Signals, Rework_Loops, Stop_Hook_Loops · Process: Simplify_Runs · Docs: Doc_Parity_Issues · Craft: Skills_Optimized, Skill_Promotions, Skill_Conflicts
 
@@ -50,9 +50,9 @@ Wired reducers in `aggregate.py`: **22** (was 19; +3 added 2026-06-07: Governanc
 | Metric | Measures | Source | Status |
 |--------|----------|--------|--------|
 | Config Drift Rate | divergences/day from `anti_drift_policy.json` | verifier results logged over time | +STREAM |
-| Mean Time to Heal (MTTH) | seconds to auto-resolve a degradation | autonomic events | +STREAM |
+| Mean Time to Heal (MTTH) | mean s from a reflex's first remediation fire to its first improved fire (still-open reflexes excluded, never counted as 0) | `state/exec_log.jsonl` (`_mean_time_to_heal`, `aggregate.py`) | LIVE |
 | Zombie Process Count | orphaned/hung background processes (→ 0) | state/autonomic_events.jsonl | LIVE |
-| Daemon Restart Count | autonomic daemons killed/restarted | autonomic events | +STREAM |
+| Daemon Restart Count | autonomic daemons killed/restarted | `~/.claude/data/service_supervisor.log` (service_supervisor.py's own log) | LIVE |
 | Telemetry Ping Success Rate | % health checks returning OK unaided | doctor runs over time | LIVE |
 
 ### Agent Operation
@@ -183,6 +183,7 @@ Wired reducers in `aggregate.py`: **22** (was 19; +3 added 2026-06-07: Governanc
 | Orchestrator Routing Accuracy | Master routed to the correct pillar orchestrator | telemetry.orchestrator + outcome | +FIELD |
 | Handoff Integrity | % subagent calls with complete context (rule #6) | result-envelope completeness | +FIELD/+STREAM |
 | Skill Dead-Ref Count | DEAD/RETIRED cross-refs in the skill chain graph (→ 0) | `~/.claude/data/skill_chain_map.md` (already tags DEAD/RETIRED) | PROPOSED 2026-07-06 · source-ready |
+| Chain_Run_Pass_Rate | share of orchestrator chain runs where every step recorded a real pass (pass-gated per chain_end status, not run volume; emitter also unblocks AUTO-020) | `~/.claude/data/chain_runs.jsonl` chain_start/step/chain_end events (`chain_log.py`) | +STREAM |
 | Skill Selector Token Weight | tokens of active-skill descriptions loaded per session | sum of `description:` in `~/.claude/skills/*/SKILL.md` | PROPOSED 2026-07-06 · source-ready |
 
 ### Token-routing discipline (cluster B — sharpest token-optimization metrics)
@@ -191,7 +192,7 @@ Wired reducers in `aggregate.py`: **22** (was 19; +3 added 2026-06-07: Governanc
 | MCP-vs-CLI Ratio | MCP calls that should have been CLI (MCP ≈ 35× tokens) | telemetry.mcp_or_cli | LIVE |
 | Model Selection Adherence | Opus usage % (target < 20%); Sonnet/Haiku mix | telemetry.model | +FIELD (`model`) |
 | Context Cliff Events | sessions whose max context exceeded ~140k tokens (absolute cutoff; models here are ~1M-window, so a %-of-window rule never fires) | transcript usage blocks (`aggregate.r_context_cliff_events`) | LIVE (approx) |
-| Compaction Events | # /compact + pre-compact extraction compliance | autonomic events (compaction) | +STREAM |
+| Compaction Events | count of real `compact_boundary` records (structural match, recent-transcript sample) | `~/.claude/projects/**/*.jsonl` (`_compaction_events`, `aggregate.py`) | LIVE |
 | Cost per Outcome | $ per merged PR / resolved task (not just per task) | telemetry.total_cost + outcome link | +FIELD |
 
 ## 🧭 Workflow & Rule Governance (cluster C — cross-pillar; "Self-Governing" under Brush)
@@ -202,7 +203,7 @@ Wired reducers in `aggregate.py`: **22** (was 19; +3 added 2026-06-07: Governanc
 | Scope-Drift Incidents | scope changed mid-phase without re-approval | autonomic events (scope_change) | +STREAM |
 | Rule Firing Rate | which CLAUDE.md rules fire (and how often) | rule telemetry | +STREAM |
 | Rule Violation Rate / Principle_Violations | principle violations | `principle_violations.jsonl` | **LIVE** |
-| Dead-Rule Detection | rules untriggered in 90 days (retirement candidates) | derived from rule firing | DERIVED |
+| Dead-Rule Detection | rules untriggered in 90 days (retirement candidates) | `principle_audit.py` PATTERNS + `principle_violations.jsonl` | **LIVE** |
 
 ## 🎭 Arts — Cultural Arts (UX, Docs, Vibe)
 
@@ -281,6 +282,8 @@ quality skills. These flesh out the thin Sword/Arts pillars. Source scripts are 
 | Security Score | `score_security.py` | +SCOUT (read existing output) |
 | Principle Violations | `principle_audit.py` → `principle_violations.jsonl` | **LIVE** |
 | Canary Health | `security_gate_canary.py` / `behavioral_canary.py` alive? | +SCOUT |
+| Injection_Guard_Semantic_Degraded | prompt_injection_guard.py semantic backend security reachability — bin/injection_guard_canary.py (measured 2026-08-05: LM Studio localhost:1234 unreachable; semantic stage fails open on every call since the LM Studio to Ollama migration; enforcement stage, the 21 BLOCK patterns, unaffected and confirmed working 5/5) | +SCOUT |
+| Injection_Guard_Enforcement_Coverage_Gap | prompt_injection_guard.py BLOCK_PATTERNS coverage against a real adversarial corpus — bin/injection_guard_canary.py (measured 2026-08-08 after swapping the probe fixture to verbatim strings from NVIDIA/garak's promptinject probe family, Apache-2.0: 0/6 blocked, gate_working=False. The 21 hand-rolled regexes require exact phrasing — e.g. "ignore (?:all )?previous instructions" — that garak's real attacks don't use verbatim ("ignore any previous AND FOLLOWING instructions", "ignore THE previous instructions"), so obvious hijack/leak attempts walk through unblocked. Distinct from Injection_Guard_Semantic_Degraded: this is the enforcement stage — the ONLY stage that actually blocks anything — not the advisory semantic stage) | +SCOUT |
 
 ### 🎭 Arts — mine the conversation + quality skills
 | Metric | Signal source | Status |
