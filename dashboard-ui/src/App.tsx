@@ -657,7 +657,7 @@ export default function App() {
           fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: 1, zIndex: 10
         }}>
           <span style={{ color: "#ef4444", fontWeight: 700 }}>INTERACTIVE DEMO</span>
-          <span style={{ color: "rgba(255,255,255,0.5)" }}>Sample Telemetry Preview</span>
+          <span style={{ color: "rgba(255,255,255,0.5)" }}>Synthetic sample data — no live agent fleet connected</span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 20 }}>
             <a href="../" style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontFamily: "inherit" }}>
               ← Back to site
@@ -730,8 +730,9 @@ export default function App() {
       <main className="scroll-fade-bottom" style={{ flex: 1, padding: "2rem 2.5rem", overflow: "auto", minWidth: 0 }}>
         {/* Stale-data banner — refresh runs every ~15 min, so >2h means the refresh
             pipeline is down. A corner badge alone was missable: the 2026-06-14 outage
-            left the dashboard silently showing 4-day-old data. This makes it unmissable. */}
-        {payloadAgeMin != null && payloadAgeMin > 120 && (
+            left the dashboard silently showing 4-day-old data. This makes it unmissable.
+            Never rendered in isDemo: a static demo payload can't go "stale". */}
+        {!isDemo && payloadAgeMin != null && payloadAgeMin > 120 && (
           <div className="mono" role="alert" style={{
             marginBottom: 16, padding: "11px 16px", borderRadius: 8,
             border: "1px solid var(--sword)", background: "rgba(239,68,68,0.09)",
@@ -795,7 +796,7 @@ export default function App() {
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
           >
-            {view === "overview" && <Overview payload={payload} onSelect={setView} reflexProps={reflexProps} dojoProps={dojoProps} onUnlock={() => setMode("landing")} />}
+            {view === "overview" && <Overview payload={payload} onSelect={setView} reflexProps={reflexProps} dojoProps={dojoProps} onUnlock={() => setMode("landing")} isDemo={isDemo} />}
             {view === "reports" && <Reports payload={payload} />}
             {view !== "overview" && view !== "reports" && (
               <PillarPage payload={payload} pk={view} reflexProps={reflexProps} onSelectMetric={setSelected} dojoProps={dojoProps} />
@@ -940,7 +941,7 @@ function TopUsagePanel({ usage }: { usage: WIDPayload["top_usage"] }) {
 }
 
 // ── Overview page ─────────────────────────────────────────────────────────────
-function Overview({ payload, onSelect, reflexProps, dojoProps, onUnlock }: { payload: WIDPayload; onSelect: (v: View) => void; reflexProps: ReflexProps; dojoProps: DojoProps; onUnlock: () => void }) {
+function Overview({ payload, onSelect, reflexProps, dojoProps, onUnlock, isDemo }: { payload: WIDPayload; onSelect: (v: View) => void; reflexProps: ReflexProps; dojoProps: DojoProps; onUnlock: () => void; isDemo: boolean }) {
   const scope: ScoreScope = "window"
 
   const scores = scoreMap(payload, scope)
@@ -1043,7 +1044,7 @@ function Overview({ payload, onSelect, reflexProps, dojoProps, onUnlock }: { pay
                 })()}
               </p>
 
-              <DojoPanel pillar={p.key} dojoProps={dojoProps} />
+              <DojoPanel pillar={p.key} dojoProps={dojoProps} isDemo={isDemo} />
 
               {tierMix?.slices && (
                 <div style={{ marginBottom: 12 }}><TierMixMini mix={tierMix} accent={p.accent} /></div>

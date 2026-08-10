@@ -36,9 +36,11 @@ interface DojoPanelProps {
   dojoProps: DojoProps
   /** When true, renders without the top-border separator — for embedding inside the summary pill. */
   inline?: boolean
+  /** When true, a disconnected API is expected (static demo, no backend) — label reflects that instead of implying an outage. */
+  isDemo?: boolean
 }
 
-export function DojoPanel({ pillar, dojoProps, inline = false }: DojoPanelProps) {
+export function DojoPanel({ pillar, dojoProps, inline = false, isDemo = false }: DojoPanelProps) {
   const [expanded, setExpanded] = useLocalState(false)
   const { dojoState, roninStatus, roninOutput, connected, anyRunning, toggle, run } = dojoProps
   const slug = pillar
@@ -60,7 +62,7 @@ export function DojoPanel({ pillar, dojoProps, inline = false }: DojoPanelProps)
         <button
           onClick={(e) => { e.stopPropagation(); if (connected) toggle(slug) }}
           disabled={!connected}
-          title={connected ? (on ? 'Click to disable ronin mode' : 'Click to enable ronin mode') : 'API offline — start npm run dev in Governance/api/'}
+          title={connected ? (on ? 'Click to disable ronin mode' : 'Click to enable ronin mode') : isDemo ? 'Static demo — no backend required' : 'API offline — start npm run dev in Governance/api/'}
           style={{
             background: on ? 'rgba(239,68,68,0.14)' : 'rgba(255,255,255,0.05)',
             border: `1px solid ${on ? 'var(--sword)' : 'rgba(255,255,255,0.12)'}`,
@@ -82,7 +84,7 @@ export function DojoPanel({ pillar, dojoProps, inline = false }: DojoPanelProps)
           disabled={isCycleBlocked}
           title={
             !connected
-              ? 'API offline — start npm run dev in Governance/api/'
+              ? isDemo ? 'Static demo — no backend required' : 'API offline — start npm run dev in Governance/api/'
               : isRunning
               ? '⚡ Cycle in progress…'
               : anyRunning
@@ -111,10 +113,11 @@ export function DojoPanel({ pillar, dojoProps, inline = false }: DojoPanelProps)
           </span>
         )}
 
-        {/* API offline indicator */}
+        {/* API offline indicator — swapped for a demo-safe label when isDemo, since a
+            static demo has no backend to be "offline" from. */}
         {!connected && (
           <span className="mono" style={{ fontSize: 'var(--text-caption)', color: 'rgba(255,255,255,0.22)', marginLeft: ds ? 0 : 'auto' }}>
-            api offline
+            {isDemo ? 'static demo — no backend required' : 'api offline'}
           </span>
         )}
       </div>
