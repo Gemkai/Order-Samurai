@@ -6,7 +6,7 @@
 [![Tests](https://img.shields.io/badge/tests-1%2C000%2B%20passed-brightgreen.svg)](tests/)
 [![Security Posture](https://img.shields.io/badge/posture-fail--closed-red.svg)](SECURITY.md)
 
-**Order Samurai** turns unmonitored agent execution into a secure, auditable, and business-meaningful engine. It wraps agent runtimes (such as Claude Code) with real-time security hooks, secret scrubbing, prompt injection defense, and provenance-transparent business metrics — entirely local, with **zero external telemetry**.
+**Order Samurai** turns unmonitored agent execution into a secure, auditable, and business-meaningful engine. It wraps agent runtimes (such as Claude Code) with real-time security hooks, secret scrubbing, prompt injection defense, and provenance-transparent business metrics — entirely local by default, with **no telemetry sent to Order Samurai** (optional third-party AI review only when you explicitly configure a cloud provider with your own credentials).
 
 ---
 
