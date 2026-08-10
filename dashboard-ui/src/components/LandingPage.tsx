@@ -111,11 +111,12 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
 
             {/* Rec 4 — One-Accent Discipline: Crimson Reserved for Buy / Shield CTA */}
             <a
-              href="#pricing"
+              href="order-samurai-core.zip"
+              download
               className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-[#ef4444] hover:bg-[#dc2626] rounded-lg transition-all shadow-lg shadow-[#ef4444]/25 hover:shadow-[#ef4444]/40"
             >
               <ShieldCheck size={16} />
-              Shield Your Fleet Free
+               Download Mac App (.dmg)
             </a>
           </div>
         </div>
@@ -132,7 +133,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-white/15 text-xs font-medium text-slate-300 mb-6"
             >
               <Users size={14} className="text-[#ef4444]" />
-              LOCAL GOVERNANCE FOR AGENT FLEETS THAT RUN WHILE YOU SLEEP
+              LOCAL FIREWALL FOR SOLOPRENEURS & BUILDERS
             </motion.div>
 
             {/* Rec 1 — Headline leads with the outcome / payoff conclusion */}
@@ -157,10 +158,10 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
             >
               <p className="text-base font-semibold text-white/95 flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#ef4444] animate-pulse" />
-                A zero-telemetry local firewall for your AI coding agents.
+                A 1-click local firewall for your AI coding tools. No DevOps required.
               </p>
               <p className="text-sm text-slate-300 leading-relaxed">
-                Enroll your coding-agent fleet in the local Order Samurai Dojo. Intercept prompt injections, scrub credentials from stdout, and kill runaway spend — 100% on your machine, fail-closed by default.
+                Order Samurai stops runaway API spend, hides your passwords & secret keys, and halts dangerous AI commands automatically — 100% on your Mac with zero cloud telemetry.
               </p>
             </motion.div>
 
@@ -178,7 +179,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                 className="w-full sm:w-auto px-8 py-3.5 bg-[#ef4444] hover:bg-[#dc2626] text-white rounded-xl font-bold text-sm shadow-xl shadow-[#ef4444]/25 flex items-center justify-center gap-2 transition-all hover:scale-105"
               >
                 <ShieldCheck size={18} />
-                Download Core Version (.zip)
+                 Download Mac App (.dmg)
                 <ArrowRight size={16} />
               </a>
               <button
@@ -189,6 +190,9 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                 Explore Interactive Demo
               </button>
             </motion.div>
+            <p className="mt-3 text-xs text-slate-400 font-mono">
+              ⚡ 1-Click Mac Setup • Zero Terminal Commands Required • macOS 12+
+            </p>
           </div>
 
           {/* Rec 8 — Real Governance Report Artifact Above the Fold */}
