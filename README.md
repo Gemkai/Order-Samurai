@@ -3,7 +3,7 @@
 > **The Local-First Governance & Security Layer for Autonomous Coding Agent Fleets**
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-830%2B%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-1%2C000%2B%20passed-brightgreen.svg)](tests/)
 [![Security Posture](https://img.shields.io/badge/posture-fail--closed-red.svg)](SECURITY.md)
 
 **Order Samurai** turns unmonitored agent execution into a secure, auditable, and business-meaningful engine. It wraps agent runtimes (such as Claude Code) with real-time security hooks, secret scrubbing, prompt injection defense, and provenance-transparent business metrics — entirely local, with **zero external telemetry**.
