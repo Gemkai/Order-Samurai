@@ -15,7 +15,7 @@
 Install in **under 60 seconds** on macOS / Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Gemkai/order-samurai/main/install.sh | bash
+curl -fsSL https://www.ordersamurai.ai/install.sh | bash
 ```
 
 Or clone and run locally:

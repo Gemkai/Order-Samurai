@@ -721,8 +721,8 @@ export default function App() {
               ? <><span className="status-dot-live">●</span>{" DOJO ONLINE"}</>
               : "○ DOJO OFFLINE"}
           </div>
-          <a href="mailto:support@agentica.biz" className="mono" style={{ display: "block", marginTop: 10, fontSize: "0.6rem", color: "rgba(255,255,255,0.4)", textDecoration: "none" }}>
-            🐛 Bug Report: support@agentica.biz
+          <a href="mailto:support@agentica-llc.biz" className="mono" style={{ display: "block", marginTop: 10, fontSize: "0.6rem", color: "rgba(255,255,255,0.4)", textDecoration: "none" }}>
+            🐛 Bug Report: support@agentica-llc.biz
           </a>
         </div>
       </aside>
