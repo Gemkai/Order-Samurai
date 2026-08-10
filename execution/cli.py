@@ -35,7 +35,7 @@ from execution import verify_no_stale_paths  # noqa: E402
 from execution import verify_path_authority  # noqa: E402
 from execution import verify_root_hygiene  # noqa: E402
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"  # canonical source: pyproject.toml [project].version
 
 # (label, module). Order is presentation only -- every family runs regardless of earlier failures,
 # because a pipeline that reports one problem per push wastes a round trip per problem.

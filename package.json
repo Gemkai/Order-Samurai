@@ -1,7 +1,7 @@
 {
   "name": "agentica-governance",
   "private": true,
-  "version": "0.0.1",
+  "version": "1.0.0",
   "scripts": {
     "dev": "concurrently --names api,ui --prefix-colors cyan,magenta \"npm run dev --prefix api\" \"npm run dev --prefix dashboard-ui\"",
     "install:all": "npm install --prefix api && npm install --prefix dashboard-ui"
