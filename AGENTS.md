@@ -30,7 +30,8 @@ The install's tier is a runtime fact of this machine, not a build variant:
   env vars.
 - On Pro: autonomous auto-apply requires BOTH `REFLEX_AUTO_APPLY=true` AND the valid
   license, evaluated per call (activation needs no restart).
-- `SAMURAI_PRO_OVERRIDE=1` is a maintainer/CI escape hatch only.
+- Maintainer/CI Pro testing: `bin/make_dev_license.sh` writes a simulated
+  `license.json` accepted by the same fail-closed reader — no gate bypass exists.
 
 ## Non-Negotiables
 

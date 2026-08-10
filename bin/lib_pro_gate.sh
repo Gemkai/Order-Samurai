@@ -6,14 +6,13 @@
 # and fails CLOSED to Free: any absence/parse-error/non-active status blocks the run.
 # Source this and call `require_pro "<feature name>"` at the top of a Pro entrypoint.
 #
-# Escape hatch for source builds / CI: SAMURAI_PRO_OVERRIDE=1 bypasses the gate (never
-# document this to customers — it's for maintainers running the pack against itself).
+# Maintainer/CI use: run `bin/make_dev_license.sh` to write a simulated Pro
+# license.json (clearly marked "simulated") instead of bypassing this gate.
 
 _samurai_home() { printf '%s' "${SAMURAI_HOME:-$HOME/.samurai}"; }
 
 # is_pro: exit 0 when a valid, active, non-refunded Pro entitlement exists; else 1.
 is_pro() {
-  [ "${SAMURAI_PRO_OVERRIDE:-}" = "1" ] && return 0
   local lic; lic="$(_samurai_home)/license.json"
   [ -f "$lic" ] || return 1
   # Delegate to the Python authority so the JSON contract lives in exactly one place.
