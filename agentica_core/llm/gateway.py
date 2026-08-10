@@ -213,7 +213,7 @@ class LLMGateway:
         else:
             self.langfuse = None
 
-        self.default_tier = os.getenv("LLM_DEFAULT_TIER", "PREMIUM").upper()
+        self.default_tier = os.getenv("LLM_DEFAULT_TIER", "LOCAL").upper()
         self.local_enabled = (
             os.getenv("LOCAL_SAFETY_NET_ENABLED", "true").lower() == "true"
         )
