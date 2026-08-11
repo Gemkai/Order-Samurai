@@ -1,0 +1,169 @@
+name: CI
+
+# The missing safety net: v1.0.0 shipped a hook-registration defect (wrong
+# settings.json + wrong schema) that `samurai doctor` reported as 5/5 PASS.
+# The install-smoke job below exists specifically to catch that class of bug --
+# it asserts the guard actually lands where Claude Code reads it, not just that
+# `samurai install` exited 0.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package
+        run: python3 -m pip install -e .
+
+      - name: Run test suite
+        run: python3 -m pytest tests/ agentica_core/tests/ -q
+
+  install-smoke:
+    name: install smoke test
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: python3 -m pip install -e .
+
+      - name: Set up an isolated HOME
+        run: |
+          smoke_home="${{ runner.temp }}/smoke-home"
+          mkdir -p "$smoke_home"
+          echo "HOME=$smoke_home" >> "$GITHUB_ENV"
+
+      - name: Pre-seed ~/.claude/settings.json with an unrelated user hook
+        run: |
+          mkdir -p "$HOME/.claude"
+          cat > "$HOME/.claude/settings.json" <<'JSON'
+          {
+            "hooks": {
+              "PreToolUse": [
+                {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo user_own_hook"}]}
+              ]
+            }
+          }
+          JSON
+
+      - name: Run samurai install
+        run: python3 bin/samurai install
+
+      - name: Assert the guard is registered in Claude Code's own schema
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          settings_path = Path(os.environ["HOME"]) / ".claude" / "settings.json"
+          data = json.loads(settings_path.read_text())
+
+          def hooks_for(event):
+              return data.get("hooks", {}).get(event, []) or []
+
+          # (a) + (b): the guard command lands in ~/.claude/settings.json using
+          # Claude Code's {"matcher", "hooks": [{"type": "command"}]} schema.
+          pre_entries = hooks_for("PreToolUse")
+          guard_entries = [
+              e for e in pre_entries
+              if isinstance(e, dict) and "matcher" in e
+              and any(
+                  isinstance(h, dict) and h.get("type") == "command"
+                  and "prompt_injection_guard" in str(h.get("command", ""))
+                  for h in (e.get("hooks") or [])
+              )
+          ]
+          assert guard_entries, f"guard entry not found in Claude Code schema: {pre_entries}"
+
+          # (c) the pre-existing user hook survived.
+          user_hook_commands = [
+              h.get("command", "")
+              for e in pre_entries
+              for h in (e.get("hooks") or [])
+          ]
+          assert any("user_own_hook" in c for c in user_hook_commands), \
+              "pre-existing user hook was clobbered by install"
+
+          # (d) the v1.0.0 stray file was NOT created.
+          stray = Path(os.environ["HOME"]) / ".claude" / "hooks" / "settings.json"
+          assert not stray.exists(), f"stray hook file created at {stray}"
+
+          print("install-smoke: guard registration assertions passed")
+          PY
+
+      - name: Assert samurai doctor exits 0 with the guard registered
+        run: python3 bin/samurai doctor
+
+      - name: Remove the guard entry
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          settings_path = Path(os.environ["HOME"]) / ".claude" / "settings.json"
+          data = json.loads(settings_path.read_text())
+          pre_entries = data.get("hooks", {}).get("PreToolUse", []) or []
+          data["hooks"]["PreToolUse"] = [
+              e for e in pre_entries
+              if not (
+                  isinstance(e, dict)
+                  and any(
+                      isinstance(h, dict)
+                      and "prompt_injection_guard" in str(h.get("command", ""))
+                      for h in (e.get("hooks") or [])
+                  )
+              )
+          ]
+          settings_path.write_text(json.dumps(data, indent=2))
+          print("install-smoke: guard entry removed")
+          PY
+
+      - name: Assert samurai doctor exits non-zero with no guard registered (no false green)
+        run: |
+          if python3 bin/samurai doctor; then
+            echo "::error::samurai doctor exited 0 with the guard unregistered -- false green"
+            exit 1
+          fi
+          echo "install-smoke: doctor correctly reported failure with the guard removed"
+
+  packaging:
+    name: public export pack integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build the public core zip
+        run: bash bin/build_core_zip.sh
+
+      - name: Assert no internal-only material shipped in the public zip
+        run: |
+          hits="$(unzip -l dist/order-samurai-core.zip | grep -icE 'productization|__pycache__|\.pyc|\.ps1|INTERNAL_STRATEGY' || true)"
+          echo "internal-material hits: $hits"
+          if [ "$hits" -ne 0 ]; then
+            echo "::error::public export pack contains internal-only material ($hits hits)"
+            exit 1
+          fi
