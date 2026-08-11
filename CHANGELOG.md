@@ -5,6 +5,39 @@ All notable changes to **Order Samurai** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-08-10
+
+### Fixed — hook wiring (critical: v1.0.0 protected nothing)
+
+- **`samurai install` now registers into `~/.claude/settings.json`**, the config
+  Claude Code actually loads. v1.0.0 wrote to `~/.claude/hooks/settings.json`,
+  a path Claude Code never reads, so the prompt-injection guard and secret
+  scrubber never fired on any install.
+- **Hook entries now use Claude Code's schema** — `{"matcher": ..., "hooks":
+  [{"type": "command", ...}]}`. v1.0.0 emitted `{"name", "command", "async"}`,
+  which Claude Code does not parse, so fixing the path alone was not sufficient.
+- **`samurai doctor` no longer reports a false green.** Registration is asserted
+  only against `~/.claude/settings.json` in the real schema; v1.0.0 accepted its
+  own `~/.samurai/settings.json` as proof and printed 5/5 PASS while unprotected.
+- **`samurai uninstall` no longer risks destroying your Claude Code config.** It
+  deregistered by name, then blind-restored the newest `settings.json.bak.*` —
+  but both settings files share that basename, so it could drop Order Samurai's
+  file over your real config. Uninstall is now surgical (your own hooks are
+  preserved) and backups are labelled per target.
+- **`samurai uninstall` preserves a paid Pro license.** It previously removed
+  `~/.samurai` wholesale, silently deleting `license.json`; the license is now
+  copied to `~/order-samurai-license-backup.json` first.
+- Settings writes are atomic (temp file + `os.replace`).
+- Regression coverage added in `tests/test_hook_wiring.py`. The pre-existing
+  `tests/test_samurai_installer.py` asserted the broken path and schema, which is
+  why the defect shipped; it now asserts the real contract.
+
+### Upgrading from 1.0.0
+
+Re-run `samurai install` to wire the guard correctly, then `samurai doctor` —
+it will now fail honestly if the guard is not registered where Claude Code
+loads it. `samurai uninstall` cleans up the stale v1.0.0 hook file.
+
 ## [1.0.0] - 2026-07-19
 
 ### Fixed — metric integrity (2026-07-19 sync from upstream)

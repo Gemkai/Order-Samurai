@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "order-samurai"
 # Canonical version source for the pack: execution/cli.py __version__ and
 # bin/samurai SAMURAI_VERSION must be kept in sync with this value.
-version = "1.0.0"
+version = "1.0.1"
 description = "Local-first governance and security layer for autonomous coding agent fleets"
 # No `readme`/`license` keys: this vendored copy carries neither file (both live in the public
 # export pack, built by bin/extract_public.py). Pointing at a missing file fails metadata
