@@ -26,7 +26,13 @@ git ls-files | grep -Ev "$exclude_re" > "$tmp_list"
 
 zip -q -X "$out_zip" -@ < "$tmp_list"
 
-shasum -a 256 "$out_zip" | awk '{print $1}' > "$out_zip.sha256"
+# Standard `shasum -c` format ("<hash>  <filename>"), computed against the
+# bare basename: install.sh downloads both files into the same temp dir and
+# runs `shasum -a 256 -c order-samurai-core.zip.sha256` from there, so the
+# recorded filename must match what lands on disk, not this build's absolute
+# path. A hash-only sidecar (the prior form) fails that check outright with
+# "no properly formatted SHA checksum lines found" on every real install.
+(cd "$out_dir" && shasum -a 256 "$(basename "$out_zip")") > "$out_zip.sha256"
 
 count="$(wc -l < "$tmp_list" | tr -d ' ')"
 echo "Built $out_zip ($count files)" >&2
