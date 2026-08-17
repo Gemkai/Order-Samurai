@@ -236,7 +236,7 @@ export function PillarPage({ payload, pk, reflexProps, onSelectMetric, dojoProps
                     onClick={() => {
                       if (isProLocked) {
                         if (typeof window !== "undefined") {
-                          window.open("https://jemakaib1.gumroad.com/l/sqwomh", "_blank")
+                          window.open("https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199", "_blank")
                         }
                       } else {
                         onSelectMetric({ metric: m, color: meta.accent })

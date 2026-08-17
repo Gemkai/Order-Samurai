@@ -38,7 +38,13 @@ def _append_item(args):
 
 
 def _run_concurrently(path, locked):
-    ctx = multiprocessing.get_context("fork")
+    # "spawn", not "fork". Python 3.14 warns that forking a multi-threaded parent may
+    # deadlock the child (DeprecationWarning, emitted by this very test), and pytest's
+    # own machinery makes the parent multi-threaded. spawn re-imports the module in the
+    # child instead of copying a threaded address space; both targets here are
+    # module-level with picklable args, which is all spawn requires.
+    # (2026-08-16 audit, Phase 5.4.)
+    ctx = multiprocessing.get_context("spawn")
     args = [(str(path), "a", locked), (str(path), "b", locked)]
     with ctx.Pool(2) as pool:
         pool.map(_append_item, args)
@@ -78,9 +84,7 @@ def test_lock_is_released_when_the_body_raises(queue):
 
 def test_lock_times_out_rather_than_proceeding_unlocked(queue):
     """Proceeding unlocked would silently reintroduce the lost update."""
-    if not hasattr(os, "fork"):  # pragma: no cover
-        pytest.skip("needs fork")
-    ctx = multiprocessing.get_context("fork")
+    ctx = multiprocessing.get_context("spawn")
     holder = ctx.Process(target=_hold, args=(str(queue), 3))
     holder.start()
     time.sleep(0.5)

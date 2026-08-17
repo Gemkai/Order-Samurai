@@ -263,3 +263,60 @@ def test_sweep_source_path_matches_the_skill_contract() -> None:
         f"the /goal sweep no longer names {SWEEP_SOURCE_RELATIVE}; "
         "ronin promote's destination must follow it."
     )
+
+
+def test_promote_skips_ratified_items_whose_work_already_shipped(tmp_path: Path) -> None:
+    """`approved: true` is the ratification record and is never cleared, so it stays
+    true after the work ships. Promoting on that flag alone re-queues finished work
+    into the nightly sweep. Measured 2026-08-16: of 7 ratified items, 3 were already
+    `implemented` and 1 `staged`, and a bare promote would have flipped all four."""
+    repo = _make_repo(
+        tmp_path,
+        [
+            {"id": "LEDGER-001", "title": "Not yet worked", "status": "proposed",
+             "approved": True},
+            {"id": "ADOPT-001", "title": "Already built", "status": "implemented",
+             "approved": True},
+            {"id": "ADOPT-004", "title": "Blocked on the release lane",
+             "status": "staged", "approved": True},
+            {"id": "LAND-001", "title": "Already shipped", "status": "shipped",
+             "approved": True},
+        ],
+    )
+    proc = _run(repo, "promote")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    by_id = {i["id"]: i for i in _proposed(repo)}
+    assert by_id["LEDGER-001"]["status"] == PROMOTED_STATUS
+    assert by_id["LEDGER-001"].get("promoted_at")
+
+    for stale_id, keeps in (("ADOPT-001", "implemented"),
+                            ("ADOPT-004", "staged"),
+                            ("LAND-001", "shipped")):
+        assert by_id[stale_id]["status"] == keeps, (
+            f"{stale_id} was re-queued into the sweep despite its work being {keeps}"
+        )
+        assert "promoted_at" not in by_id[stale_id], (
+            f"{stale_id} was stamped as promoted without being promotable"
+        )
+
+    # The skip must be visible, not silent — a quiet filter trades one silence bug
+    # for another.
+    assert "skipping 3 ratified item(s)" in proc.stdout, proc.stdout
+    for stale_id in ("ADOPT-001", "ADOPT-004", "LAND-001"):
+        assert stale_id in proc.stdout, proc.stdout
+
+
+def test_promote_is_idempotent_across_repeated_runs(tmp_path: Path) -> None:
+    """A second promote must not re-stamp an item the first one already moved."""
+    repo = _make_repo(
+        tmp_path,
+        [{"id": "AUTO-200", "title": "Wire Z", "status": "proposed", "approved": True}],
+    )
+    assert _run(repo, "promote").returncode == 0
+    first = _proposed(repo)[0]["promoted_at"]
+
+    proc = _run(repo, "promote")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert _proposed(repo)[0]["promoted_at"] == first, "re-promotion re-stamped the item"
+    assert "No new approved items" in proc.stdout, proc.stdout

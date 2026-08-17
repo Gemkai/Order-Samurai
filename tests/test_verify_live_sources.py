@@ -97,62 +97,181 @@ def test_live_extraction_skips_simulated():
 
 
 # ── run_checks end-to-end ─────────────────────────────────────────────────────
+# Payload and registry are INJECTED (M6.1) rather than monkeypatched over module
+# imports; the expected rows below predate the M6 restructure, so these double as
+# the frozen-fixture equivalence check: same payload in, same rows out.
 
-def _patch(monkeypatch, payload, registry):
-    import agentica_core.aggregate as agg_mod
-    import agentica_core.ronin_metrics as rm_mod
-    monkeypatch.setattr(agg_mod, "aggregate", lambda **_: payload)
-    monkeypatch.setattr(rm_mod, "REGISTRY", registry)
+def _checks(payload, registry, repo_root):
+    return vls.run_checks(repo_root=repo_root,
+                          payload_loader=lambda: payload,
+                          registry=registry)
 
 
-def test_run_checks_fails_on_live_metric_with_missing_source(monkeypatch, tmp_path):
+def test_run_checks_fails_on_live_metric_with_missing_source(tmp_path):
     payload = {"pillars": {"sword": {"Security": {
         "Dead_Metric": {"val": 3, "is_simulated": False},
     }}}}
     registry = [{"metric": "Dead_Metric", "source": "state/gone.json"}]
-    _patch(monkeypatch, payload, registry)
-    results = vls.run_checks(repo_root=tmp_path)
+    results = _checks(payload, registry, tmp_path)
     counts, exit_code = vls.summarize(results)
     assert counts["FAIL"] == 1
     assert exit_code == 1
     assert "Dead_Metric" in results[0]["detail"]
 
 
-def test_run_checks_passes_when_source_resolves(monkeypatch, tmp_path):
+def test_run_checks_passes_when_source_resolves(tmp_path):
     (tmp_path / "state").mkdir()
     (tmp_path / "state" / "live.json").write_text("{}", encoding="utf-8")
     payload = {"pillars": {"sword": {"Security": {
         "Good_Metric": {"val": 3, "is_simulated": False},
     }}}}
     registry = [{"metric": "Good_Metric", "source": "state/live.json"}]
-    _patch(monkeypatch, payload, registry)
-    results = vls.run_checks(repo_root=tmp_path)
+    results = _checks(payload, registry, tmp_path)
     counts, exit_code = vls.summarize(results)
     assert counts["FAIL"] == 0
     assert exit_code == 0
 
 
-def test_run_checks_ignores_simulated_metric_with_missing_source(monkeypatch, tmp_path):
+def test_run_checks_ignores_simulated_metric_with_missing_source(tmp_path):
     # A SIMULATED metric whose source is absent is NOT a violation.
     payload = {"pillars": {"sword": {"Security": {
         "Dead_Metric": {"val": None, "is_simulated": True},
     }}}}
     registry = [{"metric": "Dead_Metric", "source": "state/gone.json"}]
-    _patch(monkeypatch, payload, registry)
-    results = vls.run_checks(repo_root=tmp_path)
-    _, exit_code = vls.summarize(results)
+    _, exit_code = vls.summarize(_checks(payload, registry, tmp_path))
     assert exit_code == 0
 
 
-def test_run_checks_skips_logical_sources(monkeypatch, tmp_path):
+def test_run_checks_skips_logical_sources(tmp_path):
     payload = {"pillars": {"bow": {"Activity": {
         "Telemetry_Metric": {"val": 1, "is_simulated": False},
     }}}}
     registry = [{"metric": "Telemetry_Metric", "source": "telemetry.model_tier"}]
-    _patch(monkeypatch, payload, registry)
-    results = vls.run_checks(repo_root=tmp_path)
+    _, exit_code = vls.summarize(_checks(payload, registry, tmp_path))
+    assert exit_code == 0
+
+
+# ── payload acquisition: fast path, fallback, and the budget ──────────────────
+
+_EMPTY_REGISTRY: list = []
+
+
+def test_fresh_canonical_payload_preempts_the_builder(tmp_path):
+    """When the loader yields a payload, the expensive builder must never run."""
+    def _forbidden():
+        raise AssertionError("builder ran despite a fresh canonical payload")
+
+    results = vls.run_checks(repo_root=tmp_path,
+                             payload_loader=lambda: {"pillars": {}},
+                             payload_builder=_forbidden,
+                             registry=_EMPTY_REGISTRY)
     _, exit_code = vls.summarize(results)
     assert exit_code == 0
+
+
+def test_stale_canonical_payload_falls_back_to_the_builder(tmp_path):
+    built = {"pillars": {}}
+    results = vls.run_checks(repo_root=tmp_path,
+                             payload_loader=lambda: None,
+                             payload_builder=lambda: built,
+                             registry=_EMPTY_REGISTRY)
+    _, exit_code = vls.summarize(results)
+    assert exit_code == 0
+
+
+def test_build_exceeding_the_budget_is_warn_never_ok(tmp_path):
+    import time
+
+    def _slow():
+        time.sleep(5)
+        return {"pillars": {}}
+
+    results = vls.run_checks(repo_root=tmp_path,
+                             payload_loader=lambda: None,
+                             payload_builder=_slow,
+                             registry=_EMPTY_REGISTRY,
+                             budget_s=0.05)
+    assert len(results) == 1
+    assert results[0]["status"] == "WARN"
+    assert "UNVERIFIED" in results[0]["detail"]
+    assert "budget" in results[0]["detail"]
+
+
+def test_builder_exception_is_still_fail(tmp_path):
+    def _broken():
+        raise RuntimeError("aggregation pipeline is broken")
+
+    results = vls.run_checks(repo_root=tmp_path,
+                             payload_loader=lambda: None,
+                             payload_builder=_broken,
+                             registry=_EMPTY_REGISTRY)
+    assert results[0]["status"] == "FAIL"
+    assert "aggregation pipeline is broken" in results[0]["detail"]
+
+
+# ── load_fresh_payload: the freshness contract ────────────────────────────────
+
+def _canonical(tmp_path, ts: str) -> Path:
+    """A minimal schema-valid payload file stamped with `ts`.
+
+    Validated here with the REAL validator so the fixture can never drift into a
+    shape load_fresh_payload would reject for schema reasons while these tests
+    keep asserting freshness semantics against it.
+    """
+    import json
+
+    from agentica_core.aggregate import validate_payload
+
+    payload = {"schema_version": "agentica.1", "timestamp": ts,
+               "reflexes": [], "pillars": {}}
+    validate_payload(payload)
+    p = tmp_path / "wid_payload.json"
+    p.write_text(json.dumps(payload), encoding="utf-8")
+    return p
+
+
+def test_fresh_payload_is_loaded(tmp_path):
+    from datetime import datetime, timezone
+    path = _canonical(tmp_path, datetime.now(timezone.utc).isoformat())
+    assert vls.load_fresh_payload(path=path) is not None
+
+
+def test_stale_payload_is_rejected(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    old = (datetime.now(timezone.utc)
+           - timedelta(seconds=vls.FRESH_PAYLOAD_MAX_AGE_S + 60)).isoformat()
+    path = _canonical(tmp_path, old)
+    assert vls.load_fresh_payload(path=path) is None
+
+
+def test_future_stamped_payload_is_rejected(tmp_path):
+    """A timestamp ahead of the clock is a clock lie, not extra freshness."""
+    from datetime import datetime, timedelta, timezone
+    future = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+    path = _canonical(tmp_path, future)
+    assert vls.load_fresh_payload(path=path) is None
+
+
+def test_missing_or_malformed_payload_is_rejected(tmp_path):
+    assert vls.load_fresh_payload(path=tmp_path / "absent.json") is None
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json", encoding="utf-8")
+    assert vls.load_fresh_payload(path=bad) is None
+
+
+@pytest.mark.live_machine
+def test_real_canonical_path_answers_inside_the_doctor_budget():
+    """The M6 timing claim on the real corpus: with the canonical payload
+    present and fresh (the refresh cycle's normal state), the whole check —
+    load, validate, stat every declared source — fits inside the budget that
+    used to be blown 5x over by a single rebuild. live_machine: reads the real
+    Data/wid_payload.json, which only this host maintains."""
+    import time
+    t0 = time.perf_counter()
+    results = vls.run_checks()
+    elapsed = time.perf_counter() - t0
+    assert elapsed < vls.BUILD_BUDGET_S, f"{elapsed:.1f}s"
+    assert results[0]["status"] in ("OK", "FAIL", "WARN")
 
 
 # ── real REGISTRY declaration parity (Estimated_Human_Time_Saved) ─────────────

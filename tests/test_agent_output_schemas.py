@@ -6,6 +6,10 @@ before persisting (agentica_core.schema_guard, bin/sensei_writeback.py); the TS
 reflex-engine validates the SAME files on startup — these tests pin the Python half,
 exactly as test_wid_payload_schema.py does for the wid_payload seam.
 
+This module is PORTABLE: it ships in the standalone export. The assertions that read
+Governance/api/src/*.ts live in test_agent_output_schema_api_wiring.py, which is
+monorepo-only — that subject is outside the distribution.
+
 DRAFT-07 IS LOAD-BEARING. The TS half uses ajv 6.15.0, which rejects a 2020-12
 $schema outright, while Python jsonschema 4.26 accepts it happily. A schema
 re-authored as 2020-12 would pass every test in this file and fail only in
@@ -331,26 +335,8 @@ def test_malformed_verdict_record_is_reported(mutate, reason):
     assert violations(verdict, "verdict_record"), reason
 
 
-def test_server_layers_the_schema_on_top_of_its_400_gate():
-    """The gate is a network boundary. A2 says 'reject nothing yet', but downgrading
-    an existing hard rejection to warn-only would be a regression — so the gate must
-    still be there, with the warn-only check added alongside it."""
-    server_ts = (_GOVERNANCE / "api" / "src" / "server.ts").read_text(encoding="utf-8")
-    assert "VALID_VERDICTS" in server_ts, "the 400 gate was removed, not layered on"
-    assert "invalid verdict record" in server_ts
-    assert "checkWarnOnly('verdict_record'" in server_ts
-
-
 def test_sensei_writeback_validates_before_persisting():
     """The seam is only real if the producer actually calls the guard."""
     source = (_GOVERNANCE / "bin" / "sensei_writeback.py").read_text(encoding="utf-8")
     assert "check_warn_only" in source
     assert "sensei_ledger_row" in source
-
-
-def test_typescript_half_reads_the_same_schema_files():
-    """Cross-language seam: state.ts must point at these exact files, or the two
-    halves silently enforce different contracts (the wid_payload seam's own rule)."""
-    state_ts = (_GOVERNANCE / "api" / "src" / "state.ts").read_text(encoding="utf-8")
-    for name in SCHEMAS:
-        assert f"'{name}.schema.json'" in state_ts, name

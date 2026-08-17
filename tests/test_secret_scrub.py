@@ -108,10 +108,10 @@ class Audit(unittest.TestCase):
 class Redact(unittest.TestCase):
     def test_masks_value_and_is_idempotent(self):
         patterns = [(r"sk-ant-[A-Za-z0-9]{8,}", "anthropic_key")]
-        text = 'KEY = "sk-ant-abcdef123456"'
+        text = 'KEY = "sk-ant-aaaabbbbccccddddeeeeffff"'
         out, n = redact_text(text, patterns, is_placeholder=lambda v: False)
         self.assertEqual(n, 1)
-        self.assertNotIn("sk-ant-abcdef123456", out)
+        self.assertNotIn("sk-ant-aaaabbbbccccddddeeeeffff", out)
         self.assertIn("<REDACTED:anthropic_key>", out)
         # re-running finds nothing to redact (the secret pattern no longer matches the placeholder).
         out2, n2 = redact_text(out, patterns, is_placeholder=lambda v: False)
@@ -135,3 +135,65 @@ class Redact(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ApplyDoesNotCorruptSourceFiles(unittest.TestCase):
+    """--apply rewrites real source files; it must never lose bytes (2026-08-16 audit, P2).
+
+    The read used errors="ignore", which DROPS every byte that is not valid UTF-8, and
+    the write persisted that truncated content back over the file. Scan and rewrite
+    shared the same lossy decode, so `new_text != original` stayed True and nothing
+    detected the corruption.
+    """
+
+    def setUp(self):
+        import tempfile
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.tickets = self.tmp / "tickets"
+        self.tickets.mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _leak(self, path):
+        return [{"source": str(path), "count": 1}]
+
+    def test_non_utf8_file_is_skipped_not_silently_truncated(self):
+        from bin.secret_scrub import _apply  # type: ignore[import-not-found]
+
+        target = self.tmp / "legacy.env"
+        # A cp1252 byte (0xa0) next to a real-looking secret.
+        raw = b"NOTE=caf\xa9 config\nKEY = \"sk-ant-aaaabbbbccccddddeeeeffff\"\n"
+        target.write_bytes(raw)
+
+        res = _apply(self._leak(target), [], self.tickets)
+
+        self.assertEqual(target.read_bytes(), raw,
+                         "a file that cannot be decoded losslessly must not be rewritten")
+        self.assertEqual(res["redacted_files"], [])
+        self.assertEqual(len(res["skipped_files"]), 1)
+        self.assertIn("not valid UTF-8", res["skipped_files"][0]["reason"])
+
+    def test_valid_utf8_file_is_still_redacted(self):
+        """Guard against over-tightening: the normal path must keep working."""
+        from bin.secret_scrub import _apply  # type: ignore[import-not-found]
+
+        target = self.tmp / "app.env"
+        target.write_text('KEY = "sk-ant-aaaabbbbccccddddeeeeffff"\n# café\n', encoding="utf-8")
+
+        res = _apply(self._leak(target), [], self.tickets)
+
+        self.assertEqual(len(res["redacted_files"]), 1)
+        after = target.read_text(encoding="utf-8")
+        self.assertNotIn("sk-ant-aaaabbbbccccddddeeeeffff", after)
+        self.assertIn("café", after, "non-ASCII that IS valid UTF-8 must survive")
+
+    def test_rewrite_leaves_no_temp_file_behind(self):
+        from bin.secret_scrub import _apply  # type: ignore[import-not-found]
+
+        target = self.tmp / "b.env"
+        target.write_text('KEY = "sk-ant-aaaabbbbccccddddeeeeffff"\n', encoding="utf-8")
+        _apply(self._leak(target), [], self.tickets)
+        leftovers = [p.name for p in self.tmp.glob("*.scrub.tmp")]
+        self.assertEqual(leftovers, [], f"temp files left behind: {leftovers}")

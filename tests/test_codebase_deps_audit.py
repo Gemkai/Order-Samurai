@@ -23,6 +23,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from bin.codebase_deps_audit import (  # type: ignore[import-not-found]
+    _format_report,
     build_audit,
     classify_licence,
     parse_npm_audit,
@@ -244,6 +245,28 @@ class ClassifyLicenceTests(unittest.TestCase):
     def test_clears_prose_bsd_variants_via_any_token(self) -> None:
         self.assertEqual(classify_licence("Modified BSD License"), "permissive")
         self.assertEqual(classify_licence("3-Clause BSD License"), "permissive")
+
+    def test_clears_verbatim_mit_licence_text_embedded_in_the_licence_field(self) -> None:
+        # Some packages' metadata "License" field embeds the licence NAME followed by
+        # the full verbatim legal body (a known setuptools pattern), not a bare "MIT"
+        # token. That prose body contains "and"/"or" many times as ordinary English,
+        # which previously routed it into the SPDX-composite-expression split -- and
+        # splitting on every and/or occurrence shreds "MIT" apart from the fragment
+        # that would have matched it, so no split-part matched and the text was
+        # misclassified "unknown" even though a plain MIT is unambiguously permissive.
+        mit_text = (
+            "MIT License\n\n"
+            "Permission is hereby granted, free of charge, to any person obtaining a "
+            'copy of this software and associated documentation files (the "Software"), '
+            "to deal in the Software without restriction, including without limitation "
+            "the rights to use, copy, modify, merge, publish, distribute, sublicense, "
+            "and/or sell copies of the Software, and to permit persons to whom the "
+            "Software is furnished to do so, subject to the following conditions: THE "
+            'SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR '
+            "IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, "
+            "FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT."
+        )
+        self.assertEqual(classify_licence(mit_text), "permissive")
 
 
 class ScanLicencesTests(unittest.TestCase):
@@ -498,3 +521,42 @@ class GovernanceRootResolutionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---- 2026-08-16 audit: a clean count must not imply coverage that did not happen ----
+
+class CoverageIsDeclared(unittest.TestCase):
+    """--npm is off by default and the scheduled mechanism never passes it, so a
+    `counts.cves: 0` read as "no known vulnerabilities in the codebase" while the
+    Node surfaces had never been looked at. The flag stays opt-in on purpose (npm
+    audit transmits the dependency graph); the SCOPE is what had to become explicit."""
+
+    def _audit(self, npm_audits=None):
+        return build_audit(
+            pip_outdated=[], pip_cves=[], licence_flags=[],
+            generated_at="2026-08-16T00:00:00Z", npm_audits=npm_audits,
+        )
+
+    def test_pip_only_run_declares_npm_unscanned(self):
+        cov = self._audit()["coverage"]
+        self.assertEqual(cov["ecosystems_scanned"], ["pip"])
+        self.assertEqual(cov["ecosystems_unscanned"], ["npm"])
+        self.assertFalse(cov["complete"])
+        self.assertIn("npm was NOT scanned", cov["note"])
+
+    def test_npm_run_declares_full_coverage(self):
+        cov = self._audit(npm_audits=[{"project": "api", "total": 1}])["coverage"]
+        self.assertEqual(cov["ecosystems_scanned"], ["pip", "npm"])
+        self.assertEqual(cov["ecosystems_unscanned"], [])
+        self.assertTrue(cov["complete"])
+
+    def test_report_prints_the_scope_next_to_the_cve_count(self):
+        report = _format_report(self._audit(), Path("/tmp/x.json"))
+        self.assertIn("CVEs: 0", report)
+        self.assertIn("npm NOT scanned", report)
+        self.assertIn("--npm", report)
+
+    def test_complete_run_does_not_carry_the_warning(self):
+        report = _format_report(
+            self._audit(npm_audits=[{"project": "api", "total": 0}]), Path("/tmp/x.json"))
+        self.assertNotIn("NOT scanned", report)

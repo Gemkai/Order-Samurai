@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "REFUTED",
+  "rationale": "Category (e): 'it is in the active set, therefore it is breached' would mark every active reflex as a real breach, since membership is assigned from the same snapshot the scout exists to re-verify independently. evidence.jsonl carries no count, no threshold and no baseline — there is literally no number to check. The reasoning is circular in exactly the way that makes it prove too much."
+}

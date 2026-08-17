@@ -22,6 +22,8 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .reflex_id import parse_reflex_id
+
 # Output location — consistent with auto_eureka.py's data directory
 _DATA_DIR = Path.home() / ".claude" / "data"
 _FINDINGS_FILE = _DATA_DIR / "auto_eureka_skills.md"
@@ -78,11 +80,14 @@ def _was_effective(record: dict) -> bool:
 
 
 def _parse_reflex_id(reflex_id: str) -> tuple[str, str]:
-    """Extract (pillar, metric) from a reflex_id such as 'metric:bow:Error_Rate'."""
-    parts = reflex_id.split(":", 2)
-    if len(parts) == 3:
-        return parts[1], parts[2]
-    return "unknown", reflex_id
+    """Extract (pillar, metric) for grouping, from a reflex_id such as
+    'metric:bow:Error_Rate'. Ids that name no metric (correlation:*, manual:*,
+    malformed) group under ("unknown", <raw id>) — the raw id keeps them distinct
+    from one another. Shape knowledge lives in reflex_id.parse_reflex_id."""
+    parsed = parse_reflex_id(reflex_id)
+    if parsed.metric is None:
+        return "unknown", reflex_id
+    return parsed.pillar or "unknown", parsed.metric
 
 
 # ---------------------------------------------------------------------------

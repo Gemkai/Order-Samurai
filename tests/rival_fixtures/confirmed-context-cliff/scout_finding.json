@@ -1,5 +1,5 @@
 {
-  "reflex_id": "metric:brush:Fixture_Context_Cliff_Events",
+  "reflex_id": "metric:brush:Synthetic_Alpha_Events",
   "real": true,
   "evidence": {
     "re_measured": 30,

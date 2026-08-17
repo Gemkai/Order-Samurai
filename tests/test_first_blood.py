@@ -29,7 +29,7 @@ from bin.first_blood import (  # type: ignore[import-not-found]
 )
 
 
-def _assistant_line(*, input_tokens=1000, output_tokens=500, cache_read=0, model="claude-sonnet-4"):
+def _assistant_line(*, input_tokens=1000, output_tokens=500, cache_read=0, cache_creation=0, model="claude-sonnet-4"):
     return json.dumps(
         {
             "type": "assistant",
@@ -41,6 +41,7 @@ def _assistant_line(*, input_tokens=1000, output_tokens=500, cache_read=0, model
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
                     "cache_read_input_tokens": cache_read,
+                    "cache_creation_input_tokens": cache_creation,
                 },
             },
         }
@@ -145,6 +146,25 @@ class ParseTranscript(unittest.TestCase):
             transcript = Path(td) / "empty.jsonl"
             transcript.write_text(json.dumps({"type": "user", "timestamp": "2026-07-12T00:00:00Z"}) + "\n", encoding="utf-8")
             self.assertIsNone(parse_transcript(transcript))
+
+    def test_cache_creation_tokens_are_not_folded_into_tokens_prompt(self):
+        # cache_creation_input_tokens (prompt-cache writes) is NOT part of tokens_prompt in the
+        # canonical record shape -- the SessionEnd emitter this tool's docstring claims to mirror
+        # (scripts/agentica_emit.py) deliberately excludes it ("cache_write is not tracked in the
+        # transcript"). Folding it into tokens_in here computes a second, divergent cost formula:
+        # a session with a large cache write reports a cost far above what the live dashboard
+        # would show for the same transcript.
+        with TemporaryDirectory() as td:
+            proj = Path(td) / "-Users-someone-myproject"
+            proj.mkdir()
+            transcript = proj / "abc123.jsonl"
+            transcript.write_text(
+                _assistant_line(input_tokens=100, output_tokens=50, cache_creation=50000) + "\n",
+                encoding="utf-8",
+            )
+            rec = parse_transcript(transcript)
+            self.assertIsNotNone(rec)
+            self.assertEqual(rec["tokens_prompt"], 100)
 
     def test_malformed_line_is_skipped_not_fatal(self):
         with TemporaryDirectory() as td:

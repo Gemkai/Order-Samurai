@@ -114,9 +114,10 @@ def parse_transcript(path: Path) -> dict | None:
             turns += 1
             msg = rec.get("message") or {}
             usage = msg.get("usage") or {}
-            tokens_in += int(usage.get("input_tokens") or 0) + int(
-                usage.get("cache_creation_input_tokens") or 0
-            )
+            # cache_creation_input_tokens (prompt-cache writes) is deliberately excluded here,
+            # matching the SessionEnd emitter (scripts/agentica_emit.py) this tool mirrors --
+            # folding it into tokens_in double-counted cache writes at the full input rate.
+            tokens_in += int(usage.get("input_tokens") or 0)
             tokens_out += int(usage.get("output_tokens") or 0)
             cache_read += int(usage.get("cache_read_input_tokens") or 0)
             model = msg.get("model") or model

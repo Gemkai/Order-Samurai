@@ -23,19 +23,11 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from execution.verifier_results import make_result as _make_result  # noqa: F401
+from execution.verifier_results import summarize  # noqa: F401  (re-exported for doctor/CLI)
+
 MAX_AGE_HOURS = 48
 _LABEL = "telemetry-freshness"
-
-
-def _make_result(status: str, label: str, detail: str) -> dict[str, str]:
-    return {"status": status, "label": label, "detail": detail}
-
-
-def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
-    counts = {"OK": 0, "WARN": 0, "FAIL": 0}
-    for result in results:
-        counts[result["status"]] = counts.get(result["status"], 0) + 1
-    return counts, 1 if counts["FAIL"] else 0
 
 
 def _default_telemetry_path() -> Path:
@@ -48,14 +40,24 @@ def _default_telemetry_path() -> Path:
             sys.path.insert(0, str(_governance))
         from agentica_core.adapter import resolve_platform
         return resolve_platform("claude").telemetry_source
-    except Exception:
+    except Exception:  # noqa: BLE001
+        # Broad and silent on purpose. This resolves WHERE to look, not whether the
+        # stream is fresh — and the fallback is the same canonical path the adapter
+        # would return. Letting an adapter defect propagate would crash doctor
+        # (run_families does not wrap its runners), turning a locatable telemetry
+        # file into no health report at all. The freshness FAIL below is the gate;
+        # this is only the lookup.
         return Path.home() / ".claude" / "telemetry" / "telemetry.jsonl"
 
 
-def _newest_record_ts(path: Path) -> datetime | None:
-    """Max parseable record timestamp in the stream. Full scan on purpose:
-    backfilled records are appended out of chronological order, so the last
-    line is not necessarily the newest record."""
+def _newest_record_ts(path: Path, now: datetime) -> datetime | None:
+    """Max parseable record timestamp in the stream that is not in the future.
+    Full scan on purpose: backfilled records are appended out of chronological
+    order, so the last line is not necessarily the newest record.
+
+    A future timestamp (clock skew, or a corrupt/malicious record) is not a
+    legitimate "newest" -- letting one win would drive age_hours negative and
+    mask a genuinely dead emitter as OK, defeating the whole gate."""
     newest: datetime | None = None
     try:
         with path.open(encoding="utf-8", errors="ignore") as fh:
@@ -70,6 +72,8 @@ def _newest_record_ts(path: Path) -> datetime | None:
                     continue
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=timezone.utc)
+                if ts > now:
+                    continue
                 if newest is None or ts > newest:
                     newest = ts
     except OSError:
@@ -88,7 +92,7 @@ def run_checks(path: Path | None = None,
                              f"telemetry stream missing: {target} — the SessionEnd "
                              f"emitter has no output at all")]
 
-    newest = _newest_record_ts(target)
+    newest = _newest_record_ts(target, now)
     if newest is None:
         return [_make_result("FAIL", _LABEL,
                              f"no parseable record timestamps in {target} — emitter "

@@ -314,11 +314,34 @@ promoted_status = sys.argv[2]
 data = json.loads(proposed_path.read_text(encoding="utf-8"))
 items = data.get("items", [])
 
+# `approved: true` is the ratification record and is never cleared, so it stays
+# true for the whole life of an item -- including after the work ships. Promoting
+# on that flag alone would re-queue finished work every time promote is run
+# (measured 2026-08-16: of 7 approved items, 3 were already `implemented` and 1
+# `staged`). `proposed` is the only status meaning "ratified and not yet worked",
+# so promotion is gated on it explicitly rather than on a deny-list of terminal
+# statuses -- a new terminal status must not silently become promotable.
+PROMOTABLE_STATUS = "proposed"
+
 already = [i for i in items if i.get("status") == promoted_status]
 approved = [
     i for i in items
-    if i.get("approved") is True and i.get("status") != promoted_status
+    if i.get("approved") is True and i.get("status") == PROMOTABLE_STATUS
 ]
+skipped = [
+    i for i in items
+    if i.get("approved") is True
+    and i.get("status") not in (PROMOTABLE_STATUS, promoted_status)
+]
+if skipped:
+    print(
+        "ronin: skipping %d ratified item(s) already past `%s`: %s"
+        % (
+            len(skipped),
+            PROMOTABLE_STATUS,
+            ", ".join(f"{i.get('id')}({i.get('status')})" for i in skipped),
+        )
+    )
 
 if not approved:
     if already:

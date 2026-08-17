@@ -136,6 +136,19 @@ class RemediationKind(unittest.TestCase):
         # Guard the set stays what the engine/UI expect (context-optimization + compact).
         self.assertEqual(SESSION_HYGIENE_SKILLS, {"context-optimization", "compact"})
 
+    def test_slash_only_or_whitespace_command_does_not_crash(self):
+        # A command that is just "/" (or all-whitespace) strips/splits down to an
+        # empty word list — `.split()[0]` on that raises IndexError instead of
+        # falling through to the same no-mapping default a missing command gets.
+        self.assertEqual(
+            remediation_kind("/", readonly=False, auto_remediable=None),
+            "auto_fix",
+        )
+        self.assertEqual(
+            remediation_kind("   ", readonly=False, auto_remediable=None),
+            "auto_fix",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

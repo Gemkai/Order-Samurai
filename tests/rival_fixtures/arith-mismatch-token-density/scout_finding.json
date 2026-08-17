@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:brush:Synthetic_Eta_Density",
+  "real": true,
+  "evidence": {
+    "re_measured": 12,
+    "snapshot": 4,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "Synthetic_Eta_Density breached in 12 of the last 30 sessions (evidence.jsonl), up from a baseline of 4.",
+  "proposed_fix": "/token-optimizer",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

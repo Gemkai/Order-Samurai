@@ -39,6 +39,7 @@ import statistics
 from pathlib import Path
 
 from . import insights
+from .reflex_id import parse_reflex_id
 from .remediation import _load_exec_rows, _load_history
 from .telemetry import parse_ts
 
@@ -90,8 +91,29 @@ def compute(history_path: Path | None = None, exec_log_path: Path | None = None)
 
     def _timeline(metric: str) -> list[tuple]:
         if metric not in timelines:
-            tl = [(dt, float(v)) for dt, vals in snaps for k, v in vals.items()
-                  if k.split("/")[-1] == metric and isinstance(v, (int, float))]
+            # Per-session metrics (rule["per"] == "session") are normalized by that same
+            # snapshot's Session_Count before scoring -- the same normalization
+            # remediation.efficacy() applies (SENSEI-6). Without it, a session-volume
+            # change between the pre/post windows can flip the reported sign: a raw
+            # count that rose because sessions rose faster reads as a regression even
+            # when the real per-session rate improved.
+            rule = insights.METRIC_RULES.get(metric) or {}
+            per_session = rule.get("per") == "session"
+            tl = []
+            for dt, vals in snaps:
+                sessions = None
+                if per_session:
+                    sessions = next(
+                        (float(v2) for k2, v2 in vals.items()
+                         if k2.split("/")[-1] == "Session_Count"
+                         and isinstance(v2, (int, float)) and v2 > 0),
+                        None,
+                    )
+                    if sessions is None:
+                        continue  # can't normalize this snapshot -> can't honestly score it
+                for k, v in vals.items():
+                    if k.split("/")[-1] == metric and isinstance(v, (int, float)):
+                        tl.append((dt, float(v) / sessions if sessions else float(v)))
             tl.sort()
             timelines[metric] = tl
         return timelines[metric]
@@ -107,10 +129,9 @@ def compute(history_path: Path | None = None, exec_log_path: Path | None = None)
         skill = row.get("skill", "")
         fired_at = parse_ts(row.get("timestamp"))
         reflex_id = str(row.get("reflex_id", ""))
-        parts = reflex_id.split(":")
-        if not skill or not fired_at or len(parts) < 3 or parts[0] not in ("metric", "trajectory"):
+        metric = parse_reflex_id(reflex_id).metric
+        if not skill or not fired_at or metric is None:
             continue
-        metric = ":".join(parts[2:])
         rule = insights.METRIC_RULES.get(metric)
         if not rule:
             unrated += 1  # counted, not dropped: a silent skip hid 8 attempts

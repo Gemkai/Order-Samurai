@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -167,15 +166,10 @@ def parse_ts(ts: Any) -> datetime | None:
         return None
 
 
-@lru_cache(maxsize=32768)
-def _iso_week_text(ts: str) -> str | None:
-    dt = parse_ts(ts)
-    return dt.strftime("%G-W%V") if dt else None
-
-
 def iso_week(ts: Any) -> str | None:
     """ISO year-week label ('%G-W%V', e.g. '2026-W22') for a timestamp, or None."""
-    return _iso_week_text(str(ts))
+    dt = parse_ts(ts)
+    return dt.strftime("%G-W%V") if dt else None
 
 
 def default_telemetry_path() -> Path:

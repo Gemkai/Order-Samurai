@@ -54,6 +54,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import NamedTuple
 
 sys.stdout.reconfigure(encoding="utf-8")  # Windows cp1252 guard
 
@@ -70,6 +71,8 @@ DASHBOARD_URL = "http://127.0.0.1:4322/"
 REMIND_HOURS = 24          # re-banner cadence while items stay pending
 EXPIRED_WINDOW_DAYS = 7    # digest includes items that expired unreviewed this recently
 EMAIL_LAG_DAYS = 1         # digest is daily; further behind than this with items pending = lagging
+FLEET_PROBE_STALE_HOURS = 3   # _refresh_fleet_probe rides the 30-min notify cadence (~6 cycles);
+                               # older than this is a dead prober, not a single hiccup
 SUBPROCESS_TIMEOUT = 30    # every external call gets a timeout (Release It! rule)
 MAIL_TIMEOUT = 90          # Mail.app path may cold-start Mail (launch + delay) before sending
 
@@ -79,6 +82,25 @@ def _flag(name: str) -> bool:
     Mirrors the reflex-engine pattern (REFLEX_VERIFY_GATE et al.); read at call time so a
     scheduled run picks up an env change without a module reload."""
     return os.environ.get(name, "true").strip().lower() != "false"
+
+
+def _resend_key() -> str:
+    """RESEND_API_KEY from env, else the macOS Keychain via Governance/bin/secret_env.
+
+    launchd jobs never source ~/.zshrc, so the scheduled digest ran keyless and fell
+    back to Mail.app (2026-08-16 secret-brokerage M1). Env still wins so tests and
+    one-off overrides work; empty string preserves the Mail.app fallback."""
+    key = os.environ.get("RESEND_API_KEY", "")
+    if key:
+        return key
+    gov_bin = str(_ROOT.parent / "bin")
+    if gov_bin not in sys.path:
+        sys.path.insert(0, gov_bin)
+    try:
+        from secret_env import lookup
+        return lookup("RESEND_API_KEY") or ""
+    except Exception:
+        return ""
 
 
 class QueueReadError(RuntimeError):
@@ -375,16 +397,47 @@ def _maybe_fleet_banner(state: dict) -> bool:
     2026-08-09 incident this closes). Banners on a CHANGE in the failing/unreachable set
     (a fresh problem, or the set shrinking as things recover), then re-reminds on the same
     24h REMIND_HOURS cadence as the queue banner while the set stays non-empty and
-    unchanged — never once per 30-min poll. Mutates state (last_fleet_signature,
-    last_fleet_banner_at) only on an acknowledged dispatch; the caller persists it.
-    Missing/unreadable probe data is silently skipped, not alarmed on — a probe that
-    hasn't run yet or glitched once is not itself a fleet failure. Returns True only on
-    an acknowledged dispatch, so do_notify()'s own summary line can report it accurately."""
+    unchanged — never once per 30-min poll.
+
+    Also banners, on its own FLEET_PROBE_STALE_HOURS/REMIND_HOURS cadence, when the probe
+    DATA itself has gone stale (generated_at older than FLEET_PROBE_STALE_HOURS). Without
+    this, a prober that crashes after one successful write keeps serving its last-known —
+    possibly clean — snapshot forever: every failing/unreachable set below would then be
+    read as current when it is actually frozen, silently reopening the exact 2026-08-09
+    class of incident this mechanism exists to close. This check runs even when the
+    failing/unreachable set is currently empty, since a dead prober can freeze on a
+    healthy-looking snapshot too.
+
+    Mutates state (last_fleet_signature, last_fleet_banner_at, last_fleet_stale_banner_at)
+    only on an acknowledged dispatch; the caller persists it. Missing/unreadable probe data
+    is silently skipped, not alarmed on — a probe that hasn't run yet or glitched once is
+    not itself a fleet failure. Returns True if either banner dispatched, so do_notify()'s
+    own summary line can report it accurately."""
     if not _flag("HITL_FLEET_ALARM"):
         return False
     probe = load_fleet_probe()
     if probe is None or "error" in probe:
         return False
+    dispatched_any = False
+
+    generated_at = _parse_ts(probe.get("generated_at"))
+    if generated_at is not None:
+        probe_age_hours = (_now() - generated_at).total_seconds() / 3600.0
+        if probe_age_hours > FLEET_PROBE_STALE_HOURS:
+            last_stale_banner = _parse_ts(state.get("last_fleet_stale_banner_at"))
+            stale_reminder_due = (
+                last_stale_banner is None
+                or (_now() - last_stale_banner).total_seconds() > REMIND_HOURS * 3600
+            )
+            if stale_reminder_due and _dispatch_banner(
+                "Order Samurai: fleet probe is STALE",
+                f"fleet_probe.json last wrote {probe_age_hours:.1f}h ago — the "
+                f"failing/unreachable set below (if any) may no longer reflect reality",
+                "run bin/fleet_probe.py by hand, then check its launchd/cron carrier",
+            ):
+                state["last_fleet_stale_banner_at"] = _now().isoformat()
+                dispatched_any = True
+
     failing = sorted(probe.get("failing_jobs") or [])
     unreachable = sorted(probe.get("unreachable_services") or [])
     signature = "|".join([f"job:{j}" for j in failing] + [f"svc:{s}" for s in unreachable])
@@ -395,11 +448,11 @@ def _maybe_fleet_banner(state: dict) -> bool:
             # recurrence of the IDENTICAL failure set would be wrongly read as
             # "unchanged" and suppressed, even though it's a fresh incident.
             state["last_fleet_signature"] = ""
-        return False
+        return dispatched_any
     last_banner = _parse_ts(state.get("last_fleet_banner_at"))
     stale = last_banner is None or (_now() - last_banner).total_seconds() > REMIND_HOURS * 3600
     if signature == prev_signature and not stale:
-        return False
+        return dispatched_any
     parts = []
     if failing:
         parts.append(f"{len(failing)} job(s) failing: {', '.join(failing[:3])}"
@@ -414,7 +467,8 @@ def _maybe_fleet_banner(state: dict) -> bool:
     if dispatched:
         state["last_fleet_signature"] = signature
         state["last_fleet_banner_at"] = _now().isoformat()
-    return dispatched
+        dispatched_any = True
+    return dispatched_any
 
 
 FLEET_PROBE_BIN = _ROOT.parent / "bin" / "fleet_probe.py"
@@ -606,7 +660,14 @@ def _send_resend(subject: str, body: str, to: str, key: str) -> bool:
         "https://api.resend.com/emails",
         data=json.dumps({"from": "Order Samurai <onboarding@resend.dev>",
                          "to": [to], "subject": subject, "text": body}).encode(),
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {key}", "Content-Type": "application/json",
+            # 2026-08-17: Python's default urllib User-Agent trips Cloudflare's bot
+            # protection (error 1010) in front of api.resend.com — every call was
+            # blocked before reaching Resend's own auth, masquerading as a generic
+            # 403 regardless of key validity. A normal-looking UA clears it.
+            "User-Agent": "OrderSamurai-HITL-Digest/1.0",
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=SUBPROCESS_TIMEOUT) as r:
@@ -645,6 +706,45 @@ def _send_mail_app(subject: str, body: str, to: str) -> bool:
         return False
 
 
+class EmailDecision(NamedTuple):
+    """Whether today's digest goes out, and what to tell the operator if not."""
+    send: bool
+    subject: str
+    skip_message: str
+
+
+def decide_email(*, force: bool, today: str, last_email_date: str | None,
+                 pending: list, expired: list, patches: list) -> EmailDecision:
+    """The send/skip decision and the subject line — no env, state, or network.
+
+    Extracted from do_email (M7.4) so the two skip rules are testable from
+    fixtures. Both exist to stop a scheduled job mailing noise: one digest per
+    day, and nothing at all when there is nothing to report. `force` overrides
+    both, which is what makes a manual re-send possible.
+    """
+    if not force and last_email_date == today:
+        return EmailDecision(
+            False, "",
+            f"hitl_alerts --email: already sent {today} — skipping (use --force to resend)",
+        )
+    if not pending and not expired and not patches and not force:
+        return EmailDecision(
+            False, "",
+            "hitl_alerts --email: nothing pending, recently expired, or awaiting patch "
+            "review — no email today",
+        )
+    n_waiting = len(pending) + len(patches)
+    subject = (f"[Order Samurai] {n_waiting} approval(s) waiting"
+               if n_waiting else "[Order Samurai] HITL digest — queue clear")
+    return EmailDecision(True, subject, "")
+
+
+def email_channel(api_key: str) -> str:
+    """Which delivery channel an API key selects. Named once so the send call and
+    the operator log line can never disagree about which one ran."""
+    return "resend" if api_key else "Mail.app"
+
+
 def do_email(force: bool) -> int:
     # The recipient is deployment config, never a code default. It carried the
     # author's own address until 2026-07-31, which shipped a personal identifier
@@ -666,21 +766,25 @@ def do_email(force: bool) -> int:
         return 1
 
     today = _now().date().isoformat()
-    if not force and state.get("last_email_date") == today:
-        print(f"hitl_alerts --email: already sent {today} — skipping (use --force to resend)")
+    decision = decide_email(
+        force=force, today=today, last_email_date=state.get("last_email_date"),
+        pending=pending, expired=expired, patches=patches,
+    )
+    if not decision.send:
+        print(decision.skip_message)
         return 0
 
-    if not pending and not expired and not patches and not force:
-        print("hitl_alerts --email: nothing pending, recently expired, or awaiting patch "
-              "review — no email today")
-        return 0
-
-    n_waiting = len(pending) + len(patches)
-    subject = (f"[Order Samurai] {n_waiting} approval(s) waiting"
-               if n_waiting else "[Order Samurai] HITL digest — queue clear")
+    subject = decision.subject
     body = _digest_body(pending, expired, patches, load_backlog_summary(), load_fleet_probe())
-    key = os.environ.get("RESEND_API_KEY", "")
+    key = _resend_key()
+    channel = email_channel(key)
     sent = _send_resend(subject, body, to, key) if key else _send_mail_app(subject, body, to)
+    if not sent and key and _flag("HITL_MAIL_FALLBACK"):
+        # A resolvable-but-rejected key (observed live: Resend 403 on a stale key,
+        # 2026-08-16) must not silence the digest entirely. Kill switch keeps the
+        # file's pattern: HITL_MAIL_FALLBACK=false restores fail-hard.
+        sent = _send_mail_app(subject, body, to)
+        channel = "Mail.app (resend failed)"
     if sent:
         state["last_email_date"] = today
         try:
@@ -693,7 +797,7 @@ def do_email(force: bool) -> int:
             return 1
     print(f"hitl_alerts --email: {'sent' if sent else 'FAILED'} → {to} "
           f"({len(pending)} pending, {len(patches)} patches, {len(expired)} expired, via "
-          f"{'resend' if key else 'Mail.app'})")
+          f"{channel})")
     return 0 if sent else 1
 
 

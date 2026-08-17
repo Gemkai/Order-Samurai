@@ -40,7 +40,8 @@ def main() -> int:
             item["completed_at"] = now
             item["backfilled"] = True
             stamped += 1
-        elif (status == "done" and len(item.get("completed_at") or "") == 10
+        elif (status == "done" and isinstance(item.get("completed_at"), str)
+                and len(item["completed_at"]) == 10
                 and item.get("started_at")):
             # Date-only completed_at (cycle models copy the historical style)
             # parses as midnight -> negative duration -> discarded calibration

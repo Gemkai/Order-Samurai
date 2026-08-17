@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "CONFIRMED",
+  "rationale": "Directly countable and it matches: 5 call-site rows, exactly 4 with timeout:null and 1 with an explicit timeout of 30. The claimed 4 is the count of genuinely unbounded sites, and the one bounded site is correctly excluded rather than padded in. Every row names a concrete file, line and call, so the finding survives a spot-check at any row. The fix is the audit that owns this exact defect class. The attack that fails: the 5th row is not miscounted."
+}

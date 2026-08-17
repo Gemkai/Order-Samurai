@@ -84,6 +84,23 @@ class ClassifySpawnTests(unittest.TestCase):
         self.assertEqual(verdict, "wasteful_trivial")
         self.assertIn("find", reason)
 
+    def test_three_spawns_are_justified_parallel_despite_trivial_substring(self) -> None:
+        # The justified_parallel gate at the top of classify_spawn() checks
+        # TRIVIAL_KEYWORDS with a raw `kw in desc_low` substring test, unlike
+        # every other keyword check in this function (which uses the
+        # word-boundary-safe _keyword_hit() specifically so short keywords
+        # like "list" don't false-positive inside unrelated words). "list" is
+        # a substring of "checklist", so a genuinely non-trivial 3-spawn
+        # description gets wrongly downgraded to "unknown" instead of
+        # justified_parallel.
+        verdict, reason = classify_spawn(
+            description="audit the enrollment eligibility checklist for each region",
+            prompt="do the audit",
+            turn_spawn_count=3,
+        )
+        self.assertEqual(verdict, "justified_parallel")
+        self.assertIn("3", reason)
+
     def test_justified_isolation_when_review_keyword_in_description(self) -> None:
         verdict, reason = classify_spawn(
             description="code review of auth module",

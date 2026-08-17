@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:brush:Synthetic_Omega_Count",
+  "real": true,
+  "evidence": {
+    "re_measured": "the metric appears in the active reflex set (see evidence.jsonl)",
+    "snapshot": null,
+    "source_file": "evidence.jsonl",
+    "window_days": 1
+  },
+  "root_cause": "Synthetic_Omega_Count is breached because it is present in the current active reflex set.",
+  "proposed_fix": "/simplify",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

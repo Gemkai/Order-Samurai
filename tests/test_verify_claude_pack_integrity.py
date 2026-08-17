@@ -11,6 +11,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
+from execution.claude_runtime_target import (  # type: ignore[attr-defined]
+    INTERNAL_ONLY_ARTIFACTS,
+)
 from execution.verify_claude_pack_integrity import (  # type: ignore[attr-defined]
     collect_inside_repo_artifacts,
     collect_verifier_refs,
@@ -79,7 +82,11 @@ class PackIntegrityRunChecksTests(unittest.TestCase):
         scorecard_path = sandbox / "config" / "scorecard.json"
         policy_path = sandbox / "config" / "policy_a.json"
         backlog_path = sandbox / "backlog" / "backlog.md"
-        report_path = sandbox / "reports" / "report.md"
+        # The REAL internal-only filename: the standalone exemption is keyed to the
+        # specific document declared internal-only, so a synthetic name here would
+        # never exercise it (and would let a broken exemption look tested).
+        report_rel = INTERNAL_ONLY_ARTIFACTS[0]
+        report_path = sandbox / report_rel
 
         scorecard_path.write_text(
             json.dumps(
@@ -177,14 +184,69 @@ class PackIntegrityRunChecksTests(unittest.TestCase):
         self.assertEqual(status["pack.verifier-refs-backlogged"], "WARN")
         self.assertEqual(summarize(results)[1], 0)
 
-    def test_missing_report_fails(self) -> None:
+    def test_missing_report_fails_in_a_nested_checkout(self) -> None:
+        """Where the report IS promised, deleting it is pack rot and must fail."""
         sandbox = self._sandbox()
         kwargs = self._build_pack(sandbox)
         kwargs["report_path"].unlink()
 
-        status = _status_by_label(run_checks(**kwargs))
+        status = _status_by_label(run_checks(**kwargs, standalone=False))
 
         self.assertEqual(status["pack.docs-present"], "FAIL")
+
+    def test_missing_report_passes_in_a_standalone_distribution(self) -> None:
+        """extract_public.py never ships it, so its absence there is the export's
+        own policy — reporting that back as a defect is the verifier being wrong,
+        not the pack being broken."""
+        sandbox = self._sandbox()
+        kwargs = self._build_pack(sandbox)
+        kwargs["report_path"].unlink()
+
+        results = run_checks(**kwargs, standalone=True)
+
+        self.assertEqual(_status_by_label(results)["pack.docs-present"], "OK")
+        self.assertEqual(summarize(results)[1], 0)
+
+    def test_scorecard_artifact_check_exempts_the_internal_only_report_when_standalone(self) -> None:
+        """The same document, named by the scorecard instead of check (d)."""
+        sandbox = self._sandbox()
+        kwargs = self._build_pack(sandbox)
+        kwargs["report_path"].unlink()
+        scorecard = json.loads(kwargs["scorecard_path"].read_text(encoding="utf-8"))
+        scorecard["categories"][0]["requiredPackArtifacts"].append(INTERNAL_ONLY_ARTIFACTS[0])
+        kwargs["scorecard_path"].write_text(json.dumps(scorecard), encoding="utf-8")
+
+        nested = _status_by_label(run_checks(**kwargs, standalone=False))
+        standalone = _status_by_label(run_checks(**kwargs, standalone=True))
+
+        self.assertEqual(nested["pack.scorecard-artifacts"], "FAIL")
+        self.assertEqual(standalone["pack.scorecard-artifacts"], "OK")
+
+    def test_standalone_mode_still_fails_a_missing_report_it_does_ship(self) -> None:
+        """The exemption is not 'reports/ does not matter here'. Only the declared
+        internal-only documents are absent by design; any other required artifact
+        missing from a standalone pack is still rot."""
+        sandbox = self._sandbox()
+        kwargs = self._build_pack(sandbox)
+        scorecard = json.loads(kwargs["scorecard_path"].read_text(encoding="utf-8"))
+        scorecard["categories"][0]["requiredPackArtifacts"].append("reports/shipped-report.md")
+        kwargs["scorecard_path"].write_text(json.dumps(scorecard), encoding="utf-8")
+
+        status = _status_by_label(run_checks(**kwargs, standalone=True))
+
+        self.assertEqual(status["pack.scorecard-artifacts"], "FAIL")
+
+    def test_missing_backlog_fails_in_both_modes(self) -> None:
+        """The backlog ships in both layouts, so its absence is never by design."""
+        for standalone in (False, True):
+            with self.subTest(standalone=standalone):
+                sandbox = self._sandbox()
+                kwargs = self._build_pack(sandbox)
+                kwargs["backlog_path"].unlink()
+
+                status = _status_by_label(run_checks(**kwargs, standalone=standalone))
+
+                self.assertEqual(status["pack.docs-present"], "FAIL")
 
     def test_stale_status_audit_warns_when_verifier_exists(self) -> None:
         sandbox = self._sandbox()

@@ -114,7 +114,10 @@ def _conflicts_path() -> Path | None:
     try:
         from agentica_core.adapter import resolve_platform  # noqa: E402
         return resolve_platform("claude").runtime_root / "data" / CONFLICTS_FILENAME
-    except Exception:
+    except Exception:  # noqa: BLE001
+        # Broad on purpose: this only locates an optional sink. None means "no
+        # runtime root to write to", which callers already handle by skipping the
+        # write — an unresolvable sink must not take the audit itself down.
         return None
 
 

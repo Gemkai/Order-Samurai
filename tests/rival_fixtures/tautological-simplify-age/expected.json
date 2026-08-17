@@ -1,4 +1,4 @@
 {
   "expected_verdict": "REFUTED",
-  "rationale": "Textbook tautological reasoning -- rival's own role card names this exact pattern as an explicit refutation example (category d): 'evidence is the claim restated (e.g. exec_log's own improved:true cited as proof of improvement)'. evidence.jsonl contains only a single self-reported improved:true flag with no actual before/after Days_Since_Simplify_Pass value anywhere -- no independent re-measurement exists to check. The 'evidence' IS the claim, not support for it."
+  "rationale": "Textbook tautological reasoning -- rival's own role card names this exact pattern as an explicit refutation example (category d): 'evidence is the claim restated (e.g. exec_log's own improved:true cited as proof of improvement)'. evidence.jsonl contains only a single self-reported improved:true flag with no actual before/after Synthetic_Delta_Age value anywhere -- no independent re-measurement exists to check. The 'evidence' IS the claim, not support for it."
 }

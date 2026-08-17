@@ -41,6 +41,9 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from execution.verifier_results import make_result as _make_result  # noqa: F401
+from execution.verifier_results import summarize  # noqa: F401  (re-exported for doctor/CLI)
+
 from execution.claude_runtime_target import (
     ANTI_DRIFT_POLICY_PATH,
     PROMOTION_POLICY_PATH,
@@ -82,27 +85,6 @@ def _load_json(path: Path) -> tuple[dict | None, str | None]:
         return None, "missing"
     except json.JSONDecodeError as exc:
         return None, f"invalid json: {exc}"
-
-
-def _make_result(status: str, label: str, detail: str) -> dict[str, str]:
-    return {
-        "status": status,
-        "label": label,
-        "detail": detail,
-    }
-
-
-def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
-    counts = {
-        "OK": 0,
-        "WARN": 0,
-        "FAIL": 0,
-    }
-    for result in results:
-        counts[result["status"]] = counts.get(result["status"], 0) + 1
-    return counts, 1 if counts["FAIL"] else 0
-
-
 
 
 def find_hook_contract_rule(payload: dict) -> dict | None:
@@ -254,10 +236,34 @@ def _promotion_context_result(promotion_path: Path) -> dict[str, str]:
 def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
     results: list[dict[str, str]] = []
 
+    rule = _check_anti_drift_rule(results)
+    if rule is None:
+        return results
+    _check_verifier_wiring(results, rule)
+    results.append(_promotion_context_result(PROMOTION_POLICY_PATH))
+
+    live_root = _check_runtime_root(results, runtime_root_dir)
+    if live_root is None:
+        return results
+    _check_generators(results, live_root)
+    commands = _check_settings_hooks(results, live_root)
+    if commands is None:
+        return results
+    _check_hook_script_refs(results, commands, live_root)
+    _check_literal_home_paths(results, commands)
+    return results
+
+
+def _check_anti_drift_rule(results: list[dict[str, str]]) -> dict | None:
+    """The anti-drift policy loads and declares the hook-contract rule.
+
+    Returns the rule, or None when the caller must stop: every check below
+    judges the runtime against that rule."""
+
     policy_payload, policy_error = _load_json(ANTI_DRIFT_POLICY_PATH)
     if policy_error:
         results.append(_make_result("FAIL", "claude_anti_drift_policy.json", policy_error))
-        return results
+        return None
 
     rule = find_hook_contract_rule(policy_payload or {})
     if rule is None:
@@ -268,7 +274,7 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
                 f"missing {HOOK_CONTRACT_RULE_ID} rule",
             )
         )
-        return results
+        return None
     results.append(
         _make_result(
             "OK",
@@ -277,6 +283,11 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
         )
     )
 
+    return rule
+
+
+def _check_verifier_wiring(results: list[dict[str, str]], rule: dict) -> None:
+    """The rule routes through THIS verifier, not a stale one."""
     if rule.get("verifier") != EXPECTED_VERIFIER:
         results.append(
             _make_result(
@@ -294,8 +305,11 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
             )
         )
 
-    results.append(_promotion_context_result(PROMOTION_POLICY_PATH))
 
+def _check_runtime_root(
+    results: list[dict[str, str]], runtime_root_dir: Path | None
+) -> Path | None:
+    """The live Claude home, or None when it is not present on this machine."""
     live_root = runtime_root_dir if runtime_root_dir is not None else runtime_root()
     if not live_root.is_dir():
         results.append(
@@ -305,8 +319,13 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
                 f"runtime root not present on this machine: {live_root}",
             )
         )
-        return results
+        return None
 
+    return live_root
+
+
+def _check_generators(results: list[dict[str, str]], live_root: Path) -> None:
+    """The settings generators exist under the runtime root."""
     missing_generators = [
         artifact for artifact in GENERATOR_ARTIFACTS if not (live_root / artifact).is_file()
     ]
@@ -327,6 +346,15 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
             )
         )
 
+
+def _check_settings_hooks(
+    results: list[dict[str, str]], live_root: Path
+) -> list | None:
+    """settings.json parses and its hooks section is well-formed.
+
+    Returns the collected hook commands, or None when the caller must stop —
+    an absent or unparseable settings.json leaves the reference and literal-path
+    checks with nothing to judge."""
     settings_path = live_root / SETTINGS_FILENAME
     if not settings_path.is_file():
         results.append(
@@ -336,14 +364,14 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
                 f"{SETTINGS_FILENAME} absent under runtime root: {settings_path}",
             )
         )
-        return results
+        return None
 
     settings_payload, settings_error = _load_json(settings_path)
     if settings_error:
         results.append(
             _make_result("FAIL", "claude-hook-contract.settings-json", settings_error)
         )
-        return results
+        return None
 
     payload = settings_payload or {}
     commands, shape_errors = collect_hook_commands(payload)
@@ -373,6 +401,13 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
             )
         )
 
+    return commands
+
+
+def _check_hook_script_refs(
+    results: list[dict[str, str]], commands: list, live_root: Path
+) -> None:
+    """Every hook file settings.json references exists on disk."""
     missing_refs = missing_hook_scripts(commands, live_root)
     if missing_refs:
         results.append(
@@ -391,6 +426,9 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
             )
         )
 
+
+def _check_literal_home_paths(results: list[dict[str, str]], commands: list) -> None:
+    """No hook command embeds a literal absolute Claude-home path."""
     literal_offenders = hook_command_literal_offenders(commands)
     if literal_offenders:
         results.append(
@@ -409,8 +447,6 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
                 "no hook command embeds a literal absolute Claude-home path",
             )
         )
-
-    return results
 
 
 def main() -> int:

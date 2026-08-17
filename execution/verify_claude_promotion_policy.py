@@ -28,6 +28,9 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from execution.verifier_results import make_result as _make_result  # noqa: F401
+from execution.verifier_results import summarize  # noqa: F401  (re-exported for doctor/CLI)
+
 from execution.claude_runtime_target import PROMOTION_POLICY_PATH, SURFACE_MATRIX_PATH
 
 # Retirement cannot be governed without these lifecycle states declared.
@@ -80,25 +83,6 @@ def _load_json(path: Path) -> tuple[dict | None, str | None]:
         return None, "missing"
     except json.JSONDecodeError as exc:
         return None, f"invalid json: {exc}"
-
-
-def _make_result(status: str, label: str, detail: str) -> dict[str, str]:
-    return {
-        "status": status,
-        "label": label,
-        "detail": detail,
-    }
-
-
-def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
-    counts = {
-        "OK": 0,
-        "WARN": 0,
-        "FAIL": 0,
-    }
-    for result in results:
-        counts[result["status"]] = counts.get(result["status"], 0) + 1
-    return counts, 1 if counts["FAIL"] else 0
 
 
 def validate_lifecycle_states(*, payload: dict) -> list[str]:
@@ -244,77 +228,46 @@ def run_checks(
         return results
     payload = policy_payload or {}
 
-    state_failures = validate_lifecycle_states(payload=payload)
-    if state_failures:
-        results.append(
-            _make_result(
-                "FAIL",
-                "claude_promotion_policy.lifecycleStates",
-                ", ".join(state_failures),
-            )
-        )
-    else:
-        results.append(
-            _make_result(
-                "OK",
-                "claude_promotion_policy.lifecycleStates",
-                "lifecycle declares deprecated and archive states for retirement",
-            )
-        )
+    results.extend(_check_policy_sections(payload))
+    _check_surface_matrix(results, matrix_path, payload)
+    _check_honor_system_gates(results, payload)
+    return results
 
-    checklist_failures = validate_promotion_checklist(payload=payload)
-    if checklist_failures:
-        results.append(
-            _make_result(
-                "FAIL",
-                "claude_promotion_policy.promotionChecklist",
-                ", ".join(checklist_failures),
-            )
-        )
-    else:
-        results.append(
-            _make_result(
-                "OK",
-                "claude_promotion_policy.promotionChecklist",
-                "every checklist item carries id/required/statement and the "
-                "owner, generated-config, and doctor-visibility gates are required",
-            )
-        )
 
-    blocker_failures = validate_blockers(payload=payload)
-    if blocker_failures:
-        results.append(
-            _make_result(
-                "FAIL", "claude_promotion_policy.blockers", ", ".join(blocker_failures)
-            )
-        )
-    else:
-        results.append(
-            _make_result(
-                "OK",
-                "claude_promotion_policy.blockers",
-                "promotion blockers are declared",
-            )
-        )
+#: The four policy sections that share one shape: a validator returning failure
+#: strings, a FAIL row joining them, and a fixed OK sentence. Written once as data
+#: rather than four times as near-identical branches — the sentences are the only
+#: thing that actually differed.
+_POLICY_SECTIONS = (
+    ("lifecycleStates", validate_lifecycle_states,
+     "lifecycle declares deprecated and archive states for retirement"),
+    ("promotionChecklist", validate_promotion_checklist,
+     "every checklist item carries id/required/statement and the "
+     "owner, generated-config, and doctor-visibility gates are required"),
+    ("blockers", validate_blockers,
+     "promotion blockers are declared"),
+    ("retirementPolicy", validate_retirement_policy,
+     "deprecation and retirement requirements are declared"),
+)
 
-    retirement_failures = validate_retirement_policy(payload=payload)
-    if retirement_failures:
-        results.append(
-            _make_result(
-                "FAIL",
-                "claude_promotion_policy.retirementPolicy",
-                ", ".join(retirement_failures),
-            )
-        )
-    else:
-        results.append(
-            _make_result(
-                "OK",
-                "claude_promotion_policy.retirementPolicy",
-                "deprecation and retirement requirements are declared",
-            )
-        )
 
+def _check_policy_sections(payload: dict) -> list[dict[str, str]]:
+    """One row per declared policy section, in declaration order."""
+    rows: list[dict[str, str]] = []
+    for section, validate, ok_detail in _POLICY_SECTIONS:
+        label = f"claude_promotion_policy.{section}"
+        failures = validate(payload=payload)
+        if failures:
+            rows.append(_make_result("FAIL", label, ", ".join(failures)))
+        else:
+            rows.append(_make_result("OK", label, ok_detail))
+    return rows
+
+
+def _check_surface_matrix(
+    results: list[dict[str, str]], matrix_path: Path, payload: dict
+) -> None:
+    """The surface matrix agrees with the promotion policy."""
     matrix_payload, matrix_error = _load_json(matrix_path)
     if matrix_error:
         results.append(_make_result("FAIL", "claude_surface_matrix.json", matrix_error))
@@ -361,6 +314,10 @@ def run_checks(
                 )
             )
 
+
+
+def _check_honor_system_gates(results: list[dict[str, str]], payload: dict) -> None:
+    """Gates the policy marks honor-system are reported as such."""
     honor_ids = honor_system_gate_ids(payload=payload)
     if honor_ids:
         checklist = payload.get("promotionChecklist") or []
@@ -373,8 +330,6 @@ def run_checks(
                 + ", ".join(honor_ids),
             )
         )
-
-    return results
 
 
 def main() -> int:

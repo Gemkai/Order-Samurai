@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "REFUTED",
+  "rationale": "Category (f): the finding inverts the metric's polarity. evidence.jsonl states polarity 'higher_is_better' with warn_below:80 and fail_below:65, so the 62 -> 74 -> 88 trend is a monotonic improvement that has moved from below the fail line to above the warn line. Crossing 80 upward clears the threshold; it is not a breach. The finding reads an improvement as a regression."
+}

@@ -229,14 +229,8 @@ class TestHeldoutBenignCorpus:
 
 
 class TestSemanticStageReporting:
-    def test_endpoint_is_read_from_the_guard_source_not_hardcoded(self, guard_factory):
-        """So a future endpoint migration moves the probe with it instead of checking a dead port.
-
-        As of the 2026-08-06 Ollama migration the guard computes its endpoint at runtime (env
-        normalization + a loopback guard), so there is no longer a single string literal to
-        regex out of the source -- semantic_endpoint() imports the guard module and reads its
-        SEMANTIC_ENDPOINT attribute directly instead.
-        """
+    def test_endpoint_is_read_from_the_guard_not_hardcoded(self, guard_factory):
+        """So a future endpoint migration moves the probe with it instead of checking a dead port."""
         guard_factory('SEMANTIC_ENDPOINT = "http://localhost:9999/v1/chat/completions"\n')
         assert canary.semantic_endpoint() == "http://localhost:9999/v1/chat/completions"
 
@@ -246,8 +240,20 @@ class TestSemanticStageReporting:
         assert status == "unreachable"
         assert "fails open" in detail
 
-    def test_unknown_endpoint_when_the_guard_source_has_no_url(self, guard_factory):
-        guard_factory("# no url here\n")
+    def test_endpoint_is_found_when_the_guard_computes_it_instead_of_literalising_it(
+        self, guard_factory
+    ):
+        """The live guard has built SEMANTIC_ENDPOINT from OLLAMA_HOST since the 2026-08-06
+        migration, so no `url = "http://..."` literal exists to read. A probe that can only
+        see a literal reports 'unknown' forever and the semantic stage goes permanently dark."""
+        guard_factory(
+            'SEMANTIC_HOST = "http://localhost:11434"\n'
+            'SEMANTIC_ENDPOINT = SEMANTIC_HOST + "/api/chat"\n'
+        )
+        assert canary.semantic_endpoint() == "http://localhost:11434/api/chat"
+
+    def test_unknown_endpoint_when_the_guard_declares_no_endpoint(self, guard_factory):
+        guard_factory("SEMANTIC_ENDPOINT = None\n")
         status, _ = canary.probe_semantic_endpoint(canary.semantic_endpoint())
         assert status == "unknown"
 

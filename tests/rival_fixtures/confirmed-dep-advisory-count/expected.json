@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "CONFIRMED",
+  "rationale": "7 advisory rows, exactly 5 in state 'open' — matching the claim, with the withdrawn and fixed rows correctly excluded rather than folded in to inflate the number. Every open row names a distinct package and advisory id, so the count survives a per-record spot-check. The fix is a read-only audit, proportionate to a reporting-level finding. Note the risk_tier is readonly and the fix does not itself touch a security control, so this is not gated to manual by tier."
+}

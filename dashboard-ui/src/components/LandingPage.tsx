@@ -7,7 +7,6 @@ import {
   Lock,
   CheckCircle2,
   X,
-  CreditCard,
   Sparkles,
   Eye,
   AlertTriangle,
@@ -30,17 +29,13 @@ interface LandingPageProps {
 
 export function LandingPage({ onOpenDashboard }: LandingPageProps) {
   const [copied, setCopied] = useState(false)
-  const [installTab, setInstallTab] = useState<"curl" | "npm" | "clone">("curl")
-  const [checkoutTier, setCheckoutTier] = useState<"solo" | "team" | "pro" | null>(null)
-  const [checkoutSuccess, setCheckoutSuccess] = useState(false)
-  const [cardName, setCardName] = useState("")
-  const [cardNumber, setCardNumber] = useState("")
+  const [installTab, setInstallTab] = useState<"curl" | "clone">("curl")
+  const [contactModalOpen, setContactModalOpen] = useState(false)
   const [activePillarTooltip, setActivePillarTooltip] = useState<string | null>(null)
 
   const quickstartCommands = {
-    curl: "curl -fsSL https://raw.githubusercontent.com/Gemkai/order-samurai/main/install.sh | bash",
-    npm: "npx -y order-samurai@latest install",
-    clone: "git clone https://github.com/Gemkai/order-samurai.git && cd order-samurai && ./install.sh"
+    curl: "curl -fsSL https://www.ordersamurai.ai/install.sh | bash",
+    clone: "git clone https://github.com/Gemkai/order-samurai.git && cd order-samurai && ./bin/samurai install"
   }
 
   const handleCopy = () => {
@@ -49,20 +44,10 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const handleCheckoutSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    setCheckoutSuccess(true)
-  }
-
-  const closeCheckout = () => {
-    setCheckoutTier(null)
-    setCheckoutSuccess(false)
-  }
-
   // Deduplicated Live Telemetry Feed Pool (Rec 6)
   const telemetryFeed = [
-    { type: "SWORD", label: "KILL CHAIN", text: "Blocked Chain 13 indirect prompt injection in git diff", source: "hooks/pre_tool.sh", color: "#ef4444" },
-    { type: "BRUSH", label: "SECRET SCRUB", text: "Redacted AWS_SECRET_ACCESS_KEY from subagent stdout", source: "agentica_core/scrubber.py", color: "#ef4444" },
+    { type: "SWORD", label: "KILL CHAIN", text: "Blocked Chain 13 indirect prompt injection in git diff", source: "hooks/prompt_injection_guard.py", color: "#ef4444" },
+    { type: "BRUSH", label: "SECRET SCRUB", text: "Redacted AWS_SECRET_ACCESS_KEY from subagent stdout", source: "hooks/secret_scrubber_realtime.py", color: "#ef4444" },
     { type: "BOW", label: "RONIN DOJO", text: "Overnight keiko backlog sweep completed 4 tasks", source: "bin/dojo_overnight.sh", color: "#3b82f6" },
     { type: "ARTS", label: "DOC PARITY", text: "Verified 100% schema alignment across 12 modules", source: "governance_review.py", color: "#8b5cf6" },
     { type: "SWORD", label: "C2 ISOLATION", text: "Intercepted unauthorized subprocess curl to untrusted host", source: "agentica_core/reflex.py", color: "#ef4444" },
@@ -87,7 +72,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                 ORDER SAMURAI
               </span>
               <span className="ml-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-slate-800 text-slate-300 border border-white/10 rounded-full">
-                v1.0 Open Core
+                v1.0.2 Open Core
               </span>
             </div>
           </div>
@@ -116,7 +101,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-[#ef4444] hover:bg-[#dc2626] rounded-lg transition-all shadow-lg shadow-[#ef4444]/25 hover:shadow-[#ef4444]/40"
             >
               <ShieldCheck size={16} />
-               Download Mac App (.dmg)
+              Download Free Core (.zip)
             </a>
           </div>
         </div>
@@ -133,7 +118,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-white/15 text-xs font-medium text-slate-300 mb-6"
             >
               <Users size={14} className="text-[#ef4444]" />
-              LOCAL FIREWALL FOR SOLOPRENEURS & BUILDERS
+              LOCAL GOVERNANCE &amp; SECURITY FOR CODING FLEETS
             </motion.div>
 
             {/* Rec 1 — Headline leads with the outcome / payoff conclusion */}
@@ -143,9 +128,9 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               transition={{ delay: 0.1 }}
               className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-[1.15]"
             >
-              Agents that can't leak keys, blow budgets, or{" "}
+              Helps prevent agents from exposing keys, exceeding budgets, or{" "}
               <span className="bg-gradient-to-r from-[#ef4444] via-[#f97316] to-[#eab308] bg-clip-text text-transparent">
-                break prod.
+                running dangerous commands.
               </span>
             </motion.h1>
 
@@ -158,10 +143,10 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
             >
               <p className="text-base font-semibold text-white/95 flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#ef4444] animate-pulse" />
-                A 1-click local firewall for your AI coding tools. No DevOps required.
+                Local-first governance and security for autonomous agent fleets.
               </p>
               <p className="text-sm text-slate-300 leading-relaxed">
-                Order Samurai stops runaway API spend, hides your passwords & secret keys, and halts dangerous AI commands automatically — 100% on your Mac with zero cloud telemetry.
+                Order Samurai intercepts prompt injections, scrubs credentials in real time, and monitors operational health — local by default, with zero product telemetry collected by Order Samurai.
               </p>
             </motion.div>
 
@@ -179,7 +164,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                 className="w-full sm:w-auto px-8 py-3.5 bg-[#ef4444] hover:bg-[#dc2626] text-white rounded-xl font-bold text-sm shadow-xl shadow-[#ef4444]/25 flex items-center justify-center gap-2 transition-all hover:scale-105"
               >
                 <ShieldCheck size={18} />
-                 Download Mac App (.dmg)
+                Download Free Core (.zip)
                 <ArrowRight size={16} />
               </a>
               <button
@@ -191,7 +176,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               </button>
             </motion.div>
             <p className="mt-3 text-xs text-slate-400 font-mono">
-              ⚡ 1-Click Mac Setup • Zero Terminal Commands Required • macOS 12+
+              ⚡ Local-First • Fail-Closed Security • macOS / Linux / Claude Code
             </p>
           </div>
 
@@ -279,7 +264,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               <span className="text-xs font-mono text-slate-300">Install Order Samurai Open Core</span>
             </div>
             <div className="flex gap-2">
-              {(["curl", "npm", "clone"] as const).map((tab) => (
+              {(["curl", "clone"] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setInstallTab(tab)}
@@ -300,14 +285,14 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 rounded-lg text-xs font-bold transition-all shrink-0"
             >
               {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-              {copied ? "Command Copied!" : "Copy 60s Command"}
+              {copied ? "Command Copied!" : "Copy Command"}
             </button>
           </div>
 
           <div className="mt-3 flex items-center justify-between text-[11px] font-mono text-slate-500">
             <div className="flex items-center gap-2">
               <CheckCircle2 size={12} className="text-slate-400" />
-              <span>Zero Cloud Telemetry • Fail-Closed Posture • 389+ Tests Passed</span>
+              <span>Zero Product Telemetry • Fail-Closed Posture • 1,600+ Tests Passed</span>
             </div>
             <span>Time-to-first-report: &lt; 60s</span>
           </div>
@@ -852,7 +837,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
             </div>
             {/* Rec 4 — Primary Buy CTA in Crimson */}
             <a
-              href="https://jemakaib1.gumroad.com/l/sqwomh"
+              href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199"
               target="_blank"
               rel="noopener noreferrer"
               className="mt-8 w-full py-3 px-4 bg-[#ef4444] hover:bg-[#dc2626] text-white rounded-xl font-bold text-sm transition-colors shadow-lg shadow-[#ef4444]/25 flex items-center justify-center gap-2 text-center"
@@ -889,7 +874,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               </ul>
             </div>
             <button
-              onClick={() => setCheckoutTier("pro")}
+              onClick={() => setContactModalOpen(true)}
               className="mt-8 w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm transition-colors border border-white/10 flex items-center justify-center gap-2"
             >
               <Lock size={16} />
@@ -899,9 +884,9 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
         </div>
       </section>
 
-      {/* Stripe Self-Serve Checkout Modal */}
+      {/* Enterprise Contact Modal */}
       <AnimatePresence>
-        {checkoutTier && (
+        {contactModalOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -915,121 +900,37 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               className="bg-[#0f172a] border border-white/10 rounded-2xl max-w-lg w-full p-6 sm:p-8 relative shadow-2xl"
             >
               <button
-                onClick={closeCheckout}
+                onClick={() => setContactModalOpen(false)}
                 className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg"
               >
                 <X size={20} />
               </button>
 
-              {!checkoutSuccess ? (
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-[#ef4444]/20 text-[#ef4444] flex items-center justify-center">
+                  <ShieldCheck size={20} />
+                </div>
                 <div>
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 rounded-xl bg-[#ef4444]/20 text-[#ef4444] flex items-center justify-center">
-                      <CreditCard size={20} />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-white capitalize">
-                        Order Samurai {checkoutTier} Checkout
-                      </h3>
-                      <p className="text-xs text-slate-400">
-                        {checkoutTier === "solo" ? "Free Open Core Download" : `$${checkoutTier === "team" ? "49" : "99"} / dev / month`}
-                      </p>
-                    </div>
-                  </div>
-
-                  {checkoutTier === "solo" ? (
-                    <div className="space-y-4">
-                      <p className="text-sm text-slate-300">
-                        Order Samurai Open Core is 100% free under the Apache 2.0 License. Run the 1-command installer on your workstation:
-                      </p>
-                      <div className="bg-slate-950 p-3 rounded-xl font-mono text-xs text-emerald-400 border border-white/5">
-                        curl -fsSL https://raw.githubusercontent.com/order-samurai/order-samurai/main/install.sh | bash
-                      </div>
-                      <button
-                        onClick={closeCheckout}
-                        className="w-full py-3 bg-slate-800 text-white rounded-xl font-semibold text-sm hover:bg-slate-700 transition-colors"
-                      >
-                        Got It!
-                      </button>
-                    </div>
-                  ) : (
-                    <form onSubmit={handleCheckoutSubmit} className="space-y-4 text-left">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1">Cardholder Name</label>
-                        <input
-                          type="text"
-                          required
-                          value={cardName}
-                          onChange={(e) => setCardName(e.target.value)}
-                          placeholder="Samurai Developer"
-                          className="w-full bg-slate-900 border border-white/10 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:border-[#ef4444]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-400 mb-1">Card Number (Stripe Demo Mode)</label>
-                        <input
-                          type="text"
-                          required
-                          value={cardNumber}
-                          onChange={(e) => setCardNumber(e.target.value)}
-                          placeholder="4242 •••• •••• 4242"
-                          className="w-full bg-slate-900 border border-white/10 rounded-lg px-3.5 py-2 text-sm text-white font-mono focus:outline-none focus:border-[#ef4444]"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-400 mb-1">Expires</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="12/28"
-                            className="w-full bg-slate-900 border border-white/10 rounded-lg px-3.5 py-2 text-sm text-white font-mono focus:outline-none focus:border-[#ef4444]"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-400 mb-1">CVC</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="123"
-                            className="w-full bg-slate-900 border border-white/10 rounded-lg px-3.5 py-2 text-sm text-white font-mono focus:outline-none focus:border-[#ef4444]"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="pt-2">
-                        <button
-                          type="submit"
-                          className="w-full py-3 bg-[#ef4444] hover:bg-[#dc2626] text-white rounded-xl font-bold text-sm shadow-lg shadow-[#ef4444]/25 transition-all"
-                        >
-                          Activate Subscription
-                        </button>
-                      </div>
-                    </form>
-                  )}
+                  <h3 className="text-xl font-bold text-white">Enterprise &amp; Compliance Inquiry</h3>
+                  <p className="text-xs text-slate-400 font-mono">Dedicated fleet deployments &amp; custom governance</p>
                 </div>
-              ) : (
-                <div className="text-center py-6">
-                  <div className="w-16 h-16 bg-[#ef4444]/20 text-[#ef4444] rounded-full flex items-center justify-center mx-auto mb-4">
-                    <CheckCircle2 size={32} />
-                  </div>
-                  <h3 className="text-2xl font-bold text-white">Subscription Active!</h3>
-                  <p className="text-xs text-slate-400 mt-2">
-                    Your Order Samurai License Key has been generated:
-                  </p>
-                  <div className="mt-4 bg-slate-950 p-3 rounded-xl font-mono text-xs text-emerald-400 border border-white/10 select-all">
-                    SAMURAI-PRO-KEY-2026-7781-9921-X
-                  </div>
-                  <button
-                    onClick={closeCheckout}
-                    className="mt-6 w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-semibold text-sm"
-                  >
-                    Close &amp; Start Using Order Samurai
-                  </button>
+              </div>
+
+              <div className="space-y-4 text-sm text-slate-300">
+                <p>
+                  Order Samurai Compliance includes multi-project fleet telemetry, NIST AI RMF and EU AI Act evidence packs, and custom agent runtime hooks.
+                </p>
+                <div className="p-4 bg-slate-950 rounded-xl border border-white/5 space-y-2 text-xs font-mono">
+                  <div className="text-slate-400">Direct Support &amp; Sales Channel:</div>
+                  <div className="text-white font-bold select-all">support@ordersamurai.ai</div>
                 </div>
-              )}
+                <a
+                  href="mailto:support@ordersamurai.ai?subject=Order%20Samurai%20Enterprise%20Compliance%20Inquiry"
+                  className="w-full py-3 bg-[#ef4444] hover:bg-[#dc2626] text-white rounded-xl font-bold text-sm shadow-lg shadow-[#ef4444]/25 transition-all flex items-center justify-center gap-2 text-center"
+                >
+                  Email Enterprise Sales
+                </a>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -1047,10 +948,10 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           </div>
 
           <div className="flex gap-6 items-center flex-wrap">
-            <a href="terms.html" className="hover:text-slate-300">Terms &amp; EULA</a>
-            <a href="privacy.html" className="hover:text-slate-300">Privacy Policy</a>
-            <a href="security.html" className="hover:text-slate-300">Security</a>
-            <a href="mailto:support@agentica.biz" className="hover:text-slate-300">Report Bug (support@agentica.biz)</a>
+            <a href="https://github.com/Gemkai/order-samurai/blob/main/TERMS.md" target="_blank" rel="noopener noreferrer" className="hover:text-slate-300">Terms &amp; EULA</a>
+            <a href="https://github.com/Gemkai/order-samurai/blob/main/PRIVACY.md" target="_blank" rel="noopener noreferrer" className="hover:text-slate-300">Privacy Policy</a>
+            <a href="https://github.com/Gemkai/order-samurai/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer" className="hover:text-slate-300">Security</a>
+            <a href="mailto:support@ordersamurai.ai" className="hover:text-slate-300">Support (support@ordersamurai.ai)</a>
             <span className="text-slate-400 font-medium flex items-center gap-1">🛡️ 14-Day Money-Back Guarantee</span>
           </div>
         </div>

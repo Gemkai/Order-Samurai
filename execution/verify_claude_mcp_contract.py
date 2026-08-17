@@ -40,6 +40,9 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from execution.verifier_results import make_result as _make_result  # noqa: F401
+from execution.verifier_results import summarize  # noqa: F401  (re-exported for doctor/CLI)
+
 from execution.claude_runtime_target import (
     ANTI_DRIFT_POLICY_PATH,
     ANTI_SPRAWL_POLICY_PATH,
@@ -77,27 +80,6 @@ def _load_json(path: Path) -> tuple[dict | None, str | None]:
         return None, "missing"
     except json.JSONDecodeError as exc:
         return None, f"invalid json: {exc}"
-
-
-def _make_result(status: str, label: str, detail: str) -> dict[str, str]:
-    return {
-        "status": status,
-        "label": label,
-        "detail": detail,
-    }
-
-
-def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
-    counts = {
-        "OK": 0,
-        "WARN": 0,
-        "FAIL": 0,
-    }
-    for result in results:
-        counts[result["status"]] = counts.get(result["status"], 0) + 1
-    return counts, 1 if counts["FAIL"] else 0
-
-
 
 
 def find_rule(payload: dict, rule_id: str) -> dict | None:
@@ -234,6 +216,19 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
         )
         return results
 
+    _check_launcher_scripts(results, live_root)
+    loaded = _check_mcp_json(results, live_root)
+    if loaded is None:
+        return results
+    payload, servers = loaded
+    _check_literal_home_paths(results, servers)
+    _check_enabled_servers_are_launcher_backed(results, servers, payload)
+    _check_activation_gating(results, servers, payload)
+    return results
+
+
+def _check_launcher_scripts(results: list[dict[str, str]], live_root: Path) -> None:
+    """Check 1: the launcher + registry generators exist under the runtime root."""
     # Check 1: launcher + registry generators exist under the runtime root.
     missing_scripts = [
         rel for rel in REQUIRED_LAUNCHER_SCRIPTS if not (live_root / rel).is_file()
@@ -257,6 +252,17 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
             )
         )
 
+
+
+def _check_mcp_json(
+    results: list[dict[str, str]], live_root: Path
+) -> tuple[dict, dict] | None:
+    """Check 2: mcp.json parses and declares servers.
+
+    Returns (payload, servers), or None when the caller must stop — an absent,
+    unparseable or server-less config leaves checks 3-5 with nothing to judge,
+    and running them anyway would report conclusions about a file that was
+    never read."""
     # Check 2: mcp.json parses and is well-formed.
     mcp_path = live_root / MCP_CONFIG_RELPATH
     mcp_payload, mcp_error = _load_json(mcp_path)
@@ -268,12 +274,12 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
                 f"mcp.json not present under runtime root: {mcp_path}",
             )
         )
-        return results
+        return None
     if mcp_error:
         results.append(
             _make_result("FAIL", "claude-mcp-contract.mcp-json", mcp_error)
         )
-        return results
+        return None
 
     payload = mcp_payload or {}
     servers = server_entries(payload)
@@ -285,7 +291,7 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
                 "mcp.json is well-formed but declares no mcpServers object to check",
             )
         )
-        return results
+        return None
     results.append(
         _make_result(
             "OK",
@@ -294,7 +300,12 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
             f"{'y' if len(servers) == 1 else 'ies'}",
         )
     )
+    return payload, servers
 
+
+
+def _check_literal_home_paths(results: list[dict[str, str]], servers: dict) -> None:
+    """Check 3: no server entry embeds a literal absolute Claude-home path."""
     # Check 3: no server entry embeds a literal absolute Claude-home path.
     literal_offenders: list[str] = []
     for name, cfg in servers.items():
@@ -321,6 +332,13 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
             )
         )
 
+
+
+def _check_enabled_servers_are_launcher_backed(
+    results: list[dict[str, str]], servers: dict, payload: dict
+) -> None:
+    """Check 4: enabled servers are launcher-backed. Disabled ones are gated
+    and deliberately not held to this."""
     # Check 4: enabled servers must be launcher-backed (missing launcher /
     # broken command). Disabled servers are gated and are not held to this.
     broken_enabled: list[str] = []
@@ -351,6 +369,12 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
             )
         )
 
+
+
+def _check_activation_gating(
+    results: list[dict[str, str]], servers: dict, payload: dict
+) -> None:
+    """Check 5: disabled-by-policy is distinguished from enabled-but-broken."""
     # Check 5: distinguish disabled-by-policy from enabled-but-broken. A server
     # marked disabled whose required activation env is unset is correctly gated.
     if not has_activation_metadata(payload, servers):
@@ -363,7 +387,7 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
                 "(honor-system)",
             )
         )
-        return results
+        return
 
     disabled_names: list[str] = []
     correctly_gated: list[str] = []
@@ -390,7 +414,6 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
         )
     )
 
-    return results
 
 
 def main() -> int:

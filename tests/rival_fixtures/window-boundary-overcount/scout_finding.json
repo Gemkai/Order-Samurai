@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:bow:Synthetic_Theta_Failures",
+  "real": true,
+  "evidence": {
+    "re_measured": 5,
+    "snapshot": 1,
+    "source_file": "evidence.jsonl",
+    "window_days": 7
+  },
+  "root_cause": "5 verifier failures in the last 7 days (evidence.jsonl) against a baseline of 1, crossing the fail threshold of 4.",
+  "proposed_fix": "/verifier-repair",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

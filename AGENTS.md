@@ -12,7 +12,7 @@ A local-first governance and security layer for autonomous coding-agent fleets. 
 agent runtimes (such as Claude Code) with fail-closed security hooks — prompt-injection
 interception, real-time secret scrubbing — and aggregates local telemetry into four
 business-pillar metrics (SWORD / BOW / BRUSH / ARTS) served by a React dashboard. All
-state lives on this machine under `~/.samurai/`; nothing is sent to any vendor.
+state lives on this machine under `~/.samurai/`; analysis is local by default, with no product telemetry collected by Order Samurai.
 
 ## Tier state (Free vs Pro)
 

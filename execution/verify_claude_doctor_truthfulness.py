@@ -45,6 +45,9 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from execution.verifier_results import make_result as _make_result  # noqa: F401
+from execution.verifier_results import summarize  # noqa: F401  (re-exported for doctor/CLI)
+
 from execution.claude_runtime_target import (
     ANTI_DRIFT_POLICY_PATH,
     BASELINE_PROFILE,
@@ -73,25 +76,6 @@ def _load_json(path: Path) -> tuple[dict | None, str | None]:
         return None, "missing"
     except json.JSONDecodeError as exc:
         return None, f"invalid json: {exc}"
-
-
-def _make_result(status: str, label: str, detail: str) -> dict[str, str]:
-    return {
-        "status": status,
-        "label": label,
-        "detail": detail,
-    }
-
-
-def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
-    counts = {
-        "OK": 0,
-        "WARN": 0,
-        "FAIL": 0,
-    }
-    for result in results:
-        counts[result["status"]] = counts.get(result["status"], 0) + 1
-    return counts, 1 if counts["FAIL"] else 0
 
 
 def policy_references_doctor_artifact(*, payload: dict) -> bool:
@@ -201,13 +185,38 @@ def run_checks(
     runtime = runtime_root_dir if runtime_root_dir is not None else runtime_root()
     runtime_present = runtime.is_dir()
 
+    policy_rows, references_doctor, policy_loaded = _check_anti_drift_policy(policy_path)
+    results.extend(policy_rows)
+    if not policy_loaded:
+        # An unreadable anti-drift policy short-circuits the whole verifier: every
+        # clause below judges the runtime AGAINST that policy, so continuing would
+        # report conclusions drawn from a document that was never read.
+        return results
+    results.extend(_check_doctor_entrypoint(runtime, runtime_present, references_doctor))
+    results.extend(_check_disabled_mcp_servers(matrix_path, runtime, runtime_present))
+    results.extend(_check_canonical_doctor_and_shim(matrix_path, runtime, runtime_present))
+    results.extend(_check_tolerated_runtime_doctor_absence())
+    return results
+
+
+def _check_anti_drift_policy(
+    policy_path: Path,
+) -> tuple[list[dict[str, str]], bool, bool]:
+    """The anti-drift policy loads and mandates the effective-state rule.
+
+    Also returns whether the policy references a doctor runtime artifact — the
+    one fact the entrypoint clause needs from this one, passed explicitly
+    rather than left as a shared local. The third element reports whether the
+    policy loaded at all; a False short-circuits run_checks, preserving the
+    early return this clause used to perform directly."""
+    results: list[dict[str, str]] = []
     # --- anti-drift policy load + effective-state rule -----------------------
     policy_payload, policy_error = _load_json(policy_path)
     if policy_error:
         results.append(
             _make_result("FAIL", "claude_anti_drift_policy.json", policy_error)
         )
-        return results
+        return results, False, False
     payload = policy_payload or {}
 
     effective_rule = find_effective_state_rule(payload=payload)
@@ -231,6 +240,12 @@ def run_checks(
             )
         )
 
+    return results, references_doctor, True
+
+
+def _check_doctor_entrypoint(runtime: Path, runtime_present: bool, references_doctor: bool) -> list[dict[str, str]]:
+    """Bullet 1: the doctor entrypoint exists and the policy references it."""
+    results: list[dict[str, str]] = []
     # --- bullet 1: doctor entrypoint present & referenced --------------------
     if not runtime_present:
         results.append(
@@ -271,6 +286,12 @@ def run_checks(
                 )
             )
 
+    return results
+
+
+def _check_disabled_mcp_servers(matrix_path: Path, runtime: Path, runtime_present: bool) -> list[dict[str, str]]:
+    """Bullet 2: disabled optional MCP servers are a coherent subset."""
+    results: list[dict[str, str]] = []
     # --- bullet 2: disabled optional MCP servers are a coherent subset -------
     if not runtime_present:
         results.append(
@@ -333,6 +354,12 @@ def run_checks(
                     )
                 )
 
+    return results
+
+
+def _check_canonical_doctor_and_shim(matrix_path: Path, runtime: Path, runtime_present: bool) -> list[dict[str, str]]:
+    """Bullet 3: canonical doctor plus compat shim (structural + honor)."""
+    results: list[dict[str, str]] = []
     # --- bullet 3: canonical doctor + compat shim (structural + honor) -------
     matrix_payload, matrix_error = _load_json(matrix_path)
     if matrix_error:
@@ -413,6 +440,12 @@ def run_checks(
                 )
             )
 
+    return results
+
+
+def _check_tolerated_runtime_doctor_absence() -> list[dict[str, str]]:
+    """Honor-system: a runtime doctor script under scripts/ may or may not exist."""
+    results: list[dict[str, str]] = []
     # --- honor-system: tolerated absence of the runtime doctor script --------
     results.append(
         _make_result(
@@ -425,6 +458,8 @@ def run_checks(
     )
 
     return results
+
+
 
 
 def main() -> int:

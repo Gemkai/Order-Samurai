@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:sword:Synthetic_Lambda_Adherence",
+  "real": true,
+  "evidence": {
+    "re_measured": 88,
+    "snapshot": 62,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "Synthetic_Lambda_Adherence moved from 62 to 88, breaching the 80-point line and indicating a routing regression.",
+  "proposed_fix": "/route",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

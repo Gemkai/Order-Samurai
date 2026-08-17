@@ -166,3 +166,22 @@ def test_date_only_completed_at_without_started_at_is_left_untouched(tmp_path, m
     item = _read_first(state)
     assert item["completed_at"] == "2026-06-07"
     assert "backfilled" not in item
+
+
+def test_non_string_completed_at_does_not_crash_the_backstop(tmp_path, monkeypatch):
+    """A cycle model can write completed_at as a non-string value (e.g. a raw
+    epoch number) instead of an ISO-8601 string -- this backstop exists precisely
+    because 'prompt instructions are not guarantees' (module docstring). The
+    date-only-normalization branch's `len(item.get("completed_at") or "")` must
+    not crash on that malformed value; it should just leave the item untouched
+    rather than take down the whole stamping run for every other item."""
+    mod = _load_module()
+    state = _setup(mod, tmp_path, monkeypatch,
+                   [_item(status="done", started_at="2026-06-07T00:00:00Z",
+                          completed_at=1234567890)])
+
+    mod.main()  # must not raise TypeError: object of type 'int' has no len()
+
+    item = _read_first(state)
+    assert item["completed_at"] == 1234567890
+    assert "backfilled" not in item

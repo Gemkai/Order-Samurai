@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "SUSPECT",
+  "rationale": "The NUMBER is real and independently re-derivable — evidence.jsonl shows a genuine 18.60 -> 27.90 -> 41.20 climb, so this is not a REFUTE. But the causal claim is category (g): the file explicitly carries no subagent counts or per-caller attribution, so the one step that needs justifying — that subagent spawning caused the rise — is asserted, not shown. The spend could equally be longer sessions or a model-tier change. Real breach, unproven cause, and the proposed fix targets the unproven half: human review. The single piece of evidence that would flip this to CONFIRMED is a per-caller cost breakdown showing subagent calls carrying the delta."
+}

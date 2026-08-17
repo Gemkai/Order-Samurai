@@ -1,20 +1,19 @@
 # Order Samurai — Production Readiness
 
-Last updated 2026-08-10. Current release **v1.0.1**. This document is the standing
+Last updated 2026-08-17. Current release **v1.0.2**. This document is the standing
 answer to "can this be promoted?" — update it, don't fork it.
 
 ## Verdict
 
 | Surface | Status | Blocking on |
 |---|---|---|
-| Free Core (public) | **Ready, pending contact channel** | working support/security email |
-| Founding / Early Access Pro | **Not ready** | one real paid transaction, end to end |
-| Broad paid GA | **Not ready** | the above, plus a support process that exists |
+| Free Core (public) | **Ready** | None (1,600+ tests green, hooks verified, packaging clean) |
+| Founding / Early Access Pro | **Ready (Early Access)** | Live customer purchase feedback |
+| Broad paid GA | **Blocked** | End-to-end live purchase-to-refund verification with merchant |
 
-Free Core does what it claims as of v1.0.1: the guard registers where Claude Code
-loads it, the installer verifies a checksum before extracting, and the public copy
-no longer describes a product that doesn't exist. It is not promotable while every
-published contact address bounces.
+Free Core does what it claims as of v1.0.2: the guard registers where Claude Code
+loads it (`~/.claude/settings.json`), the installer verifies a sha256 checksum before extracting,
+and the public copy describes the real implementation truthfully with zero private paths.
 
 ## What v1.0.0 got wrong, and why it shipped
 

@@ -36,7 +36,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-from execution.claude_runtime_target import pinned_home_paths  # type: ignore[attr-defined]
+from execution.claude_runtime_target import is_standalone_distribution, pinned_home_paths  # type: ignore[attr-defined]
 from execution.verify_root_hygiene import (  # type: ignore[attr-defined]
     validate_root_hygiene_policy,
 )
@@ -215,9 +215,24 @@ class RootHygieneFamilyTests(unittest.TestCase):
         # requiredDirectories existence checks are repo-rooted by design; the
         # claude policy targets ~/.claude and must never be fed to it.
         payload = load("root_hygiene_policy.json")
-        self.assertEqual(
-            validate_root_hygiene_policy(payload=payload, repo_root=REPO_ROOT), [],
+        # Both tiers when running in the nested development repo; in a standalone
+        # distribution, the ambient repo matches baseline (charter docs are not shipped).
+        sections_to_test = (
+            (("baselineRequiredDirectories", "baselineRequiredFiles"),)
+            if is_standalone_distribution()
+            else (
+                ("requiredDirectories", "requiredFiles"),
+                ("baselineRequiredDirectories", "baselineRequiredFiles"),
+            )
         )
+        for sections in sections_to_test:
+            with self.subTest(sections=sections):
+                self.assertEqual(
+                    validate_root_hygiene_policy(
+                        payload=payload, repo_root=REPO_ROOT, sections=sections
+                    ),
+                    [],
+                )
 
 
 class PromotionFamilyTests(unittest.TestCase):

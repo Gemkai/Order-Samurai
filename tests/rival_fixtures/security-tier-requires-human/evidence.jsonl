@@ -1,0 +1,4 @@
+{"file": "cfg/one.env", "pattern": "api-key-like", "hit": true}
+{"file": "cfg/two.env", "pattern": "api-key-like", "hit": true}
+{"file": "cfg/three.env", "pattern": "token-like", "hit": true}
+{"file": "cfg/four.env", "pattern": "api-key-like", "hit": false}

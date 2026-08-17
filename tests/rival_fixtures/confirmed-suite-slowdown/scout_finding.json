@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:bow:Synthetic_Rho_Runtime",
+  "real": true,
+  "evidence": {
+    "re_measured": 214,
+    "snapshot": 38,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "Test suite wall-clock rose monotonically from 38s to 214s over the last 5 runs (evidence.jsonl).",
+  "proposed_fix": "/qa",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

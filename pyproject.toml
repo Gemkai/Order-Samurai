@@ -4,9 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "order-samurai"
-# Canonical version source for the pack: execution/cli.py __version__ and
-# bin/samurai SAMURAI_VERSION must be kept in sync with this value.
-version = "1.0.1"
+version = "1.0.2"
 description = "Local-first governance and security layer for autonomous coding agent fleets"
 # No `readme`/`license` keys: this vendored copy carries neither file (both live in the public
 # export pack, built by bin/extract_public.py). Pointing at a missing file fails metadata
@@ -35,7 +33,10 @@ order-samurai = "execution.cli:main"
 packages = ["execution", "agentica_core"]
 
 [tool.pytest.ini_options]
-addopts = '-m "not live_machine"'
+# No addopts filter here: CI already passes `-m "not live_machine"` explicitly
+# (.github/workflows/ci.yml). A local addopts filter would silently narrow the
+# documented local command (`python3 -m pytest tests/ -q`, see CLAUDE.md) so
+# live_machine tests only ever run when a developer opts in with `-m live_machine`.
 markers = [
     "live_machine: requires real platform homes or local services; excluded from CI",
 ]

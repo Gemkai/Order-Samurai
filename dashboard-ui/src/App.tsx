@@ -662,7 +662,7 @@ export default function App() {
             <a href="../" style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontFamily: "inherit" }}>
               ← Back to site
             </a>
-            <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" style={{ color: "#facc15", textDecoration: "none", fontWeight: 600, fontFamily: "inherit" }}>
+            <a href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199" target="_blank" rel="noopener noreferrer" style={{ color: "#facc15", textDecoration: "none", fontWeight: 600, fontFamily: "inherit" }}>
               Unlock Pro Lifetime — $199 →
             </a>
           </div>
@@ -705,7 +705,12 @@ export default function App() {
               <Zap size={12} /> {reflexCrit} CRITICAL REFLEX{reflexCrit > 1 ? "ES" : ""}
             </button>
           )}
-          {(payload.window?.records ?? 0) === 0 ? (
+          {isDemo ? (
+            <>
+              <div className="mono" style={{ color: "var(--bow)" }}>{live} SAMPLE</div>
+              <div className="mono">{sim} SIMULATED</div>
+            </>
+          ) : (payload.window?.records ?? 0) === 0 ? (
             <>
               <div className="mono" style={{ color: "var(--muted-foreground)" }}>0 LIVE</div>
               <div className="mono" style={{ color: "rgba(255,255,255,0.4)" }}>COLD START</div>
@@ -721,8 +726,8 @@ export default function App() {
               ? <><span className="status-dot-live">●</span>{" DOJO ONLINE"}</>
               : "○ DOJO OFFLINE"}
           </div>
-          <a href="mailto:support@agentica-llc.biz" className="mono" style={{ display: "block", marginTop: 10, fontSize: "0.6rem", color: "rgba(255,255,255,0.4)", textDecoration: "none" }}>
-            🐛 Bug Report: support@agentica-llc.biz
+          <a href="mailto:support@ordersamurai.ai" className="mono" style={{ display: "block", marginTop: 10, fontSize: "0.6rem", color: "rgba(255,255,255,0.4)", textDecoration: "none" }}>
+            🐛 Bug Report: support@ordersamurai.ai
           </a>
         </div>
       </aside>
@@ -816,7 +821,7 @@ export default function App() {
   )
 }
 
-function ProLockedPanels(_props: { onUnlock?: () => void }) {
+function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, marginTop: 40 }}>
       {/* Autonomous Remediation Queue (Pro) */}
@@ -832,7 +837,7 @@ function ProLockedPanels(_props: { onUnlock?: () => void }) {
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
           <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>AUTONOMOUS REMEDIATION · PRO</div>
-          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
+          <a href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
           </a>
         </div>
@@ -851,7 +856,7 @@ function ProLockedPanels(_props: { onUnlock?: () => void }) {
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
           <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>CROSS-HARNESS FLEET VIEW · PRO</div>
-          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
+          <a href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
           </a>
         </div>
@@ -870,7 +875,7 @@ function ProLockedPanels(_props: { onUnlock?: () => void }) {
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
           <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>COMPLIANCE PACKS · PRO</div>
-          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
+          <a href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
           </a>
         </div>
@@ -1080,7 +1085,7 @@ function Overview({ payload, onSelect, reflexProps, dojoProps, onUnlock, isDemo 
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
           <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>REMEDIATION EFFICACY & DOJO HISTORY · PRO</div>
-          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
+          <a href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
           </a>
         </div>

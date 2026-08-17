@@ -1,0 +1,3 @@
+{"date": "2026-08-01", "adherence_pct": 62, "polarity": "higher_is_better", "warn_below": 80, "fail_below": 65}
+{"date": "2026-08-08", "adherence_pct": 74, "polarity": "higher_is_better"}
+{"date": "2026-08-15", "adherence_pct": 88, "polarity": "higher_is_better"}

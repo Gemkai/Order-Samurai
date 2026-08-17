@@ -12,7 +12,7 @@ import datetime
 import argparse
 from pathlib import Path
 
-SAMURAI_VERSION = "1.0.1"
+SAMURAI_VERSION = "1.0.2"
 
 GUARD_MARKER = "prompt_injection_guard"
 SCRUBBER_MARKER = "secret_scrubber_realtime"
@@ -91,14 +91,14 @@ def _entry_targets(entry: dict, marker: str) -> bool:
     return False
 
 
-def _register_claude_hooks(settings_path: Path, guard_script: str, scrubber_script: str, backups_dir: Path):
+def _register_claude_hooks(settings_path: Path, guard_script: str, scrubber_script: str, backups_dir: Path, target_label: str = "claude-settings"):
     """Register into ~/.claude/settings.json using Claude Code's own schema.
 
     Entries take the form {"matcher": ..., "hooks": [{"type": "command", ...}]}.
     Merges into the existing config: unrelated keys and the user's own hooks are
     preserved, and re-running replaces our entries rather than duplicating them.
     """
-    _backup(settings_path, backups_dir, "claude-settings")
+    _backup(settings_path, backups_dir, target_label)
     settings = _load_json(settings_path)
 
     hooks = settings.get("hooks") if isinstance(settings.get("hooks"), dict) else {}
@@ -107,7 +107,8 @@ def _register_claude_hooks(settings_path: Path, guard_script: str, scrubber_scri
         ("PreToolUse", GUARD_MARKER, GUARD_MATCHER, guard_script),
         ("PostToolUse", SCRUBBER_MARKER, SCRUBBER_MATCHER, scrubber_script),
     ):
-        entries = [e for e in (hooks.get(event) or []) if not _entry_targets(e, marker)]
+        script_marker = Path(script).name
+        entries = [e for e in (hooks.get(event) or []) if not (_entry_targets(e, marker) or _entry_targets(e, script_marker))]
         entries.append({
             "matcher": matcher,
             "hooks": [{
@@ -123,13 +124,13 @@ def _register_claude_hooks(settings_path: Path, guard_script: str, scrubber_scri
     print(f"  [✓] Registered hooks in {settings_path}")
 
 
-def _register_hooks_in_file(settings_path: Path, guard_script: str, scrubber_script: str, backups_dir: Path):
+def _register_hooks_in_file(settings_path: Path, guard_script: str, scrubber_script: str, backups_dir: Path, target_label: str = "samurai-settings"):
     """Agent-agnostic registration for ~/.samurai/settings.json.
 
     Kept for non-Claude harnesses. This file is NOT what Claude Code reads --
     `samurai doctor` must never treat its contents as proof of protection.
     """
-    _backup(settings_path, backups_dir, "samurai-settings")
+    _backup(settings_path, backups_dir, target_label)
     existing_settings = _load_json(settings_path)
 
     hooks = existing_settings.get("hooks", {})

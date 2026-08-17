@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "SUSPECT",
+  "rationale": "The claim is neither supported nor refutable from what is here. Only 3 of the asserted 17 events are present, and the file states outright that 240 lines were skipped and are unrecoverable — so the true count could be 17 or could be 3. Rival must not CONFIRM without conclusive evidence, and cannot demonstrate the finding wrong either, which is precisely the ambiguous case SUSPECT exists for. The single piece of evidence that would settle it is an untruncated capture of the source."
+}

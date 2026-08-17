@@ -169,8 +169,90 @@ class TestRealPolicyFamilies:
             assert callable(getattr(module, "run_checks", None)), f"{name} lost run_checks()"
 
     def test_runtime_health_families_are_excluded_from_the_gate(self):
-        """Telemetry/daemon checks describe a workstation and would false-fail in CI."""
+        """Live payload, telemetry, and daemon checks would false-fail or stall in CI."""
         names = {name for name, _ in cli.POLICY_FAMILIES}
+        assert "live-sources" not in names
         assert "telemetry-freshness" not in names
         assert "local-llm" not in names
         assert "exec-chain" not in names
+
+
+class TestAuditRequiresACheckout:
+    """`pip install` ships the verifiers but not the config/ contracts they enforce.
+
+    Measured on a real install: the console script resolved its root to
+    site-packages and printed `Summary: OK=2 WARN=0 FAIL=3` -- a verdict about its
+    own install directory, indistinguishable from a verdict about a repository.
+    """
+
+    def _hide_policy(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(cli, "ROOT_HYGIENE_POLICY_PATH",
+                            tmp_path / "site-packages" / "config" / "root_hygiene_policy.json")
+
+    def test_audit_exits_two_when_the_policy_contracts_are_absent(self, monkeypatch, tmp_path):
+        self._hide_policy(monkeypatch, tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        assert cli.run_audit([]) == 2
+
+    def test_audit_emits_no_verdict_when_it_cannot_see_its_policy(self, monkeypatch, tmp_path, capsys):
+        """The regression itself: no Summary line, and nothing on stdout a CI step
+        could mistake for a result. The explanation goes to stderr."""
+        self._hide_policy(monkeypatch, tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        cli.run_audit([])
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "Summary:" not in captured.err
+        assert "cannot audit" in captured.err
+
+    def test_json_format_also_refuses_rather_than_emitting_an_empty_result(self, monkeypatch, tmp_path, capsys):
+        """A machine reader must not receive a well-formed zero-finding payload."""
+        self._hide_policy(monkeypatch, tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        assert cli.run_audit(["--format", "json"]) == 2
+        assert capsys.readouterr().out == ""
+
+    def test_the_message_names_a_checkout_found_above_the_working_directory(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        checkout = tmp_path / "order-samurai"
+        (checkout / "config").mkdir(parents=True)
+        (checkout / "config" / "root_hygiene_policy.json").write_text("{}", encoding="utf-8")
+        workdir = checkout / "execution" / "nested"
+        workdir.mkdir(parents=True)
+        self._hide_policy(monkeypatch, tmp_path)
+        monkeypatch.chdir(workdir)
+
+        cli.run_audit([])
+
+        assert str(checkout) in capsys.readouterr().err
+
+    def test_the_message_says_so_when_no_checkout_is_above_the_working_directory(
+        self, monkeypatch, tmp_path, capsys
+    ):
+        bare = tmp_path / "somewhere-else"
+        bare.mkdir()
+        self._hide_policy(monkeypatch, tmp_path)
+        monkeypatch.chdir(bare)
+
+        cli.run_audit([])
+
+        assert "No checkout was found" in capsys.readouterr().err
+
+    def test_a_real_checkout_still_audits(self, capsys):
+        """The guard must not fire in the tree this suite runs from."""
+        assert cli.policy_contracts_unavailable() is None
+
+    def test_version_and_help_work_without_the_policy_contracts(self, monkeypatch, tmp_path, capsys):
+        """Only `audit` needs the contracts; the other commands must stay usable."""
+        self._hide_policy(monkeypatch, tmp_path)
+
+        assert cli.main(["version"]) == 0
+        assert cli.main(["--help"]) == 0
+
+    def test_find_pack_root_returns_none_outside_a_pack(self, tmp_path):
+        assert cli.find_pack_root(tmp_path) is None

@@ -51,11 +51,32 @@ def _empty_patch(tmp_path: Path) -> Path:
     return patch
 
 
+def _unresolvable_agentica_core(tmp_path: Path) -> Path:
+    """A GOVERNANCE_ROOT where `agentica_core.llm.gateway` cannot resolve.
+
+    An EMPTY dir is not enough. The script inserts GOVERNANCE_ROOT at sys.path[0],
+    so an empty root only removes the source-tree copy — in an INSTALLED
+    distribution `agentica_core` is a shipped package and site-packages answers
+    the import anyway, the gate starts, and the empty patch is approved (exit 0).
+    That is correct product behaviour and a false test failure: the suite ships
+    inside the distribution, so it must induce the condition rather than assume
+    the environment lacks the package.
+
+    Writing a stub package here shadows site-packages from sys.path[0] while
+    genuinely lacking the import target, so the script takes the very same
+    `except ModuleNotFoundError` branch, under both layouts.
+    """
+    (tmp_path / "agentica_core").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "agentica_core" / "__init__.py").write_text("", encoding="utf-8")
+    return tmp_path
+
+
 def test_missing_package_exits_2_naming_module_and_interpreter(tmp_path):
-    # GOVERNANCE_ROOT pointing at a dir with no agentica_core at all: the
-    # message must name the unresolvable module and the interpreter, not just
-    # wave at GOVERNANCE_ROOT.
-    proc = _run_with_gov_root(tmp_path, _empty_patch(tmp_path))
+    # GOVERNANCE_ROOT where agentica_core cannot be resolved: the message must
+    # name the unresolvable module and the interpreter, not just wave at
+    # GOVERNANCE_ROOT.
+    root = _unresolvable_agentica_core(tmp_path)
+    proc = _run_with_gov_root(root, _empty_patch(tmp_path))
     assert proc.returncode == 2
     out = proc.stdout + proc.stderr
     assert "agentica_core" in out
@@ -88,7 +109,8 @@ def test_missing_package_output_matches_engine_env_error_classifier(tmp_path):
     # while reflex-engine.ts's regex changes shape, the two sides have drifted
     # again and exec_log would silently mislabel audit_env_error as
     # audit_rejected exactly like the 2026-07-20/26 outage.
-    proc = _run_with_gov_root(tmp_path, _empty_patch(tmp_path))
+    root = _unresolvable_agentica_core(tmp_path)
+    proc = _run_with_gov_root(root, _empty_patch(tmp_path))
     assert proc.returncode == 2
     out = proc.stdout + "\n" + proc.stderr
     assert _AUDIT_ENV_ERROR_RE.search(out), (

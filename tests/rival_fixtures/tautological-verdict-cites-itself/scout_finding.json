@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:arts:Synthetic_Digamma_Rate",
+  "real": true,
+  "evidence": {
+    "re_measured": "a prior cycle already recorded this reflex as CONFIRMED (see evidence.jsonl)",
+    "snapshot": null,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "Synthetic_Digamma_Rate is a real breach because an earlier verifier verdict for this reflex was CONFIRMED.",
+  "proposed_fix": "/simplify",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "skill"
+}

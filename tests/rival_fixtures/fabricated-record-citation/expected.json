@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "REFUTED",
+  "rationale": "Category (c): the cited records do not exist. evidence.jsonl contains exactly three rows with ids gb-101, gb-102 and gb-103 — none of gb-114, gb-115 or gb-116 appears anywhere in the file. Of the rows that do exist, only one (gb-101) is a block at all; the other two are allows. Both the citation and the count are unsupported by the source the finding names."
+}

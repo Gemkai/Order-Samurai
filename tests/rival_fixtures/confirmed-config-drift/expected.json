@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "CONFIRMED",
+  "rationale": "5 key rows, exactly 3 with match:false — matching the claimed count with no interpretation required. Each mismatched row shows two concretely different values, so a spot-check of any one confirms real divergence rather than a formatting artifact. The 2 matching keys are correctly excluded. The fix is the health check that owns source-vs-installed drift. The attack that fails: no mismatched row is a type coercion (3 vs 5 and info vs debug are genuinely different values, not the same value typed differently)."
+}

@@ -16,7 +16,7 @@ At **Order Samurai**, privacy is not a feature — it is a core architectural in
 
 ## 2. Information Handled During Commercial Checkout (Pro Tier)
 
-When purchasing Order Samurai Pro ($199 Lifetime License) via our Merchant of Record (**Gumroad** — current checkout; **Lemon Squeezy** is used as an alternate checkout):
+When purchasing Order Samurai Pro ($199 Lifetime License) via our Merchant of Record:
 
 - **Payment Data**: Payment processing is handled securely by our Merchant of Record. Order Samurai maintainers never store or transmit raw credit card or banking details.
 - **Customer Email & License Key**: Our Merchant of Record collects your email address to issue your digital receipt, tax invoice, and Order Samurai Pro license key.
@@ -44,5 +44,5 @@ Order Samurai may periodically check GitHub Releases via standard `git` or CLI p
 ## 5. Contact Us
 
 If you have any privacy questions or concerns:
-- **Email**: `privacy@ordersamurai.dev`
-- **Security**: `security@ordersamurai.dev`
+- **Email**: `privacy@ordersamurai.ai`
+- **Security**: `security@ordersamurai.ai`

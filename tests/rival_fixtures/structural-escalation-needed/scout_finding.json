@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:arts:Synthetic_Psi_Coverage",
+  "real": true,
+  "evidence": {
+    "re_measured": 31,
+    "snapshot": 64,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "Coverage fell from 64 to 31 because the module was split into three packages and the harness only walks the original path.",
+  "proposed_fix": "/gsd-plan-phase",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "structural"
+}

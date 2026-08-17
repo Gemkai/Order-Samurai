@@ -127,3 +127,33 @@ def test_brain_context_is_prepended_to_the_system_message():
     assert messages[0]["role"] == "system"
     assert messages[0]["content"].startswith("BRAIN CONTEXT")
     assert "BASE SYSTEM" in messages[0]["content"]
+
+
+def test_local_calls_disable_thinking_by_default():
+    """think=False must be sent even when no caller asked (2026-08-16 audit, P2).
+
+    Previously `think` was only added to the payload when a caller passed it, and
+    the public facade (call_routed_llm / call_llm) has a fixed signature with no
+    `think` parameter — so no facade caller could turn thinking off. task="analysis"
+    routes to qwen3.6:35b, which then returns empty content and makes
+    extract_message_text fall back to the `thinking` field, handing the caller a
+    chain-of-thought trace as if it were the answer.
+    """
+    with patch.object(gateway_module.requests, "post",
+                      return_value=_response(_local_body("ok"))) as post:
+        model_router.call_llm("sys", "user", task="analysis")
+    payload = post.call_args.kwargs["json"]
+    assert "think" in payload, "think must always be sent, not only when requested"
+    assert payload["think"] is False
+
+
+def test_thinking_can_still_be_opted_into_explicitly():
+    """The default is off, not a removal — a caller that genuinely wants a
+    reasoning trace can still ask for one."""
+    with patch.object(gateway_module.requests, "post",
+                      return_value=_response(_local_body("ok"))) as post:
+        gateway_module.LLMGateway().generate_text(
+            prompt="user", system_instruction="sys",
+            model_chain=["gemma4:4b"], local_only=True, think=True,
+        )
+    assert post.call_args.kwargs["json"]["think"] is True

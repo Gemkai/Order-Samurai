@@ -64,6 +64,17 @@ def test_empty_stream_fails(tmp_path):
     assert [r["status"] for r in results] == ["FAIL"]
 
 
+def test_future_timestamped_record_does_not_mask_a_stale_stream(tmp_path):
+    # A bogus/clock-skewed record with a future timestamp must not win "newest"
+    # over the real, genuinely stale record -- otherwise (now - newest) goes
+    # negative, age_hours > max_age_hours is False, and a dead emitter (the
+    # exact June 2026 failure this gate exists to catch) reports OK.
+    stream = _write_stream(tmp_path / "t.jsonl", ages_hours=[60, -1000])
+    results = vtf.run_checks(path=stream, now=_NOW)
+    assert [r["status"] for r in results] == ["FAIL"]
+    assert "60h old" in results[0]["detail"]
+
+
 # ── OK paths ──────────────────────────────────────────────────────────────────
 
 def test_fresh_stream_ok(tmp_path):

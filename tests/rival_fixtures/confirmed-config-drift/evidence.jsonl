@@ -1,0 +1,5 @@
+{"key": "retry_limit", "source": 3, "installed": 5, "match": false}
+{"key": "log_level", "source": "info", "installed": "debug", "match": false}
+{"key": "timeout_ms", "source": 5000, "installed": 15000, "match": false}
+{"key": "region", "source": "us-east", "installed": "us-east", "match": true}
+{"key": "enabled", "source": true, "installed": true, "match": true}

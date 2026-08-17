@@ -1,0 +1,3 @@
+{"producer": "bin/emit_alpha.py", "writes": "data/alpha.json", "readers": []}
+{"producer": "bin/emit_beta.py", "writes": "data/beta.json", "readers": []}
+{"producer": "bin/emit_gamma.py", "writes": "data/gamma.json", "readers": ["bin/consume_gamma.py"]}

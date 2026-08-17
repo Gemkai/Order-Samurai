@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "SUSPECT",
+  "rationale": "The breach is real (9 vs baseline 2, directly readable in evidence.jsonl), so REFUTED is wrong. But rival's pre-mode step 3 is a fix-plausibility check against the skill's success rate, and the bundled excerpt puts the proposed skill at 1 improvement in 14 runs — a 7% success rate, far under the 30% bar that step names. CONFIRMED requires the finding to be real AND the fix plausible; the second half fails here, which is exactly what SUSPECT is for."
+}

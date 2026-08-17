@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:bow:Synthetic_Tau_Orphans",
+  "real": true,
+  "evidence": {
+    "re_measured": 2,
+    "snapshot": 0,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "2 scripts write output files that no other script reads (evidence.jsonl), against a baseline of 0.",
+  "proposed_fix": "/find-orphan-mechanisms",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

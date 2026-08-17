@@ -21,8 +21,18 @@ ANTI_SPRAWL_POLICY_PATH = CONFIG_DIR / "claude_anti_sprawl_policy.json"
 ROOT_HYGIENE_POLICY_PATH = CONFIG_DIR / "claude_root_hygiene_policy.json"
 PROMOTION_POLICY_PATH = CONFIG_DIR / "claude_promotion_policy.json"
 SURFACE_MATRIX_PATH = CONFIG_DIR / "claude_surface_matrix.json"
-REPORT_PATH = ROOT_DIR / "reports" / "2026-04-12-claude-architecture-hardening-report.md"
+_HARDENING_REPORT_REL = "reports/2026-04-12-claude-architecture-hardening-report.md"
+REPORT_PATH = ROOT_DIR / _HARDENING_REPORT_REL
 BACKLOG_PATH = ROOT_DIR / "backlog" / "claude_verifier_backlog.md"
+
+#: Repo-relative pack artifacts ``bin/extract_public.py`` never ships (its
+#: "Section 2 — never ship" list). ONE declaration, read two ways: absent here in a
+#: nested Agentica checkout is pack rot and must FAIL; absent in a standalone
+#: distribution is the export's own policy and must not be reported as a defect.
+#: Scattering the filename across each check is how those two readings drift apart.
+#: The backlog is deliberately NOT in this set — it ships, so its absence is rot in
+#: both layouts.
+INTERNAL_ONLY_ARTIFACTS: tuple[str, ...] = (_HARDENING_REPORT_REL,)
 
 ALL_POLICY_PATHS = (
     SCORECARD_PATH,
@@ -81,8 +91,16 @@ FULL_PROFILE = "full"
 _PROFILES = (BASELINE_PROFILE, FULL_PROFILE)
 
 
-def audit_profile() -> str:
+def audit_profile(default: str = BASELINE_PROFILE) -> str:
     """Which tier of requirements to assert. ORDER_SAMURAI_AUDIT_PROFILE selects.
+
+    `default` is what an UNSET variable means, and exists because the honest
+    default differs per surface. For ~/.claude it is "baseline": whether this repo
+    is a nested checkout says nothing about whether the operator's Claude home has
+    this layout, so a caller must not infer one from the other. A verifier whose
+    target IS this pack can infer it (see verify_root_hygiene), so it passes
+    "full". Keeping one env-parsing implementation keeps the dial's spelling and
+    its typo-rejection identical on every surface.
 
     Defaults to "baseline" ON PURPOSE. The requiredDirectories/requiredFiles
     lists describe a MATURE control plane (hooks/, orchestration/, safety/,
@@ -101,7 +119,9 @@ def audit_profile() -> str:
     profile that quietly became "baseline" would disable the strict tier without
     anyone noticing, which is the failure mode this whole contract guards.
     """
-    raw = (os.environ.get("ORDER_SAMURAI_AUDIT_PROFILE") or BASELINE_PROFILE).strip().lower()
+    if default not in _PROFILES:
+        raise ValueError(f"default={default!r} is not one of {_PROFILES}")
+    raw = (os.environ.get("ORDER_SAMURAI_AUDIT_PROFILE") or default).strip().lower()
     if raw not in _PROFILES:
         raise ValueError(
             f"ORDER_SAMURAI_AUDIT_PROFILE={raw!r} is not one of {_PROFILES}"
@@ -109,9 +129,13 @@ def audit_profile() -> str:
     return raw
 
 
-def required_sections() -> tuple[str, str]:
-    """(directories_key, files_key) in a hygiene policy for the active profile."""
-    if audit_profile() == FULL_PROFILE:
+def required_sections(profile: str | None = None) -> tuple[str, str]:
+    """(directories_key, files_key) in a hygiene policy for `profile`.
+
+    Defaults to the ~/.claude surface's active profile; pass one explicitly when
+    the caller has resolved it for a different target.
+    """
+    if (profile or audit_profile()) == FULL_PROFILE:
         return ("requiredDirectories", "requiredFiles")
     return ("baselineRequiredDirectories", "baselineRequiredFiles")
 

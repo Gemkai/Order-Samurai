@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:bow:Synthetic_Pi_Unbounded",
+  "real": true,
+  "evidence": {
+    "re_measured": 4,
+    "snapshot": 0,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "4 new remote call sites were added with no explicit timeout (evidence.jsonl), against a baseline of 0.",
+  "proposed_fix": "/timeout-audit",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

@@ -1,0 +1,5 @@
+{"file": "svc/fetch_a.py", "line": 41, "call": "requests.get", "timeout": null}
+{"file": "svc/fetch_b.py", "line": 88, "call": "httpx.post", "timeout": null}
+{"file": "svc/queue_c.py", "line": 12, "call": "redis.blpop", "timeout": null}
+{"file": "svc/db_d.py", "line": 205, "call": "psycopg.connect", "timeout": null}
+{"file": "svc/fetch_e.py", "line": 17, "call": "requests.get", "timeout": 30}

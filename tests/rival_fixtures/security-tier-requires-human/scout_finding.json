@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:sword:Synthetic_Chi_Secrets",
+  "real": true,
+  "evidence": {
+    "re_measured": 3,
+    "snapshot": 0,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "3 files match a credential pattern (evidence.jsonl) against a clean baseline; the proposed fix edits the scrubber's pattern list.",
+  "proposed_fix": "/security-hardening",
+  "target_repo": "claude-config",
+  "risk_tier": "security",
+  "fixability": "code"
+}

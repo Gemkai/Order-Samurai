@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:brush:Synthetic_Nu_Spend",
+  "real": true,
+  "evidence": {
+    "re_measured": 41.2,
+    "snapshot": 18.6,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "Weekly spend rose from $18.60 to $41.20 because agents are spawning far more subagents than before.",
+  "proposed_fix": "/subagent-audit",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

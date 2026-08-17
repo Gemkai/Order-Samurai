@@ -64,23 +64,19 @@ def _load_json(path: Path) -> tuple[dict | None, str | None]:
         return None, f"invalid json: {exc}"
 
 
+from execution.verifier_results import summarize  # noqa: F401  (re-exported: doctor imports it from here)
+from execution.verifier_results import make_result as _shared_make_result
+
+
 def _make_result(status: str, name: str, detail: str) -> dict[str, str]:
-    return {
-        "status": status,
-        "name": name,
-        "detail": detail,
-    }
+    """This verifier publishes its label under `name`, not `label`.
 
-
-def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
-    counts = {
-        "OK": 0,
-        "WARN": 0,
-        "FAIL": 0,
-    }
-    for result in results:
-        counts[result["status"]] = counts.get(result["status"], 0) + 1
-    return counts, 1 if counts["FAIL"] else 0
+    The spelling is load-bearing: doctor's family registry renders this family
+    with label_key="name", and verify_agentica_root_hygiene reuses these rows.
+    Normalising it away would be a silent output change, so the key is passed
+    through rather than unified.
+    """
+    return _shared_make_result(status, name, detail, label_key="name")
 
 
 def find_invalid_classifications(*, payload: dict) -> list[tuple[str, str]]:

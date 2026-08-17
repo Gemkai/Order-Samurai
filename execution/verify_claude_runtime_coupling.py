@@ -45,6 +45,9 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from execution.verifier_results import make_result as _make_result  # noqa: F401
+from execution.verifier_results import summarize  # noqa: F401  (re-exported for doctor/CLI)
+
 from execution.claude_runtime_target import (
     ALL_POLICY_PATHS,
     ANTI_DRIFT_POLICY_PATH,
@@ -70,17 +73,6 @@ EXTENSIONLESS_MAX_BYTES = 65_536
 SELF_REFERENCE_BASENAMES = frozenset(path.name for path in ALL_POLICY_PATHS)
 
 ANTI_DRIFT_COUPLING_RULE_ID = "runtime-coupling-boundary"
-
-
-def _make_result(status: str, label: str, detail: str) -> dict[str, str]:
-    return {"status": status, "label": label, "detail": detail}
-
-
-def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
-    counts = {"OK": 0, "WARN": 0, "FAIL": 0}
-    for result in results:
-        counts[result["status"]] = counts.get(result["status"], 0) + 1
-    return counts, 1 if counts["FAIL"] else 0
 
 
 def _literal_in(content: str, literal: str) -> bool:

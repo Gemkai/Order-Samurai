@@ -51,6 +51,14 @@ def _dependency_scanner_ok(dep: dict, scanner: str) -> bool:
     return isinstance(health, dict) and health.get(scanner) is True
 
 
+def _dependency_scanner_skipped(dep: dict, scanner: str) -> bool:
+    """A deliberately-skipped scanner contributes no scanner_ok entry at all
+    (codebase_deps_audit.py: npm is opt-in via --npm) — absence in a modern
+    health dict means "not run", never "ran and failed"."""
+    health = dep.get("scanner_ok")
+    return isinstance(health, dict) and scanner not in health
+
+
 def _pip_cve_count(rows: object) -> int:
     if not isinstance(rows, list):
         return 0
@@ -107,13 +115,20 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
     dep = _read_json(data / "dependency_audit.json")
     if isinstance(dep, dict):
         expected = ("pip", "pip_audit", "npm")
-        failed = sum(not _dependency_scanner_ok(dep, scanner) for scanner in expected)
+        failed = sum(
+            not _dependency_scanner_ok(dep, scanner)
+            and not _dependency_scanner_skipped(dep, scanner)
+            for scanner in expected
+        )
         out["dependency_scanner_failures"] = failed
 
         # Completeness is required before publishing an exact zero or count.
         # A partial lower bound would still understate risk and look authoritative.
+        # "Complete" means every scanner that RAN is healthy: a skipped npm scan
+        # contributes an empty npm_audits, not unknown coverage of a dead scanner.
         if (_dependency_scanner_ok(dep, "pip_audit")
-                and _dependency_scanner_ok(dep, "npm")):
+                and (_dependency_scanner_ok(dep, "npm")
+                     or _dependency_scanner_skipped(dep, "npm"))):
             out["open_cves"] = (
                 _pip_cve_count(dep.get("pip_cves"))
                 + _npm_cve_count(dep.get("npm_audits"))
@@ -439,6 +454,33 @@ def knowledge_signals(repo_root: Path | None = None) -> dict:
     drift = _index_drift(me)
     if drift is not None:
         out["index_drift"] = drift
+
+    # SOJI: vault link-integrity scanner (Execution/soji_scan.py, scheduled via
+    # com.agentica.soji-cycle). Reads its findings.json the same way doc_parity.json
+    # is read above — missing/malformed file is simply omitted, never a fabricated 0.
+    # Staleness guard: a `generated_at` older than 7 days — or absent/unparseable —
+    # degrades to the same omitted state as a missing file (silence != health).
+    # 7 days matches scorecard.py's know_soji_findings_fresh probe (config/
+    # scorecard_rubric.json: params.max_age_days=7), the codebase's existing
+    # freshness budget for this exact artifact; the inline-parse shape follows the
+    # security_gate_canary staleness check above (a stale all-clear is not an
+    # all-clear).
+    soji = _read_json(root / "Data" / "soji" / "memory.findings.json")
+    if isinstance(soji, dict) and isinstance(soji.get("findings"), list):
+        soji_stale = True
+        gen_at = soji.get("generated_at")
+        if gen_at:
+            try:
+                t = datetime.fromisoformat(str(gen_at).replace("Z", "+00:00"))
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=timezone.utc)
+                soji_stale = (datetime.now(timezone.utc) - t).days > 7
+            except ValueError:
+                soji_stale = True
+        if not soji_stale:
+            kinds = [f.get("kind") for f in soji["findings"] if isinstance(f, dict)]
+            out["soji_broken_links"] = kinds.count("broken_link")
+            out["soji_orphan_notes"] = kinds.count("orphan_note")
 
     gpath = root / "Knowledge" / "dashboard" / "graph.json"
     g = _read_json(gpath)

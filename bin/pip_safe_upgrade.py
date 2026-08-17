@@ -458,6 +458,7 @@ def run_plan(
         candidates = [c for c in candidates if c.tier in tiers]
 
     applied: list[dict] = []
+    failed: list[dict] = []
     blocked: list[dict] = []
     skipped: list[dict] = []
 
@@ -485,17 +486,26 @@ def run_plan(
             row = _row(cand, reason)
             if do_apply:
                 row["upgraded"] = apply_fn(cand.name)
+                if not row["upgraded"]:
+                    # _real_apply returns False when pip failed or the
+                    # post-upgrade audit rolled the package back — either way
+                    # the vulnerable version is still installed, so reporting
+                    # it under "applied" would fabricate a remediation.
+                    failed.append(row)
+                    continue
             applied.append(row)
 
     return {
         "ml_mode": ml_mode,
         "tiers": sorted(tiers) if tiers is not None else "all",
         "applied": applied,
+        "failed": failed,
         "blocked": blocked,
         "skipped": skipped,
         "counts": {
             "candidates": len(candidates),
             "applied": len(applied),
+            "failed": len(failed),
             "blocked": len(blocked),
             "skipped": len(skipped),
         },
@@ -526,7 +536,8 @@ def _installed_packages() -> set[str]:
 
 def _format_report(report: dict) -> str:
     lines = [f"ML constraint mode: {'ON' if report['ml_mode'] else 'off'}"]
-    for bucket, verb in (("applied", "APPLY"), ("blocked", "BLOCK"), ("skipped", "SKIP")):
+    for bucket, verb in (("applied", "APPLY"), ("failed", "FAILED"),
+                         ("blocked", "BLOCK"), ("skipped", "SKIP")):
         rows = report[bucket]
         if not rows:
             continue
@@ -536,7 +547,7 @@ def _format_report(report: dict) -> str:
     c = report["counts"]
     lines.append(
         f"\nTotal: {c['candidates']} candidates · {c['applied']} apply · "
-        f"{c['blocked']} block · {c['skipped']} skip"
+        f"{c.get('failed', 0)} failed · {c['blocked']} block · {c['skipped']} skip"
     )
     return "\n".join(lines)
 

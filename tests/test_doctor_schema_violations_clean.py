@@ -100,6 +100,21 @@ def test_unparseable_violation_rows_are_skipped_not_counted(tmp_path):
     assert r["status"] == "OK"
 
 
+def test_tz_naive_stamp_is_graded_utc_not_a_crash(tmp_path):
+    """The stamp is hand-maintained; datetime.now().isoformat() or a bare date
+    produces a naive value. The module's own docstring rule is that collecting
+    the observation can never halt doctor — a TypeError here aborts every
+    check that runs after _run_schema_violation_checks in doctor's main."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    naive_since = (_NOW - timedelta(days=3)).replace(tzinfo=None).isoformat()
+    (tmp_path / "schema_violations_clean_since.json").write_text(
+        json.dumps({"clean_since": naive_since}), encoding="utf-8")
+    _violation(tmp_path, days_ago=1)
+    r = _one(_run_schema_violation_checks(state_dir=tmp_path, now=_NOW))
+    assert r["status"] == "WARN"
+    assert "reset the streak" in r["detail"]
+
+
 def test_never_returns_a_fail_status(tmp_path):
     """The whole family is WARN-only: a violation is the observation A3 wants,
     so surfacing one must not gate doctor's exit code."""

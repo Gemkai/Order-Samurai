@@ -21,13 +21,13 @@ Upon purchase of a $199 Pro Lifetime License, Licensor grants Licensee a perpetu
 
 ## 3. 14-Day Money-Back Refund Term
 
-All purchases of Order Samurai Pro are backed by an unconditional **14-day 100% money-back guarantee**. Licensees may request a full refund within 14 calendar days of purchase by contacting `support@agentica-llc.biz`. Upon processing of the refund, Licensee's Pro license key will be revoked.
+All purchases of Order Samurai Pro are backed by an unconditional **14-day 100% money-back guarantee**. Licensees may request a full refund within 14 calendar days of purchase by contacting `support@ordersamurai.ai`. Upon processing of the refund, Licensee's Pro license key will be revoked.
 
 ---
 
 ## 4. Maintenance & Support
 
-Pro perpetual licenses include all minor and major software updates for Order Samurai Pro. Support is provided via GitHub issues and email (`support@agentica-llc.biz`).
+Pro perpetual licenses include all minor and major software updates for Order Samurai Pro. Support is provided via GitHub issues and email (`support@ordersamurai.ai`).
 
 ---
 

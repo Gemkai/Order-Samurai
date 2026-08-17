@@ -24,6 +24,9 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from execution.verifier_results import make_result as _make_result  # noqa: F401
+from execution.verifier_results import summarize  # noqa: F401  (re-exported for doctor/CLI)
+
 from execution.claude_runtime_target import (  # type: ignore[import-not-found]  # noqa: E402
     ANTI_DRIFT_POLICY_PATH,
     BASELINE_PROFILE,
@@ -67,10 +70,6 @@ _ROOT_KWARG_BY_MODULE = {
     "execution.verify_claude_path_authority": "runtime_root_path",
     "execution.verify_claude_runtime_coupling": "root",
 }
-
-
-def _make_result(status: str, label: str, detail: str) -> dict[str, str]:
-    return {"status": status, "label": label, "detail": detail}
 
 
 def _roll_up(rows: list[dict[str, str]]) -> str:
@@ -157,13 +156,6 @@ def run_checks(*, runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
         results.append(_make_result(status, label, detail))
 
     return results
-
-
-def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
-    counts = {"OK": 0, "WARN": 0, "FAIL": 0}
-    for result in results:
-        counts[result["status"]] = counts.get(result["status"], 0) + 1
-    return counts, 1 if counts["FAIL"] else 0
 
 
 def main() -> int:

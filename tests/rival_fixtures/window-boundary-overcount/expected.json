@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "REFUTED",
+  "rationale": "Category (b) applied to the count itself. The anchor row fixes the measurement date at 2026-08-15, so the claimed 7-day window opens 2026-08-08. Only 3 of the 5 failure rows fall inside it (08-14, 08-12, 08-10); the 08-06 and 08-04 rows are 9 and 11 days old. The in-window count is 3, below the stated fail threshold of 4, so no breach exists on the window the finding itself declares."
+}

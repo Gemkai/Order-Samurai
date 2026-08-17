@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:arts:Synthetic_Omicron_Links",
+  "real": true,
+  "evidence": {
+    "re_measured": 6,
+    "snapshot": 1,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "6 broken internal links across the knowledge vault (evidence.jsonl), up from 1 at the last snapshot.",
+  "proposed_fix": "/wiki",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "skill"
+}

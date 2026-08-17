@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:brush:Synthetic_Sigma_Drift",
+  "real": true,
+  "evidence": {
+    "re_measured": 3,
+    "snapshot": 0,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "3 config keys diverge between the source and installed copies (evidence.jsonl), against a clean baseline.",
+  "proposed_fix": "/doctor",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

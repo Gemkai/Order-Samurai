@@ -1,0 +1,3 @@
+{"record_id": "gb-101", "event": "guardrail_block", "rule": "shell-injection"}
+{"record_id": "gb-102", "event": "guardrail_allow", "rule": "shell-injection"}
+{"record_id": "gb-103", "event": "guardrail_allow", "rule": "path-traversal"}

@@ -27,6 +27,9 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from execution.verifier_results import make_result as _make_result  # noqa: F401
+from execution.verifier_results import summarize  # noqa: F401  (re-exported for doctor/CLI)
+
 from execution.claude_runtime_target import (
     BASELINE_PROFILE,
     SURFACE_MATRIX_PATH,
@@ -46,25 +49,6 @@ def _load_json(path: Path) -> tuple[dict | None, str | None]:
         return None, "missing"
     except json.JSONDecodeError as exc:
         return None, f"invalid json: {exc}"
-
-
-def _make_result(status: str, label: str, detail: str) -> dict[str, str]:
-    return {
-        "status": status,
-        "label": label,
-        "detail": detail,
-    }
-
-
-def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
-    counts = {
-        "OK": 0,
-        "WARN": 0,
-        "FAIL": 0,
-    }
-    for result in results:
-        counts[result["status"]] = counts.get(result["status"], 0) + 1
-    return counts, 1 if counts["FAIL"] else 0
 
 
 def _normalize_surface_path(path_value: str) -> str:

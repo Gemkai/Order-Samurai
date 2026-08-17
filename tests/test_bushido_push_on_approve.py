@@ -45,6 +45,18 @@ from agentica_core.bushido_engine import (  # noqa: E402
 NOW = datetime(2026, 8, 8, 12, 0, tzinfo=timezone.utc)
 
 
+def _past_lease_expiry() -> datetime:
+    """An instant well past the 2h execution lease, measured from the REAL clock.
+
+    `executing_at` is stamped by review_hitl with datetime.now(), so a lease-expiry
+    instant derived from the frozen NOW above stops being in the future once wall
+    time passes it -- which silently turned these assertions green-then-red on
+    2026-08-15. The reconcile_stale_approved tests below may keep using NOW because
+    they write their own explicit approved_at timestamps.
+    """
+    return datetime.now(timezone.utc) + timedelta(days=7)
+
+
 # ── fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture
@@ -190,7 +202,7 @@ def test_dispatched_item_is_not_reclaimed_by_the_execution_lease(tmp_repo, monke
     _, qid = _enqueue(tmp_repo)
     review_hitl(qid, tmp_repo, "approve")
 
-    assert reconcile_stale_executing(tmp_repo, now=NOW + timedelta(days=7)) == 0
+    assert reconcile_stale_executing(tmp_repo, now=_past_lease_expiry()) == 0
     assert _item(tmp_repo, qid)["status"] == "dispatched"
 
 
@@ -330,7 +342,7 @@ def test_indeterminate_result_is_left_on_the_execution_lease(tmp_repo, monkeypat
     assert item["status"] == "executing"
     assert _consume_approval(wi, tmp_repo) is None          # pull path locked out
 
-    assert reconcile_stale_executing(tmp_repo, now=NOW + timedelta(days=7)) == 1
+    assert reconcile_stale_executing(tmp_repo, now=_past_lease_expiry()) == 1
     assert _item(tmp_repo, qid)["status"] == "failed"
 
 

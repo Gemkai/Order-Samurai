@@ -40,6 +40,7 @@ from pathlib import Path
 
 from . import insights
 from .adapter import list_platforms
+from .reflex_id import parse_reflex_id
 from .telemetry import parse_ts
 
 import os
@@ -306,10 +307,9 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
         if not _has_fire_time_measurement(row):
             continue
         rid = str(row.get("reflex_id", ""))
-        parts = rid.split(":")
-        if len(parts) < 3 or parts[0] not in ("metric", "trajectory"):
-            continue
-        metric = ":".join(parts[2:])
+        metric = parse_reflex_id(rid).metric
+        if metric is None:
+            continue  # correlation/manual/malformed ids name no metric to judge
         rule = insights.METRIC_RULES.get(metric)
         if not rule:
             continue  # need a direction to judge improvement
@@ -345,12 +345,10 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
             continue
         dt = parse_ts(row.get("timestamp"))
         rid = str(row.get("reflex_id", ""))
-        parts = rid.split(":")
         # Metric-scoped reflex ids name their metric; correlation/other ids don't, and
         # the verdict is still real — attribute it to the reflex id itself rather than
         # dropping the row (unlike tier 1, no METRIC_RULES direction is needed here).
-        metric = (":".join(parts[2:]) if len(parts) >= 3 and parts[0] in ("metric", "trajectory")
-                  else (rid or row["skill"]))
+        metric = parse_reflex_id(rid).metric or (rid or row["skill"])
         # Late re-judgment (2026-08-08): the engine decides `improved` inside one ≤60 s
         # post-run refresh, so a metric that only recomputes nightly/weekly is recorded
         # false even when the remediation worked. The sidecar carries that later verdict,
@@ -376,12 +374,26 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
         skill = rem["skill"]
         if skill not in uses:
             continue
-        # metric timeline: (dt, numeric value) from snapshots whose key ends in /<metric>
+        # metric timeline: (dt, numeric value) from snapshots whose key ends in /<metric>.
+        # Per-session metrics (rule["per"] == "session") are normalized by that same
+        # snapshot's Session_Count before grading -- the same normalization annotate()
+        # and correlation.py apply (SENSEI-6). Without it, a raw cumulative total is
+        # compared directly against a per-session warn/fail bar and reads as a deep
+        # breach regardless of the real per-session rate.
         tl = []
         for dt, vals in snaps:
+            sessions = None
+            if rule.get("per") == "session":
+                sessions = next(
+                    (float(v2) for k2, v2 in vals.items()
+                     if k2.split("/")[-1] == "Session_Count" and isinstance(v2, (int, float)) and v2 > 0),
+                    None,
+                )
+                if sessions is None:
+                    continue  # can't normalize this snapshot -> can't honestly grade it
             for k, v in vals.items():
                 if k.split("/")[-1] == metric and isinstance(v, (int, float)):
-                    tl.append((dt, float(v)))
+                    tl.append((dt, float(v) / sessions if sessions else float(v)))
         tl.sort()
         if len(tl) < 2:
             continue
@@ -479,6 +491,16 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
         # digit-improvement window read as a 52% success rate. improvement_rate divides
         # by `attempted` (every engine run, incl. no_change/error/timeout) instead.
         "improvement_rate": round(100 * improved / attempted, 1) if attempted else None,
+        # execution_success_rate (2026-08-14): improvement_rate alone conflates two
+        # distinct failure classes into one flat number — "the engine never even
+        # completed a run" (permission/tooling gate, worktree failure, timeout) vs
+        # "runs complete cleanly but never move the metric" (wrong skill for the
+        # metric, judge-window too short, genuinely non-remediable). completed/
+        # attempted answers the first question in isolation; a reader who sees
+        # improvement_rate=0 with execution_success_rate=0 should look at *why
+        # nothing finishes* before touching skill selection, while
+        # improvement_rate=0 with execution_success_rate=100 points the other way.
+        "execution_success_rate": round(100 * completed / attempted, 1) if attempted else None,
         "proposed_count": proposed_count,
         "proposed_improved": proposed_improved,
         "proposal_improvement_rate": (

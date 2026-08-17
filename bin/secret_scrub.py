@@ -28,7 +28,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -159,21 +161,57 @@ def _apply(leaks: list[dict], tickets: list[dict], tickets_dir: Path) -> dict:
         except OSError:
             pass
 
+    def _atomic_rewrite(path: Path, text: str) -> None:
+        """Replace a source file's contents without a truncation window.
+
+        `write_text` truncates then writes in place, so a crash or ENOSPC mid-write
+        leaves the SOURCE FILE truncated with no backup — this tool never copies the
+        original. Per-process temp name (a fixed one is a shared mutable file), same
+        directory so os.replace stays a same-filesystem atomic rename.
+        """
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.scrub.tmp")
+        try:
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(tmp, path)
+        except Exception:
+            if tmp.exists():
+                with contextlib.suppress(OSError):
+                    tmp.unlink()
+            raise
+
     redacted_files: list[dict] = []
+    skipped_files: list[dict] = []
     for lk in leaks:
         src = Path(lk["source"])
         try:
-            original = src.read_text(encoding="utf-8", errors="ignore")
+            # errors="strict", NOT "ignore". `ignore` DROPS every byte that is not
+            # valid UTF-8 from `original`, and the write below then persists that
+            # truncated content over the real file — a latin-1 config, or any file
+            # carrying one stray cp1252 byte (this repo has documented Windows-era
+            # artifacts), loses those bytes permanently the moment --apply redacts
+            # one secret in it. Scan and rewrite shared the same lossy decode, so
+            # `new_text != original` stayed True and nothing detected the corruption.
+            # A file we cannot decode losslessly is REPORTED, never rewritten.
+            # (2026-08-16 audit, P2.)
+            original = src.read_text(encoding="utf-8")
         except OSError:
+            continue
+        except UnicodeDecodeError as e:
+            skipped_files.append({
+                "source": lk["source"],
+                "reason": f"not valid UTF-8 ({e.reason} at byte {e.start}); "
+                          "redact by hand — rewriting would delete the undecodable bytes",
+            })
             continue
         new_text, n = redact_text(original, verify_secrets.SECRET_PATTERNS, verify_secrets._is_placeholder)
         if n and new_text != original:
             try:
-                src.write_text(new_text, encoding="utf-8")
+                _atomic_rewrite(src, new_text)
                 redacted_files.append({"source": lk["source"], "redactions": n})
-            except OSError:
-                pass
-    return {"tickets_written": written_tickets, "redacted_files": redacted_files}
+            except OSError as e:
+                skipped_files.append({"source": lk["source"], "reason": f"write failed: {e}"})
+    return {"tickets_written": written_tickets, "redacted_files": redacted_files,
+            "skipped_files": skipped_files}
 
 
 # ---------------------------------------------------------------------------

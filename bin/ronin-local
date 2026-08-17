@@ -36,4 +36,29 @@ PAYLOAD="$(jq -n --arg m "$MODEL" --arg s "$SYS" --arg p "$PROMPT" --arg c "$STD
     messages:[{role:"system",content:$s},{role:"user",content:($p+(if $c=="" then "" else "\n\n---\n"+$c end))}]}')"
 RESP="$(curl -sS --fail-with-body --max-time 300 -H 'Content-Type: application/json' -d "$PAYLOAD" "$BASE/chat/completions")" \
   || { cloud_fallback; exit 0; }
-echo "$RESP" | jq -r '.choices[0].message.content // empty'
+
+# HTTP 200 does NOT mean we got an answer. Ollama returns 200 with an empty (or
+# absent) message.content for thinking builds — the documented failure that left
+# this tier silently dead for a month — and can return a 2xx {"error": ...} body.
+# `jq -r '... // empty'` prints nothing and exits 0, so the old one-liner turned
+# "the model never answered" into empty stdout + exit 0. Callers are ronins reading
+# prose (prompts/ronin_sword.md routes secret scanning and CVE lookup here), and an
+# empty successful result is indistinguishable from "no secrets found".
+#
+# Mirrors agentica_core/llm/local_guards.py::extract_message_text (content ->
+# reasoning -> thinking), which is the repo's mandated guard but is unreachable
+# from a shell path. Keep the fallback order in sync with it.
+# NOT `.content // .reasoning`: jq's `//` only falls through on null/false, and an
+# empty STRING is truthy — so the alternative operator would hand back "" and never
+# reach the fallback, which is precisely the thinking-model case this exists for.
+# Collect the three candidates, drop any that are absent or blank, take the first.
+OUT="$(echo "$RESP" | jq -r '[.choices[0].message | .content, .reasoning, .thinking]
+  | map(select(type == "string" and test("\\S")))
+  | first // empty')"
+if [ -z "${OUT//[[:space:]]/}" ]; then
+  ERR="$(echo "$RESP" | jq -r '.error.message // .error // empty' 2>/dev/null || true)"
+  echo "ronin-local: model returned no content (model=$MODEL)${ERR:+ — $ERR}" >&2
+  echo "ronin-local: treat this as FAILURE, not an empty/clean result" >&2
+  exit 2
+fi
+printf '%s\n' "$OUT"

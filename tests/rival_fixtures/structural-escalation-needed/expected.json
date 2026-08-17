@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "SUSPECT",
+  "rationale": "The drop is real and its cause is actually well evidenced — packages_present went 1 -> 3 while packages_walked stayed 1, which explains the fall without any real loss of tested code. That makes it neither a REFUTE (the number moved, verifiably) nor a CONFIRMED breach worth firing a remediation at: the metric is measuring the harness's blind spot, not a coverage regression. fixability is 'structural', which routes to backlog escalation for human scoping rather than an autonomous fix."
+}

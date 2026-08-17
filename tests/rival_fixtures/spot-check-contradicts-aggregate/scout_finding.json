@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:bow:Synthetic_Iota_Latency",
+  "real": true,
+  "evidence": {
+    "re_measured": 980,
+    "snapshot": 310,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "Synthetic_Iota_Latency p95 rose to 980ms (evidence.jsonl) from a 310ms baseline, a 3x regression.",
+  "proposed_fix": "/timeout-audit",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

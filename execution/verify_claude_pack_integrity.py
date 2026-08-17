@@ -20,9 +20,18 @@ re-declared here):
              "advisory-until-claude-verifiers-exist")
       Runtime-side ``scripts/*.py`` references are checked under runtime_root()
       and only WARN when absent (a missing runtime root is itself a WARN).
-  (d) REPORT_PATH and BACKLOG_PATH exist                         -> FAIL if missing
+  (d) every document THIS LAYOUT promises exists                 -> FAIL if missing
   (e) the backlog STATUS AUDIT claim ("none of the ... verifiers ... exist")
       stays truthful; if a backlogged verifier now exists         -> WARN (stale)
+
+Checks (b) and (d) are layout-aware. ``claude_runtime_target.INTERNAL_ONLY_ARTIFACTS``
+names the pack documents ``bin/extract_public.py`` never ships. In a nested Agentica
+checkout they are required, and deleting one FAILs. In a flat standalone distribution
+they are absent BY DESIGN, so requiring them would report the export's own policy back
+as pack rot -- the distinction ``claude_runtime_target.is_standalone_distribution()``
+exists to draw. Everything the standalone pack does promise (the backlog, every other
+scorecard artifact) is still required in both layouts. Pass ``standalone=`` to
+``run_checks()`` to exercise either reading.
 
 Exit code is 1 iff any FAIL, mirroring the sibling verifiers.
 """
@@ -38,12 +47,17 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from execution.verifier_results import make_result as _make_result  # noqa: F401
+from execution.verifier_results import summarize  # noqa: F401  (re-exported for doctor/CLI)
+
 from execution.claude_runtime_target import (  # type: ignore[attr-defined]
     ALL_POLICY_PATHS,
     BACKLOG_PATH,
+    INTERNAL_ONLY_ARTIFACTS,
     REPORT_PATH,
     ROOT_DIR as TARGET_ROOT_DIR,
     SCORECARD_PATH,
+    is_standalone_distribution,
     runtime_root,
 )
 
@@ -51,17 +65,6 @@ from execution.claude_runtime_target import (  # type: ignore[attr-defined]
 # rest (scripts/, data/, settings.json, CLAUDE.md, ...) are runtime-side under
 # ~/.claude and are governed by other checks, not by check (b).
 REPO_ARTIFACT_PREFIXES = ("config/", "backlog/", "reports/", "execution/")
-
-
-def _make_result(status: str, label: str, detail: str) -> dict[str, str]:
-    return {"status": status, "label": label, "detail": detail}
-
-
-def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
-    counts = {"OK": 0, "WARN": 0, "FAIL": 0}
-    for result in results:
-        counts[result["status"]] = counts.get(result["status"], 0) + 1
-    return counts, 1 if counts["FAIL"] else 0
 
 
 def _load_json(path: Path) -> tuple[dict | None, str | None]:
@@ -135,60 +138,21 @@ def run_checks(
     report_path: Path = REPORT_PATH,
     repo_root: Path = TARGET_ROOT_DIR,
     runtime_root_dir: Path | None = None,
+    standalone: bool | None = None,
 ) -> list[dict[str, str]]:
     results: list[dict[str, str]] = []
     if runtime_root_dir is None:
         runtime_root_dir = runtime_root()
+    # Injected rather than read inline so both readings of an absent internal-only
+    # document are testable without fabricating a directory tree around the pack.
+    if standalone is None:
+        standalone = is_standalone_distribution()
+    internal_only = frozenset(INTERNAL_ONLY_ARTIFACTS) if standalone else frozenset()
 
-    # (a) every pack policy loads as JSON.
-    payloads: dict[Path, dict] = {}
-    load_failures: list[str] = []
-    for path in policy_paths:
-        payload, error = _load_json(path)
-        if error:
-            load_failures.append(f"{path.name} ({error})")
-        else:
-            payloads[path] = payload or {}
-    if load_failures:
-        results.append(
-            _make_result("FAIL", "pack.policies-load", ", ".join(sorted(load_failures)))
-        )
-    else:
-        results.append(
-            _make_result(
-                "OK",
-                "pack.policies-load",
-                f"all {len(policy_paths)} pack policies parse as JSON",
-            )
-        )
-
-    # (b) scorecard artifacts that live inside this repo must exist.
-    scorecard_payload = payloads.get(scorecard_path)
-    if scorecard_payload is None:
-        # already reported as a load failure above; skip artifact resolution.
-        pass
-    else:
-        repo_artifacts = collect_inside_repo_artifacts(scorecard_payload)
-        missing_artifacts = sorted(
-            a for a in repo_artifacts if not (repo_root / a).exists()
-        )
-        if missing_artifacts:
-            results.append(
-                _make_result(
-                    "FAIL",
-                    "pack.scorecard-artifacts",
-                    "scorecard names in-repo artifact(s) that are missing: "
-                    + ", ".join(missing_artifacts),
-                )
-            )
-        else:
-            results.append(
-                _make_result(
-                    "OK",
-                    "pack.scorecard-artifacts",
-                    f"all {len(repo_artifacts)} in-repo scorecard artifacts exist",
-                )
-            )
+    payloads, load_rows = _check_policies_load(policy_paths)
+    results.extend(load_rows)
+    results.extend(_check_scorecard_artifacts(
+        payloads.get(scorecard_path), repo_root, internal_only))
 
     # (c) verifier references vs. disk vs. the backlog roadmap.
     backlog_text = ""
@@ -197,7 +161,7 @@ def run_checks(
         backlog_text = backlog_path.read_text(encoding="utf-8", errors="ignore")
     backlog_verifiers = parse_backlog_verifiers(backlog_text)
 
-    scorecard_refs = collect_verifier_refs(scorecard_payload or {})
+    scorecard_refs = collect_verifier_refs(payloads.get(scorecard_path) or {})
     policy_refs: set[str] = set()
     for path, payload in payloads.items():
         if path == scorecard_path:
@@ -293,9 +257,15 @@ def run_checks(
                 )
             )
 
-    # (d) report and backlog must exist.
+    # (d) every document this layout actually promises must exist. The hardening
+    # report is internal-only, so a standalone distribution promises only the
+    # backlog; requiring the report there reports the export's own policy back as
+    # pack rot. A nested checkout still requires both, so a genuine deletion fails.
+    report_required = report_path.name not in {
+        Path(a).name for a in internal_only
+    }
     doc_missing = []
-    if not report_path.is_file():
+    if report_required and not report_path.is_file():
         doc_missing.append(report_path.name)
     if not backlog_exists:
         doc_missing.append(backlog_path.name)
@@ -307,12 +277,21 @@ def run_checks(
                 "missing pack document(s): " + ", ".join(doc_missing),
             )
         )
-    else:
+    elif report_required:
         results.append(
             _make_result(
                 "OK",
                 "pack.docs-present",
                 "backlog and hardening report both present",
+            )
+        )
+    else:
+        results.append(
+            _make_result(
+                "OK",
+                "pack.docs-present",
+                "backlog present; the hardening report is internal-only and is "
+                "absent by design in a standalone distribution",
             )
         )
 
@@ -348,6 +327,71 @@ def run_checks(
         )
 
     return results
+
+
+# ── clause helpers (one named contract clause each) ───────────────────────────
+
+def _check_policies_load(
+    policy_paths: tuple[Path, ...],
+) -> tuple[dict[Path, dict], list[dict[str, str]]]:
+    """Clause (a): every pack policy parses as JSON.
+
+    Returns the parsed payloads too — later clauses read them, and re-parsing
+    per clause would let two clauses disagree about the same file.
+    """
+    payloads: dict[Path, dict] = {}
+    load_failures: list[str] = []
+    for path in policy_paths:
+        payload, error = _load_json(path)
+        if error:
+            load_failures.append(f"{path.name} ({error})")
+        else:
+            payloads[path] = payload or {}
+    if load_failures:
+        return payloads, [
+            _make_result("FAIL", "pack.policies-load", ", ".join(sorted(load_failures)))
+        ]
+    return payloads, [
+        _make_result(
+            "OK",
+            "pack.policies-load",
+            f"all {len(policy_paths)} pack policies parse as JSON",
+        )
+    ]
+
+
+def _check_scorecard_artifacts(
+    scorecard_payload: dict | None,
+    repo_root: Path,
+    internal_only: frozenset[str],
+) -> list[dict[str, str]]:
+    """Clause (b): scorecard artifacts inside this repo exist.
+
+    A None payload yields NO row: the scorecard already failed to load in clause
+    (a), and a second row about the same defect would double-report it.
+    """
+    if scorecard_payload is None:
+        return []
+    repo_artifacts = collect_inside_repo_artifacts(scorecard_payload) - internal_only
+    missing_artifacts = sorted(a for a in repo_artifacts if not (repo_root / a).exists())
+    if missing_artifacts:
+        return [
+            _make_result(
+                "FAIL",
+                "pack.scorecard-artifacts",
+                "scorecard names in-repo artifact(s) that are missing: "
+                + ", ".join(missing_artifacts),
+            )
+        ]
+    omitted = (f" ({len(internal_only)} internal-only omitted by the "
+               f"standalone distribution)" if internal_only else "")
+    return [
+        _make_result(
+            "OK",
+            "pack.scorecard-artifacts",
+            f"all {len(repo_artifacts)} in-repo scorecard artifacts exist{omitted}",
+        )
+    ]
 
 
 def main() -> int:

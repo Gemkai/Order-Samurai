@@ -1,0 +1,8 @@
+{"src": "wiki/a.md", "target": "wiki/missing-one.md", "status": "broken"}
+{"src": "wiki/b.md", "target": "wiki/missing-two.md", "status": "broken"}
+{"src": "wiki/c.md", "target": "wiki/missing-three.md", "status": "broken"}
+{"src": "wiki/d.md", "target": "wiki/missing-four.md", "status": "broken"}
+{"src": "wiki/e.md", "target": "wiki/missing-five.md", "status": "broken"}
+{"src": "wiki/f.md", "target": "wiki/missing-six.md", "status": "broken"}
+{"src": "wiki/g.md", "target": "wiki/a.md", "status": "ok"}
+{"src": "wiki/h.md", "target": "wiki/b.md", "status": "ok"}

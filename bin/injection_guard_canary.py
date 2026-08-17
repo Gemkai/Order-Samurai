@@ -81,6 +81,7 @@ EXIT_BLOCKED = 2
 EXIT_ALLOWED = 0
 HOOK_TIMEOUT_S = 20.0
 SEMANTIC_PROBE_TIMEOUT_S = 4.0
+SEMANTIC_IMPORT_TIMEOUT_S = 5.0
 
 
 def _now() -> str:
@@ -142,15 +143,16 @@ def _run_guard(text: str, guard: Path | None = None) -> tuple[int, str]:
 
 
 def semantic_endpoint(guard: Path | None = None) -> str:
-    """The URL the guard's semantic stage actually calls, computed by importing the guard's own module.
+    """The URL the guard's semantic stage actually calls, computed by importing the guard's module.
 
     Imports rather than regexes the source: as of the 2026-08-06 Ollama migration the endpoint is a
-    runtime value (OLLAMA_HOST-normalized, loopback-gated -- see SEMANTIC_ENDPOINT in the guard), not
-    a single string literal a regex can pattern-match. Importing guarantees this probe can never see
-    an endpoint the guard itself wouldn't actually compute -- the same "cannot drift from the file
-    under test" guarantee the old regex was for, just resilient to the guard's construction changing.
-    A bare ``SEMANTIC_ENDPOINT = None`` (non-loopback OLLAMA_HOST) prints as the empty string here,
-    which correctly falls through to the "unknown" status below -- the guard disabled itself too.
+    runtime value (``SEMANTIC_HOST + "/api/chat"``, OLLAMA_HOST-normalized and loopback-gated), not
+    a single string literal a regex can pattern-match — so the old ``url = "http://..."`` scrape
+    matched nothing and reported the semantic stage permanently degraded. Importing preserves the
+    "cannot drift from the file under test" guarantee the regex was for, while surviving changes to
+    how the guard CONSTRUCTS the endpoint. A bare ``SEMANTIC_ENDPOINT = None`` (non-loopback
+    OLLAMA_HOST) prints as the empty string, which correctly falls through to "unknown" below —
+    the guard disabled its own semantic stage too.
 
     ``guard`` defaults to ``None``, not the module constant, for the same monkeypatch reason as
     ``_run_guard``.
@@ -164,15 +166,15 @@ def semantic_endpoint(guard: Path | None = None) -> str:
                 "spec = importlib.util.spec_from_file_location('_injection_guard_probe', sys.argv[1])\n"
                 "m = importlib.util.module_from_spec(spec)\n"
                 "spec.loader.exec_module(m)\n"
-                "print(m.SEMANTIC_ENDPOINT or '')\n",
+                "print(getattr(m, 'SEMANTIC_ENDPOINT', '') or '')\n",
                 str(guard),
             ],
             capture_output=True,
             text=True,
-            timeout=5.0,
+            timeout=SEMANTIC_IMPORT_TIMEOUT_S,
         )
         return (proc.stdout or "").strip()
-    except Exception:
+    except Exception:  # noqa: BLE001 - any failure to resolve it means "unknown", never a crash
         return ""
 
 

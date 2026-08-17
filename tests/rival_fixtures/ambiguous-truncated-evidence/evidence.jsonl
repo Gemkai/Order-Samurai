@@ -1,0 +1,4 @@
+{"ts": "2026-08-15T01:00:00Z", "event": "boundary_event", "id": "b1"}
+{"ts": "2026-08-15T02:00:00Z", "event": "boundary_event", "id": "b2"}
+{"ts": "2026-08-15T03:00:00Z", "event": "boundary_event", "id": "b3"}
+{"truncation_notice": true, "skipped_lines": 240, "note": "source was truncated at read time; the remaining rows were not captured into this file and cannot be recovered from it"}

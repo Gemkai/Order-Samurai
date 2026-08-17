@@ -105,7 +105,14 @@ def _real_orphans() -> tuple[list[str], bool]:
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         orphans = mod.find_orphaned_wiki()
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # Broad on purpose: exec_module runs a foreign script, which can raise
+        # anything at all, and this audit must degrade to uncalibrated rather than
+        # crash. The `False` already reports the unknown honestly -- but the REASON
+        # was being discarded, leaving an operator with "uncalibrated" and nothing
+        # to act on, so it goes to stderr while the contract stays unchanged.
+        print(f"wiki_link: vault-health probe failed ({type(exc).__name__}: {exc}) "
+              f"— reporting uncalibrated", file=sys.stderr)
         return [], False
     return [Path(o).name for o in orphans], True
 

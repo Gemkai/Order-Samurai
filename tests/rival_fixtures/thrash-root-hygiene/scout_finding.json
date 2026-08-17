@@ -1,5 +1,5 @@
 {
-  "reflex_id": "metric:brush:Fixture_Root_Hygiene_Issues",
+  "reflex_id": "metric:brush:Synthetic_Epsilon_Issues",
   "real": true,
   "evidence": {
     "re_measured": 3,
@@ -7,7 +7,7 @@
     "source_file": "evidence.jsonl",
     "window_days": 7
   },
-  "root_cause": "Root_Hygiene_Issues count is elevated (3 vs baseline 1, see evidence.jsonl); two prior /simplify remediation attempts in the last 24h both completed with improved:false.",
+  "root_cause": "Synthetic_Epsilon_Issues count is elevated (3 vs baseline 1, see evidence.jsonl); two prior /simplify remediation attempts in the last 24h both completed with improved:false.",
   "proposed_fix": "/simplify",
   "target_repo": "claude-config",
   "risk_tier": "readonly",

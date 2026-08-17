@@ -1,0 +1,6 @@
+{"ts": "2026-08-14T04:00:00Z", "event": "verifier_failure", "verifier": "v-alpha"}
+{"ts": "2026-08-12T04:00:00Z", "event": "verifier_failure", "verifier": "v-beta"}
+{"ts": "2026-08-10T04:00:00Z", "event": "verifier_failure", "verifier": "v-alpha"}
+{"ts": "2026-08-06T04:00:00Z", "event": "verifier_failure", "verifier": "v-gamma"}
+{"ts": "2026-08-04T04:00:00Z", "event": "verifier_failure", "verifier": "v-delta"}
+{"ts": "2026-08-15T00:00:00Z", "event": "window_anchor", "note": "measurement taken 2026-08-15; a 7-day window opens 2026-08-08"}

@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "CONFIRMED",
+  "rationale": "Both endpoints are literally present in evidence.jsonl (run 1 = 38s, run 5 = 214s) and the trend is monotonic across all five runs with no reordering or gap needed to produce it. A 5.6x regression on a consistently rising series is not noise, and the intermediate points rule out a single anomalous run driving the endpoint. The strongest attack — that the series was cherry-picked from a noisier set — fails because every run in the window is present and each is higher than the one before."
+}

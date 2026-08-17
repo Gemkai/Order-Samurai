@@ -19,6 +19,9 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from execution.verifier_results import make_result as _make_result  # noqa: F401
+from execution.verifier_results import summarize  # noqa: F401  (re-exported for doctor/CLI)
+
 from execution.claude_runtime_target import (  # type: ignore[import-not-found]  # noqa: E402
     ANTI_DRIFT_POLICY_PATH,
     pinned_home_paths,
@@ -30,10 +33,6 @@ from execution.claude_runtime_target import (  # type: ignore[import-not-found] 
 #: not a literal list containing this machine's — see the note beside it: the
 #: exporter scrubbed the literal into "~/.claude" and inverted this check.
 PINNED_RUNTIME_DIRS = (".claude",)
-
-
-def _make_result(status: str, label: str, detail: str) -> dict[str, str]:
-    return {"status": status, "label": label, "detail": detail}
 
 
 def _pinned_home(text: str) -> str | None:
@@ -141,13 +140,6 @@ def run_checks(*, runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
                      "every enabled MCP server routes through the launcher"))
 
     return results
-
-
-def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
-    counts = {"OK": 0, "WARN": 0, "FAIL": 0}
-    for result in results:
-        counts[result["status"]] = counts.get(result["status"], 0) + 1
-    return counts, 1 if counts["FAIL"] else 0
 
 
 def main() -> int:

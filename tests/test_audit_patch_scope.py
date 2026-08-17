@@ -7,6 +7,8 @@ carrying binary hunks. These tests call it directly — no LLM, no network.
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 _CHECKER = Path(__file__).resolve().parents[1] / "execution" / "audit_remediation_patch.py"
 _spec = importlib.util.spec_from_file_location("audit_remediation_patch", _CHECKER)
 arp = importlib.util.module_from_spec(_spec)
@@ -42,6 +44,50 @@ def test_rejects_edit_to_tracked_state_file():
     # The wargame's containment-escape vector: forge hitl_queue / flip skill_metadata.
     fails = arp.check_path_scope(_edit("Governance/Order Samurai/state/hitl_queue.json"))
     assert any("protected control-plane path" in f for f in fails)
+
+
+# ---- 2026-08-16 audit: a patch must not rewrite what grades the next patch ----
+
+@pytest.mark.parametrize("path", [
+    # The policy a failing metric would want deleted. verify_root_hygiene.py reads
+    # it via ROOT_HYGIENE_POLICY_PATH and its FAIL rows feed doctor's gating family,
+    # so a patch dropping the offending rule turns the metric green with no change
+    # to the underlying condition.
+    "Governance/Order Samurai/config/root_hygiene_policy.json",
+    "Governance/Order Samurai/config/claude_root_hygiene_policy.json",
+])
+def test_rejects_edit_to_policy_contract(path):
+    fails = arp.check_path_scope(_edit(path))
+    assert any("protected control-plane path" in f for f in fails), (
+        f"{path} is an executable policy contract — a self-grading system must not "
+        "be able to patch the rule it is being graded against"
+    )
+
+
+@pytest.mark.parametrize("path", [
+    # doctor.py imports these verifiers directly; editing one to stop emitting its
+    # FAIL is the same bypass as deleting the policy rule, one layer down.
+    "Governance/Order Samurai/execution/verify_root_hygiene.py",
+    "Governance/Order Samurai/execution/doctor.py",
+    "Governance/Order Samurai/execution/score_claude_architecture.py",
+])
+def test_rejects_edit_to_a_verifier(path):
+    fails = arp.check_path_scope(_edit(path))
+    assert any("protected control-plane path" in f for f in fails), (
+        f"{path} grades the patch; a patch that can silence its own verifier is "
+        "not remediation"
+    )
+
+
+def test_still_allows_ordinary_non_grading_paths_under_the_same_tree():
+    """Guard against over-widening: the two new patterns must not swallow docs,
+    research or test files that legitimate remediation does touch."""
+    for path in (
+        "Governance/Order Samurai/Research/METRICS.md",
+        "Governance/Order Samurai/docs/solutions/some-note.md",
+        "Governance/Order Samurai/tests/test_something.py",
+    ):
+        assert arp.check_path_scope(_edit(path)) == [], path
 
 
 def test_rejects_edit_to_gitignore_and_settings():
@@ -133,6 +179,51 @@ def test_allows_path_with_space_in_it():
     # handle it; a docs edit under that tree (not state/) is allowed.
     p = "Governance/Order Samurai/Research/METRICS.md"
     assert arp.check_path_scope(_edit(p)) == []
+
+
+# ---- non-standard diff prefixes must not bypass the gate ----
+
+def _edit_with_prefix(path, src_prefix, dst_prefix):
+    # A well-formed unified-diff hunk using an arbitrary --src-prefix/
+    # --dst-prefix instead of git's conventional "a/"/"b/". `git apply`
+    # (no -p flag) defaults to -p1: it strips exactly one leading path
+    # component regardless of its literal name, so this is a realistic
+    # patch shape, not a contrived one.
+    return (
+        f"diff --git {src_prefix}{path} {dst_prefix}{path}\n"
+        f"--- {src_prefix}{path}\n"
+        f"+++ {dst_prefix}{path}\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-old\n"
+        "+new\n"
+    )
+
+
+def test_rejects_protected_path_edit_under_nonstandard_diff_prefix():
+    # The gate only strips a literal "a/"/"b/" prefix. A patch generated with
+    # --src-prefix=x/ --dst-prefix=y/ still gets exactly one component
+    # stripped by the real `git apply` call in reflex-engine.ts — so
+    # "y/Governance/api/src/reflex-engine.ts" is written to
+    # "Governance/api/src/reflex-engine.ts", the reflex engine itself, even
+    # though the gate's ^-anchored pattern doesn't match the un-stripped
+    # "y/..." path.
+    patch = _edit_with_prefix("Governance/api/src/reflex-engine.ts", "x/", "y/")
+    fails = arp.check_path_scope(patch)
+    assert any("protected control-plane path" in f for f in fails)
+
+
+def test_rejects_checker_edit_under_nonstandard_diff_prefix():
+    p = "Governance/Order Samurai/execution/audit_remediation_patch.py"
+    patch = _edit_with_prefix(p, "x/", "y/")
+    fails = arp.check_path_scope(patch)
+    assert any("protected control-plane path" in f for f in fails)
+
+
+def test_allows_normal_edit_under_nonstandard_diff_prefix():
+    # The alternate-stripped-path check must not create false positives for
+    # an ordinary, unprotected file just because it uses a non-a/b prefix.
+    patch = _edit_with_prefix("Governance/agentica_core/insights.py", "x/", "y/")
+    assert arp.check_path_scope(patch) == []
 
 
 # --- bin/ widening + allowlist carve-out (2026-08-09) -----------------------------

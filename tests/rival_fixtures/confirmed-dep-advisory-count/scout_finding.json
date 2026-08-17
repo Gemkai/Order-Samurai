@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:sword:Synthetic_Upsilon_Advisories",
+  "real": true,
+  "evidence": {
+    "re_measured": 5,
+    "snapshot": 2,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "5 dependencies carry open advisories (evidence.jsonl), up from 2 at the last snapshot.",
+  "proposed_fix": "/security-audit",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

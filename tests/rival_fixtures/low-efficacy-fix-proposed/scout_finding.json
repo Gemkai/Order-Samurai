@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:arts:Synthetic_Xi_Issues",
+  "real": true,
+  "evidence": {
+    "re_measured": 9,
+    "snapshot": 2,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "Synthetic_Xi_Issues rose to 9 from a baseline of 2 (evidence.jsonl).",
+  "proposed_fix": "/humanizer",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "skill"
+}

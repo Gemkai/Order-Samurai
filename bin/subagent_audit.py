@@ -82,7 +82,7 @@ def classify_spawn(description: str, prompt: str, turn_spawn_count: int) -> tupl
 
     # justified_parallel requires non-trivial descriptions — three trivial lookups
     # delegated in one turn are still wasteful (false-negative prevention: SA-01).
-    if turn_spawn_count >= 3 and not any(kw in desc_low for kw in TRIVIAL_KEYWORDS):
+    if turn_spawn_count >= 3 and _keyword_hit(desc_low, TRIVIAL_KEYWORDS) is None:
         return ("justified_parallel", f"{turn_spawn_count} concurrent spawns in one turn")
 
     isolation_hit = _keyword_hit(combined, ISOLATION_KEYWORDS)

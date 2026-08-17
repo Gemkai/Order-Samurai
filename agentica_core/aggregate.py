@@ -42,7 +42,7 @@ _KILL_CHAIN_EXTRA_ROOTS: list[Path] = [
 
 from . import (harness_config, insights, reflexes, remediation, remediation_delta, scouts,
                threshold_audit, verify_secrets)
-from .atomic import atomic_json_write
+from .atomic import atomic_json_write, file_write_lock
 from .adapter import PlatformUnavailable, list_platforms, resolve_platform
 from .telemetry import (SCHEMA_VERSION, default_events_path, iso_week, normalize_entry,
                         parse_ts, validate_entry, validate_metric)
@@ -399,13 +399,55 @@ def r_model_tier_mix(recs):
     return " ".join(f"{k}:{round(100 * v / n)}%" for k, v in c.most_common())
 
 
+def _routing_tier_votes(recs) -> list[str]:
+    """One model-tier vote per session, over records that carry a routing CHOICE.
+
+    Two corrections, both measured against 30 days of live telemetry on 2026-08-17
+    (4,989 records) — see the 2026-08-16 audit, P2 CONFIRMED:
+
+    1. DEDUP. This reducer counted raw records while every other cumulative reducer
+       here deduplicates by session (`_dedup_field`'s docstring: "~46% of windowed
+       rows are such re-emits", one resumed session re-emitting up to 20 rows).
+       Raw 30.6 -> session-deduped 34.8.
+
+    2. NO-CHOICE ROWS. 1,699 records carried tier "unknown". Of those, 1,454 have no
+       `model` at all — the emitter never observed one, so there was no routing
+       decision to score — while 245 carry a real model (`claude-fable-5`) that the
+       emitter's `_tier_for` simply cannot map (it looks for opus/sonnet/haiku).
+       Only the FIRST group is excluded, mirroring r_mcp_vs_cli dropping "none".
+
+       The second group is deliberately KEPT and counted as non-LOCAL, because that
+       is what it is: a cloud call. Dropping all "unknown" rows — the obvious reading
+       — erases 245 genuine cloud calls and reports 54.1 instead of 52.0. An
+       unmappable model name must never flatter the local-routing number.
+    """
+    by_session: dict[str, str] = {}
+    loose: list[str] = []
+    for r in recs:
+        tier = r.get("model_tier")
+        if not tier:
+            continue
+        tier = str(tier).upper()
+        has_model = bool(r.get("model")) and str(r.get("model")).strip().lower() not in ("", "none")
+        if tier == "UNKNOWN" and not has_model:
+            continue                      # no model observed => no routing choice to score
+        sid = _real_sid(r)
+        if sid:
+            by_session.setdefault(sid, tier)   # first reading wins; re-emits repeat it
+        else:
+            loose.append(tier)            # no real session_id => cannot dedup, count once
+    return list(by_session.values()) + loose
+
+
 def r_local_routing(recs):
-    """Percent of tasks routed to the LOCAL model tier (Ollama). Higher = more work kept
-    local/cheap/private per the local-LLM routing policy. Real efficiency signal, not a guess."""
-    tiers = [r.get("model_tier") for r in recs if r.get("model_tier")]
-    if not tiers:
+    """Percent of SESSIONS routed to the LOCAL model tier (Ollama). Higher = more work
+    kept local/cheap/private per the local-LLM routing policy. Real efficiency signal,
+    not a guess. Denominator is sessions that actually made a routing choice — see
+    _routing_tier_votes for why unmappable model names stay in as non-LOCAL."""
+    votes = _routing_tier_votes(recs)
+    if not votes:
         return None
-    return round(100 * sum(1 for t in tiers if str(t).upper() == "LOCAL") / len(tiers), 1)
+    return round(100 * sum(1 for t in votes if t == "LOCAL") / len(votes), 1)
 
 
 def r_mcp_vs_cli(recs):
@@ -757,11 +799,20 @@ def _get_prior_week_val(history_path: Path, metric_key: str,
 def _calibrate_coefficients(backlog: list[dict], coef_path: Path):
     if not coef_path.exists():
         return
+    # Whole load-mutate-write under one lock. Locking only the write would still let
+    # two processes read the same bytes and clobber each other's per-kind updates —
+    # the scheduled refresh_dashboard pass and a manual `python -m agentica_core.aggregate`
+    # genuinely do overlap on this box. (2026-08-16 audit, P2.)
+    with file_write_lock(coef_path):
+        _calibrate_coefficients_locked(backlog, coef_path)
+
+
+def _calibrate_coefficients_locked(backlog: list[dict], coef_path: Path):
     try:
         coef = json.loads(coef_path.read_text(encoding="utf-8"))
     except Exception:
         return
-    
+
     # Group timed samples by kind; track the earliest measurement start so the
     # time-bounded fallback knows how long collection has been running.
     samples_by_kind = defaultdict(list)
@@ -836,13 +887,18 @@ def _calibrate_coefficients(backlog: list[dict], coef_path: Path):
             any_written = True
 
     if any_written:
-        # Save coefficients back to file atomically (temp + replace)
+        # atomic_json_write, not a hand-rolled `<name>.tmp`: a fixed temp name is a
+        # SHARED mutable file, so two writers interleave into it and one publishes the
+        # other's half-written bytes. atomic.py already documents that exact failure and
+        # uses a per-PID temp — this module imports it and used it for the payload write
+        # while this path hand-rolled the broken version. (2026-08-16 audit, P2.)
         try:
-            temp_path = coef_path.with_suffix(".tmp")
-            temp_path.write_text(json.dumps(coef, indent=2), encoding="utf-8")
-            temp_path.replace(coef_path)
-        except Exception:
-            pass
+            atomic_json_write(coef_path, coef)
+        except Exception as e:  # noqa: BLE001 — calibration must not fail the whole run
+            # Previously `pass`: a corrupt or unwritable coefficients file left every
+            # subsequent run silently uncalibrated with nothing reported anywhere.
+            print(f"[aggregate] calibration write failed for {coef_path}: {e!r}",
+                  file=sys.stderr)
 
 # ---------------------------------------------------------------------------
 # Reducer implementations
@@ -952,14 +1008,26 @@ def _mcp_server_label(server: str) -> str:
 
 # 60s TTL cache of parsed (timestamp, subagent_type) spawn events — the transcript
 # scan is window-independent; the per-window filter happens on the parsed list, so
-# a 3-window refresh parses the 40 transcripts once instead of three times.
+# a 3-window refresh parses the transcripts once instead of three times.
 _AGENT_SPAWN_CACHE: dict = {"t": 0.0, "v": None}
+
+# Safety valve on the file scan, not a real limit: callers window this list down to
+# 1d/7d/30d/all-time (refresh_dashboard.py's "all" variant uses window_days=36500),
+# so the scan must cover every session file that could fall in the widest window, or
+# the narrower windows silently truncate too (a fixed 40-file cap once made "top
+# agents, last 7 days" actually mean "top agents in whatever sliver of today those 40
+# files happened to span" — found 2026-08-14, 589 files were touched in a real 7-day
+# window). Measured at ~3s for the full ~2.3k-file corpus (cheap '"Agent"' substring
+# pre-filter below), well inside the 60s cache TTL, so there's no perf reason to cap
+# tighter. This ceiling only exists to bound runaway growth, not to bind in practice.
+_AGENT_SPAWN_FILE_CAP = 10_000
 
 
 def _agent_spawn_events() -> list[tuple[str, str]]:
-    """(timestamp, subagent_type) for Agent tool_use entries across the 40 most
-    recently touched session JSONLs — a recent-sessions sample, never a true
-    lifetime record."""
+    """(timestamp, subagent_type) for Agent tool_use entries across up to
+    _AGENT_SPAWN_FILE_CAP most recently touched session JSONLs — effectively all of
+    them at current volume, so windowed counts (1d/7d/30d/all) are accurate rather
+    than truncated to whatever a small fixed file cap happened to cover."""
     import json as _json
     now = time.monotonic()
     if (_AGENT_SPAWN_CACHE["v"] is not None
@@ -969,7 +1037,8 @@ def _agent_spawn_events() -> list[tuple[str, str]]:
     events: list[tuple[str, str]] = []
     if not projects_dir.exists():
         return events
-    jsonls = sorted(projects_dir.rglob("*.jsonl"), key=lambda p: p.stat().st_mtime)[-40:]
+    jsonls = sorted(projects_dir.rglob("*.jsonl"),
+                     key=lambda p: p.stat().st_mtime)[-_AGENT_SPAWN_FILE_CAP:]
     for jl in jsonls:
         try:
             with open(jl, encoding="utf-8", errors="ignore") as f:
@@ -1348,9 +1417,18 @@ def _self_correction_rate(records: list[dict]) -> dict:
         if not attempted or rate is None:
             return {"val": None, "data_gap": True, "calibrated": True,
                     "detail": eff.get("data_gap_detail") or "no judgeable remediation attempts"}
+        # execution_success_rate (completed/attempted) is reported alongside the movement
+        # rate so a low `rate` reads as one of two distinct problems: an engine that isn't
+        # completing runs at all (low execution_success_rate — check permission/tooling
+        # gates first) vs one that completes cleanly but doesn't move the metric (high
+        # execution_success_rate despite low rate — check skill selection/judge timing).
+        exec_rate = eff.get("execution_success_rate")
+        exec_detail = (f", {eff.get('completed', 0)}/{attempted} runs completed ({exec_rate}%)"
+                       if exec_rate is not None else "")
         return {"val": rate, "calibrated": True,
                 "detail": (f"{eff.get('improved', 0)}/{attempted} remediation attempts improved "
-                           f"their metric in the last {eff.get('window_days')}d "
+                           f"their metric in the last {eff.get('window_days')}d"
+                           f"{exec_detail} "
                            f"({eff.get('improved_lifetime', 0)}/{eff.get('attempted_lifetime', 0)} lifetime)")}
     except Exception as e:
         return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
@@ -1477,6 +1555,53 @@ def _target_week_anchor(records: list[dict]) -> datetime:
     return datetime.strptime(f"{week}-1", "%G-W%V-%u").replace(tzinfo=timezone.utc)
 
 
+#: (monotonic stamp, result) — see the memo note in _unbounded_wait_count.
+_unbounded_wait_memo: tuple[float, dict] | None = None
+_UNBOUNDED_WAIT_TTL_S = 300.0
+
+
+def _unbounded_wait_count(records: list[dict]) -> dict:  # noqa: ARG001
+    """Unbounded_Wait_Count (2026-08-04, metric-gap remediation, phase D2): count of
+    RUNTIME code sites that can block forever -- a `while`+`sleep` loop with no
+    deadline, or a remote/subprocess call with no `timeout=` -- from
+    Order Samurai/execution/timeout_audit_scan.py. Instruments Core Principle #8
+    (every remote call gets an explicit timeout), whose only prior enforcement was
+    honor-system. `records` is ignored (this reads source, not telemetry).
+
+    Counts runtime sites only; test-fixture findings stay visible in `detail` but
+    are excluded (the scanner's module docstring explains why). OBSERVATIONAL --
+    see insights.METRIC_CONFIG["Unbounded_Wait_Count"].
+
+    MEMOIZED with a short TTL (M6.2, 2026-08-16). build_pillars() runs every
+    reducer, and aggregate() calls build_pillars() per view -- profiled at 22
+    calls per aggregate(), each re-running this AST scan of ~200 files: 43s of a
+    68s build spent recomputing one deterministic value. The scan reads source
+    code, which cannot change mid-aggregate, so within-run reuse is exact; the
+    TTL (not @lru_cache -- Anti-Pattern #6) bounds cross-run staleness for
+    long-lived processes to a window this OBSERVATIONAL metric tolerates."""
+    global _unbounded_wait_memo
+    now = time.monotonic()
+    if _unbounded_wait_memo is not None:
+        stamped_at, cached = _unbounded_wait_memo
+        if now - stamped_at < _UNBOUNDED_WAIT_TTL_S:
+            return dict(cached)  # copy: envelopes downstream may be mutated per view
+    try:
+        if str(_ORDER_SAMURAI_ROOT) not in sys.path:
+            sys.path.insert(0, str(_ORDER_SAMURAI_ROOT))
+        from execution.timeout_audit_scan import scan_tree
+        r = scan_tree(_ORDER_SAMURAI_ROOT.parent)
+        runtime = r.get("runtime_count", 0)
+        result = {"val": runtime, "calibrated": True,
+                  "detail": f"{runtime} runtime site(s) with no deadline "
+                            f"({r.get('test_count', 0)} more in test fixtures, not counted)"}
+        _unbounded_wait_memo = (now, result)
+        return dict(result)
+    except Exception as e:
+        # Failures are NOT memoized: a transient read error must not suppress the
+        # next attempt for a whole TTL window.
+        return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
+
+
 def _estimated_cost_savings(records: list[dict], repo_root: Path | None = None) -> dict:
     """Estimated_Cost_Savings — cost-per-task efficiency gain vs the prior week, priced
     at the target week's cost-bearing task volume.
@@ -1555,7 +1680,14 @@ def _estimated_cost_savings(records: list[dict], repo_root: Path | None = None) 
         comp1_savings = 0.0
         comp1_present = this_cpt is not None and prior_cpt is not None
         if comp1_present and (v2 or this_cpt < prior_cpt):
-            # Unfloored under v2: a rise in cost-per-task yields a NEGATIVE saving.
+            # SIGNED by design under v2 (default). The old guard also required
+            # `this_cpt < prior_cpt`, so the number could only ever be a gain or
+            # zero: a week that got MORE expensive per task reported the same $0
+            # as a week that held flat, and the hero could never show a
+            # regression that had actually happened. A figure that cannot go
+            # down is not a measurement. Negative now means a real
+            # cost-per-task regression. Unfloored under v2: a rise in
+            # cost-per-task yields a NEGATIVE saving.
             comp1_savings = (prior_cpt - this_cpt) * n_tasks
 
         # This metric is now the REAL cost-per-task saving only. The former
@@ -2304,9 +2436,18 @@ def _compaction_events(records: list[dict]) -> dict:  # noqa: ARG001
     recency ranks 93 and 254 — a 40-60 file recent-window, the house convention for
     high-frequency signals like cache reads, would silently miss BOTH and always
     read 0, which is worse than a small honest count). A cheap substring
-    pre-filter keeps the full scan fast (measured ~0.36s across 843 files on this
-    host), so the TTL cache exists only to dedupe repeat calls within one refresh,
-    not to bound cost.
+    pre-filter keeps the full scan fast, so the TTL cache exists only to dedupe
+    repeat calls within one refresh, not to bound cost.
+
+    The pre-filter runs over the WHOLE FILE AS BYTES, not per decoded line, and
+    that distinction is essentially this reducer's entire cost. The corpus is
+    append-only and unbounded: it grew from the 843 files / ~0.36s originally
+    recorded here to 2,440 files / 1.4 GB / 4.76s by 2026-08-16 — a 10x regression
+    with no code change, purely data growth. Decoding 1.4 GB of UTF-8 into lines to
+    find a string that occurs 5 times is the expensive part; `needle in blob` is one
+    C-level scan that skips almost every file whole, and only the few that match get
+    split and decoded. Measured on this host 2026-08-16: 4.76s -> 0.65s, identical
+    count. Keep the byte-level pre-filter if you touch this.
 
     A compaction event is a STRUCTURAL record: {"type": "system", "subtype":
     "compact_boundary", ...}. This must NOT be a substring/prose match — a naive
@@ -2327,22 +2468,28 @@ def _compaction_events(records: list[dict]) -> dict:  # noqa: ARG001
         _COMPACTION_CACHE.update(t=now, v=result)
         return result
     jsonls = list(projects_dir.rglob("*.jsonl"))
+    needle = b'"compact_boundary"'
     count = 0
     for jl in jsonls:
         try:
-            with open(jl, encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    if '"compact_boundary"' not in line:  # cheap pre-filter before json.loads
-                        continue
-                    try:
-                        entry = json.loads(line)
-                    except Exception:
-                        continue
-                    if (isinstance(entry, dict) and entry.get("type") == "system"
-                            and entry.get("subtype") == "compact_boundary"):
-                        count += 1
+            with open(jl, "rb") as f:
+                blob = f.read()
         except OSError:
             continue
+        if needle not in blob:
+            # One C-level scan rejects the whole file. The vast majority of the
+            # corpus exits here without ever being decoded or split.
+            continue
+        for raw in blob.split(b"\n"):
+            if needle not in raw:
+                continue
+            try:
+                entry = json.loads(raw.decode("utf-8", errors="ignore"))
+            except Exception:
+                continue
+            if (isinstance(entry, dict) and entry.get("type") == "system"
+                    and entry.get("subtype") == "compact_boundary"):
+                count += 1
     result = {"val": count, "calibrated": True,
               "detail": f"{count} compact_boundary event(s) across {len(jsonls)} scanned transcripts"}
     _COMPACTION_CACHE.update(t=now, v=result)
@@ -2454,6 +2601,7 @@ REGISTRY: list[tuple[str, str, str, Callable | None, str, bool, bool]] = [
     ("brush", "Token Efficiency", "Compaction_Events", _compaction_events, "AUTO", False, True),
     ("brush", "Code Health", "Revision_Ratio", r_revision_ratio, "DERIVED", True, False),
     ("brush", "Code Health", "Dead_Rule_Count", _dead_rule_count, "AUTO", False, True),
+    ("brush", "Code Health", "Unbounded_Wait_Count", _unbounded_wait_count, "AUTO", False, True),
     ("brush", "Orchestration", "Subagent_Efficiency_Index", _subagent_efficiency_index, "DERIVED", False, False),
     ("brush", "Orchestration", "MCP_vs_CLI_Ratio", r_mcp_vs_cli, "DERIVED", True, False),
     ("brush", "Architecture", "Architecture_Scorecard_Grade", None, "AUTO", False, False),
@@ -2595,28 +2743,13 @@ def derive_verifier_metrics(results: list[dict]) -> dict:
     }
 
 
-_SNAPSHOT_GLOBAL_REDUCERS = frozenset({
-    r_context_cliff_events, _kill_chains_disrupted, _kill_chains_open,
-    _mitigation_route_validity, _remediation_delta, _verifier_falsifiability,
-    _pending_chain_proposals, _lesson_graduation_rate, _cache_hit_rate,
-    r_skill_routing_adherence, r_governance_work_volume, _dead_rule_count,
-    _mean_time_to_heal, _compaction_events, _daemon_restart_count,
-})
-
-
 def build_pillars(records: list[dict], *, verifier_results: list[dict] | None = None,
                   orphan_count: int | None = None, secret_fails: int | None = None,
                   security_signals: dict | None = None,
-                  knowledge_signals: dict | None = None,
-                  shared_reducer_cache: dict[Callable, Any] | None = None) -> dict:
+                  knowledge_signals: dict | None = None) -> dict:
     pillars: dict[str, dict] = {p: {} for p in PILLARS}
     for pillar, group, key, fn, live_tier, is_pct, is_cnt in REGISTRY:
-        if fn and shared_reducer_cache is not None and fn in _SNAPSHOT_GLOBAL_REDUCERS:
-            if fn not in shared_reducer_cache:
-                shared_reducer_cache[fn] = fn(records)
-            val = shared_reducer_cache[fn]
-        else:
-            val = fn(records) if fn else None
+        val = fn(records) if fn else None
         # Tier honesty for dict reducers (audit S1): unwrap BEFORE the simulated
         # check. A dead-source reducer returning {"val": None} without an "error"
         # key must grade SIMULATED — never as a live metric, where _health(None)
@@ -2666,6 +2799,11 @@ def build_pillars(records: list[dict], *, verifier_results: list[dict] | None = 
             _set(pillars, "arts", "Knowledge", "Index_Drift", _env(k["index_drift"], "AUTO", is_count=True))
         if "knowledge_staleness_days" in k:
             _set(pillars, "arts", "Knowledge", "Knowledge_Staleness_Days", _env(k["knowledge_staleness_days"], "AUTO"))
+        # SOJI: vault link-integrity counts (Execution/soji_scan.py -> Data/soji/memory.findings.json)
+        if "soji_broken_links" in k:
+            _set(pillars, "arts", "Knowledge", "Soji_Broken_Links", _env(k["soji_broken_links"], "AUTO", is_count=True))
+        if "soji_orphan_notes" in k:
+            _set(pillars, "arts", "Knowledge", "Soji_Orphan_Notes", _env(k["soji_orphan_notes"], "AUTO", is_count=True))
 
     if security_signals:
         s = security_signals
@@ -2811,8 +2949,7 @@ def _norm(s: str) -> str:
 
 
 def build_project_scores(all_records: list[dict], proj_platform: dict[str, str],
-                         root: Path = _PROJECTS_ROOT,
-                         shared_reducer_cache: dict[Callable, Any] | None = None) -> dict:
+                         root: Path = _PROJECTS_ROOT) -> dict:
     """Roster the real project folders in Desktop/Projects, match each to telemetry
     (alias or normalized name match), and return its four itemized pillar scores."""
     by_tproj: dict[str, list] = {}
@@ -2842,7 +2979,7 @@ def build_project_scores(all_records: list[dict], proj_platform: dict[str, str],
                 recs.extend(rs)
                 plats[proj_platform.get(tp, "")] += len(rs)
         if recs:
-            pillars = build_pillars(recs, shared_reducer_cache=shared_reducer_cache)
+            pillars = build_pillars(recs)
             scores = insights.annotate(pillars)
             metrics: dict[str, float] = {}
             for groups in pillars.values():
@@ -2941,7 +3078,6 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
     all_verifier: list[dict] = []
     merged_sig: dict[str, int] = {}
     proj_platform: dict[str, str] = {}
-    shared_reducer_cache: dict[Callable, Any] = {}
     for p in platforms:
         recs = load_records(p)
         counts[p] = len(recs)
@@ -2967,15 +3103,11 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
                 merged_sig[k] = max(merged_sig[k], v) if k in merged_sig else v
             else:
                 merged_sig[k] = merged_sig.get(k, 0) + v
-        per_platform[p] = build_pillars(
-            recs, verifier_results=vres, security_signals=sig,
-            shared_reducer_cache=shared_reducer_cache)
+        per_platform[p] = build_pillars(recs, verifier_results=vres, security_signals=sig)
         # weekly radar: telemetry windowed to the current ISO week + current security/governance
         wrecs = [r for r in recs if iso_week(r.get("timestamp", "")) == this_week]
         week_counts[p] = len(wrecs)
-        per_platform_week[p] = build_pillars(
-            wrecs, verifier_results=vres, security_signals=sig,
-            shared_reducer_cache=shared_reducer_cache)
+        per_platform_week[p] = build_pillars(wrecs, verifier_results=vres, security_signals=sig)
         all_records.extend(recs)
         all_verifier.extend(vres)
         for r in recs:
@@ -2993,10 +3125,10 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
     windowed = [r for r in all_records if _within_days(r.get("timestamp", ""), window_days)]
     combined = build_pillars(windowed, verifier_results=all_verifier,
                              orphan_count=orphans, secret_fails=fails, security_signals=merged_sig,
-                             knowledge_signals=ksig, shared_reducer_cache=shared_reducer_cache)
+                             knowledge_signals=ksig)
     lifetime = build_pillars(all_records, verifier_results=all_verifier,
                              orphan_count=orphans, secret_fails=fails, security_signals=merged_sig,
-                             knowledge_signals=ksig, shared_reducer_cache=shared_reducer_cache)
+                             knowledge_signals=ksig)
     category_scores_lifetime = insights.annotate(lifetime)
 
     # analytical layer: scores, remediation, trend history, summaries.
@@ -3029,17 +3161,13 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
         if pr:
             proj_platform.setdefault(pr, "git")
     windowed_git = [r for r in git_recs if _within_days(r.get("timestamp", ""), window_days)]
-    by_project = build_project_scores(
-        windowed + windowed_git, proj_platform,
-        shared_reducer_cache=shared_reducer_cache)
+    by_project = build_project_scores(windowed + windowed_git, proj_platform)
 
     # per-tier pillar breakdown — telemetry-only (scouts are point-in-time, not tier-specific
     # so they are SIMULATED in tier views, which is honest).
     tier_names = sorted({r.get("model_tier") for r in windowed if r.get("model_tier")})
     by_tier: dict[str, dict] = {
-        tier: build_pillars(
-            [r for r in windowed if r.get("model_tier") == tier],
-            shared_reducer_cache=shared_reducer_cache)
+        tier: build_pillars([r for r in windowed if r.get("model_tier") == tier])
         for tier in tier_names
     }
     by_tier_scores: dict[str, dict] = {

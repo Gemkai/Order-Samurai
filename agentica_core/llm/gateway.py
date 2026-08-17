@@ -213,7 +213,7 @@ class LLMGateway:
         else:
             self.langfuse = None
 
-        self.default_tier = os.getenv("LLM_DEFAULT_TIER", "LOCAL").upper()
+        self.default_tier = os.getenv("LLM_DEFAULT_TIER", "PREMIUM").upper()
         self.local_enabled = (
             os.getenv("LOCAL_SAFETY_NET_ENABLED", "true").lower() == "true"
         )
@@ -890,11 +890,18 @@ class LLMGateway:
             # always pin num_ctx for long prompts — Ollama's default window
             # silently truncates from the front, which reads as model stupidity
             payload["options"]["num_ctx"] = int(kwargs["num_ctx"])
-        if "think" in kwargs:
-            # thinking builds (qwen3.6, gemma4:12b on this Ollama) burn the whole
-            # num_predict budget in `thinking` and return empty content unless
-            # thinking is disabled — the exact failure that killed the local tier
-            payload["think"] = bool(kwargs["think"])
+        # thinking builds (qwen3.6, gemma4:12b on this Ollama) burn the whole
+        # num_predict budget in `thinking` and return empty content unless
+        # thinking is disabled — the exact failure that killed the local tier.
+        #
+        # Defaults to False, and thinking must be opted INTO (2026-08-16 audit).
+        # Previously the key was only sent when a caller passed `think`, and the
+        # public facade call_routed_llm/call_llm has a fixed signature with no
+        # `think` parameter — so NO facade caller could disable it. task="analysis"
+        # routes to qwen3.6:35b, which then returns empty content, and
+        # extract_message_text falls back to the `thinking` field, handing the
+        # caller the model's chain-of-thought as if it were the answer.
+        payload["think"] = bool(kwargs.get("think", False))
         if kwargs.get("response_schema"):
             payload["format"] = "json"
 

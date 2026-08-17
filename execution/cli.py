@@ -7,14 +7,18 @@ could adopt. ``order-samurai audit`` runs the repo-policy verifiers headless and
 any of them FAIL.
 
 Scope: the POLICY families only -- the verifiers that judge the repository. The runtime-health
-families (telemetry freshness, local-LLM liveness, daemon state, exec-chain integrity) are
-deliberately excluded: they describe a live workstation, and in a clean CI checkout they would fail
-for reasons that say nothing about the code under review. A gate that cries wolf gets disabled, and
-a disabled gate protects nothing. Runtime health remains ``doctor``'s job -- run
+families (live-source payloads, telemetry freshness, local-LLM liveness, daemon state, exec-chain
+integrity) are deliberately excluded: they describe a live workstation, and in a clean CI checkout
+they would fail for reasons that say nothing about the code under review. A gate that cries wolf
+gets disabled, and a disabled gate protects nothing. Runtime health remains ``doctor``'s job -- run
 ``python3 execution/doctor.py`` for that.
 
 Every check family here already exposes ``run_checks()`` and ``summarize()``; this module composes
 them and owns no verification logic of its own.
+
+Requires a checkout. The verifiers enforce the contracts in ``config/``, which ``pip install`` does
+not ship, so ``audit`` refuses (exit 2) rather than reporting on its own install directory. See
+``policy_contracts_unavailable()`` for why refusing beats the obvious alternative.
 """
 from __future__ import annotations
 
@@ -30,12 +34,16 @@ if str(_ROOT) not in sys.path:
 
 from execution import verify_agentica_root_hygiene  # noqa: E402
 from execution import verify_archive_boundaries  # noqa: E402
-from execution import verify_live_sources  # noqa: E402
 from execution import verify_no_stale_paths  # noqa: E402
 from execution import verify_path_authority  # noqa: E402
 from execution import verify_root_hygiene  # noqa: E402
+from execution.runtime_paths import ROOT_HYGIENE_POLICY_PATH  # noqa: E402
 
-__version__ = "1.0.1"  # canonical source: pyproject.toml [project].version
+__version__ = "0.1.0"
+
+#: What makes a directory an Order Samurai pack: it carries the policy contracts.
+#: Used only to locate a checkout for the operator message -- never to import from.
+_PACK_MARKER = Path("config") / "root_hygiene_policy.json"
 
 # (label, module). Order is presentation only -- every family runs regardless of earlier failures,
 # because a pipeline that reports one problem per push wastes a round trip per problem.
@@ -45,12 +53,72 @@ POLICY_FAMILIES = [
     ("root-hygiene", verify_root_hygiene),
     ("agentica-root-hygiene", verify_agentica_root_hygiene),
     ("archive-boundaries", verify_archive_boundaries),
-    ("live-sources", verify_live_sources),
 ]
 
 _EXIT_OK = 0
 _EXIT_FINDINGS = 1
 _EXIT_ERROR = 2
+
+
+def find_pack_root(start: Path | None = None) -> Path | None:
+    """Nearest ancestor of `start` (default: cwd) carrying the policy contracts.
+
+    Locates a checkout so the operator message can name it. Deliberately NOT used
+    to add that directory to sys.path: importing verifier code from a directory
+    chosen by the working directory would hand code execution to whoever controls
+    the tree you happen to be standing in, which is not a trade a governance tool
+    should make to save a `cd`.
+    """
+    here = (start or Path.cwd()).resolve()
+    for candidate in (here, *here.parents):
+        if (candidate / _PACK_MARKER).is_file():
+            return candidate
+    return None
+
+
+def policy_contracts_unavailable() -> str | None:
+    """None when the verifiers can see their policy; else the operator message.
+
+    `pip install` ships only the `execution` and `agentica_core` packages, so an
+    installed console script resolves REPO_ROOT to site-packages, where config/
+    does not exist. Every policy family then reports its contract "missing" and
+    the run exits 1 -- a verdict on the tool's own install directory, dressed as a
+    verdict on a repository.
+
+    Refusing is not conservatism; the alternative is measurably worse. Copying
+    config/ into site-packages (the obvious "fix") clears those FAILs and makes
+    path-authority report OK across "the Governance code surface" while actually
+    scanning site-packages and silently skipping two of its five declared scan
+    paths, which do not ship. A false clean bill of health from a security tool is
+    the one output worse than no output.
+
+    NOTE for whoever ships config/ as package data: this guard only asks whether
+    the policy is visible. It stops protecting the moment config/ is packaged, so
+    that change MUST land together with target resolution (auditing the repository
+    the operator means, not the install directory) -- never before it.
+    """
+    if ROOT_HYGIENE_POLICY_PATH.is_file():
+        return None
+
+    lines = [
+        "order-samurai: cannot audit -- the policy contracts are not present at",
+        f"  {ROOT_HYGIENE_POLICY_PATH.parent}",
+        "",
+        "The installed package ships the verifiers but not the config/ contracts",
+        "they enforce, so this command can only describe its own install directory.",
+        "Run the audit from an Order Samurai checkout instead:",
+    ]
+    found = find_pack_root()
+    if found is not None:
+        lines += ["", f'  cd "{found}" && python3 -m execution.cli audit']
+    else:
+        lines += [
+            "",
+            "  cd <order-samurai-checkout> && python3 -m execution.cli audit",
+            "",
+            "No checkout was found above the current directory.",
+        ]
+    return "\n".join(lines)
 
 
 def _result_label(result: dict) -> str:
@@ -135,6 +203,13 @@ def run_audit(argv: list[str]) -> int:
     parser.add_argument("--quiet", action="store_true", help="print only FAIL lines and the summary")
     args = parser.parse_args(argv)
 
+    # Before any verdict: a run that cannot see its policy must say so and stop,
+    # not print a summary about wherever it happens to be installed.
+    unavailable = policy_contracts_unavailable()
+    if unavailable is not None:
+        print(unavailable, file=sys.stderr)
+        return _EXIT_ERROR
+
     results, counts = collect()
 
     if args.format == "json":
@@ -167,6 +242,9 @@ def main(argv: list[str] | None = None) -> int:
         print("commands:")
         print("  audit     run the repo-policy verifiers; exit non-zero on any FAIL")
         print("  version   print the installed version")
+        print()
+        print("Run audit from an Order Samurai checkout: it enforces the contracts in")
+        print("config/, which the installed package does not ship.")
         print()
         print("For workstation runtime health (daemons, telemetry, local LLM), run:")
         print("  python3 execution/doctor.py")

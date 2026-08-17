@@ -22,6 +22,7 @@
   ],
   "state": [
    ".claude",
+   ".codex",
    ".mex",
    ".omc",
    ".pytest_cache",
@@ -55,6 +56,7 @@
    "PLAN-worktree-isolation.md",
    "PLAN.md",
    "PROJECT.md",
+   "README.md",
    "RONIN-DETERMINIZATION-PLAN.md",
    "RONIN-MECHANISM-ROUTE-DRAFT.md",
    "RONIN-MECHANISM-ROUTE-PLAN.md",
@@ -77,6 +79,11 @@
   "PROJECT.md",
   "RONIN_SPEC.md"
  ],
+ "baselineRequiredDirectories": [
+  "config",
+  "execution"
+ ],
+ "baselineRequiredFiles": [],
  "boundaryRules": [
   {
    "name": "archive-isolation",

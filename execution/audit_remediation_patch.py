@@ -7,15 +7,7 @@ import re
 from pathlib import Path
 
 # Ensure Governance directory is on sys.path so we can import agentica_core
-def _resolve_gov_root():
-    if os.environ.get("GOVERNANCE_ROOT"):
-        return os.environ["GOVERNANCE_ROOT"]
-    p1 = Path(__file__).resolve().parents[1]
-    if (p1 / "agentica_core").exists():
-        return str(p1)
-    return str(Path(__file__).resolve().parents[2])
-
-GOV_ROOT = _resolve_gov_root()
+GOV_ROOT = os.environ.get("GOVERNANCE_ROOT") or str(Path(__file__).resolve().parents[2])
 if GOV_ROOT not in sys.path:
     sys.path.insert(0, GOV_ROOT)
 
@@ -176,6 +168,16 @@ PROTECTED_PATH_PATTERNS = [
     re.compile(r"^Governance/api/src/"),          # the reflex engine + server + state
     re.compile(r"^Governance/Order Samurai/state/"),  # runtime + governance-control state (hitl_queue, skill_metadata, verdicts)
     re.compile(r"^Governance/Order Samurai/harness/"),  # declared editable-surface control plane
+    # 2026-08-16 audit: these two were the gap this list's own rationale describes.
+    # config/ holds the executable policy contracts (root_hygiene_policy.json et al)
+    # and execution/ holds the verify_*.py verifiers doctor.py aggregates — both are
+    # live grading inputs. Only audit_remediation_patch.py itself was protected inside
+    # execution/, so a reflex firing on e.g. metric:brush:Root_Hygiene_Issues could
+    # emit a patch deleting the failing rule from its own policy, or edit the verifier
+    # to stop emitting the FAIL that gates it, and the metric would go green without
+    # the underlying condition changing.
+    re.compile(r"^Governance/Order Samurai/config/"),  # executable policy contracts
+    re.compile(r"^Governance/Order Samurai/execution/"),  # the verifiers that grade the patch
     re.compile(r"^Governance/schema/"),           # the wid_payload contract
     re.compile(r"(^|/)\.github/"),                 # CI / workflows
     re.compile(r"(^|/)hooks/"),                    # any hooks dir
@@ -255,8 +257,21 @@ def check_path_scope(patch_content: str) -> list[str]:
             continue
         if path in REMEDIABLE_BIN_ALLOWLIST:
             continue  # explicitly ratified remediation target — see that list's rationale
+        # git apply (no -p flag) defaults to -p1: it strips exactly ONE
+        # leading path component from a --- / +++ header, regardless of its
+        # literal name. _patch_target_paths only strips the literal "a/"/
+        # "b/" git-diff convention, so a patch generated with e.g.
+        # --src-prefix=x/ --dst-prefix=y/ still names "y/Governance/api/
+        # src/reflex-engine.ts" here while the real `git apply` call in
+        # reflex-engine.ts strips "y/" and writes to "Governance/api/src/
+        # reflex-engine.ts" — bypassing every ^-anchored protected pattern.
+        # Evaluate both the as-given path and the one-component-stripped
+        # variant so an unconventional prefix can't hide the real target.
+        candidates = {path}
+        if "/" in path:
+            candidates.add(path.split("/", 1)[1])
         for pat in PROTECTED_PATH_PATTERNS:
-            if pat.search(path):
+            if any(pat.search(c) for c in candidates):
                 failures.append(
                     f"Patch touches a protected control-plane path: {path} "
                     f"(if this is a legitimate remediation target, add it to "
@@ -367,8 +382,12 @@ Evaluate if it violates any items in the Security Checklist. Output your audit r
             cleaned = match.group(1)
         
         result = json.loads(cleaned)
-        
-        approved = result.get("approved", False)
+
+        # response_schema only declares "approved" as a required key, not its
+        # JSON type -- a stringified "false" (or "no", or a non-empty list)
+        # is truthy in Python and must not be treated as approval. Only the
+        # real boolean True passes.
+        approved = result.get("approved") is True
         failures = result.get("failures", [])
         reason = result.get("reason", "No reason provided.")
 

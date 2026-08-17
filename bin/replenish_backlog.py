@@ -7,10 +7,12 @@ keyword density, and proposes the top 5 into PROPOSED_BACKLOG.json.
 """
 
 import argparse
+import contextlib
 import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,6 +24,74 @@ METRICS_MD = PROJECT_ROOT / "Research" / "METRICS.md"   # read-only source doc �
 _STATE_DIR = Path(os.environ["MEDITATION_STATE_DIR"]) if os.environ.get("MEDITATION_STATE_DIR") else PROJECT_ROOT / "state"
 MEDITATION_STATE = _STATE_DIR / "MEDITATION_STATE.json"
 PROPOSED_BACKLOG = _STATE_DIR / "PROPOSED_BACKLOG.json"
+# TWIN of the lock in Governance/bin/sensei_writeback.py, which writes this SAME file.
+# Duplicated rather than imported on purpose: Order Samurai ships as a standalone
+# package (pyproject packages = execution + agentica_core) and Governance/bin is not
+# part of it, so an import would break the export pack.
+#
+# The MECHANISM must match the other holder exactly — os.mkdir, not flock. Both
+# conventions want the same `<name>.lock` path, and a directory-lock and a file-lock
+# on one path do not exclude each other, they just fail differently. Deriving the
+# sidecar the same way (`.with_name(name + ".lock")`) is what makes the two agree.
+# (2026-08-16 audit, P2 — before this, replenish's plain write_text could silently
+# discard items sensei_writeback had just added, and vice versa.)
+BACKLOG_LOCK = PROPOSED_BACKLOG.with_name(PROPOSED_BACKLOG.name + ".lock")
+LOCK_WAIT_S = float(os.environ.get("SENSEI_LOCK_WAIT_S", "10"))
+LOCK_STALE_S = float(os.environ.get("SENSEI_LOCK_STALE_S", "300"))
+
+
+@contextlib.contextmanager
+def backlog_lock():
+    """Hold the shared PROPOSED_BACKLOG lock for one load-mutate-write cycle.
+
+    Wraps the WHOLE cycle: locking only the write still lets two runs read the same
+    snapshot and clobber each other. Waiting past LOCK_WAIT_S raises rather than
+    proceeding unlocked — proceeding is the bug this exists to prevent. A holder that
+    dies mid-write would otherwise deadlock the mechanism forever, so a lock older
+    than LOCK_STALE_S is reclaimed.
+    """
+    deadline = time.monotonic() + LOCK_WAIT_S
+    while True:
+        try:
+            os.mkdir(BACKLOG_LOCK)
+            break
+        except FileExistsError:
+            try:
+                age = time.time() - os.stat(BACKLOG_LOCK).st_mtime
+            except FileNotFoundError:
+                continue            # holder released between our mkdir and our stat
+            if age > LOCK_STALE_S:
+                with contextlib.suppress(OSError):
+                    os.rmdir(BACKLOG_LOCK)
+                continue
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"backlog lock {BACKLOG_LOCK.name} held {age:.1f}s by another writer; "
+                    f"gave up after {LOCK_WAIT_S}s rather than risk losing entries")
+            time.sleep(0.05)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            os.rmdir(BACKLOG_LOCK)
+
+
+def write_proposed_atomic(payload: dict) -> None:
+    """Write via a per-process temp + os.replace.
+
+    A plain write_text is not atomic: a reader hitting it mid-write (bin/ronin status,
+    hitl_alerts.load_backlog_summary, the /goal night sweep, which treats this file as
+    its work queue) sees truncated JSON. A fixed `<name>.tmp` would be a shared mutable
+    file, so the temp name carries the pid.
+    """
+    tmp = PROPOSED_BACKLOG.with_name(f"{PROPOSED_BACKLOG.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, PROPOSED_BACKLOG)
+    except Exception:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        raise
 
 SCORE_KEYWORDS = {"security", "token", "cost", "error", "latency", "drift"}
 
@@ -245,29 +315,31 @@ def main():
         sys.exit(1)
 
     existing_titles = load_existing_titles()
-    proposed = load_proposed()
-    existing_proposed = proposed.get("items", [])
 
-    candidates = parse_candidates(existing_titles)
-    new_items = build_items(candidates, existing_proposed, args.auto_approve)
+    # The lock spans the READ as well as the write. Governance/bin/sensei_writeback.py
+    # appends escalated stuck reflexes to this same file under the same lock; locking
+    # only the write would still let both runs read one snapshot and have the later
+    # write_text silently discard the other's items. (2026-08-16 audit, P2.)
+    with backlog_lock():
+        proposed = load_proposed()
+        existing_proposed = proposed.get("items", [])
 
-    if not new_items:
-        print("Proposed 0 items. Backlog is fully covered or no new candidates found.")
-        return
+        candidates = parse_candidates(existing_titles)
+        new_items = build_items(candidates, existing_proposed, args.auto_approve)
 
-    if args.dry_run:
-        print(f"Dry run — would propose {len(new_items)} item(s):")
-        for item in new_items:
-            print(f"  [{item['id']}] ({item['pillar']}/{item['kind']}) {item['title']}  value={item['value']}")
-        return
+        if not new_items:
+            print("Proposed 0 items. Backlog is fully covered or no new candidates found.")
+            return
 
-    proposed["items"] = existing_proposed + new_items
-    proposed["generated_at"] = datetime.now(timezone.utc).isoformat()
+        if args.dry_run:
+            print(f"Dry run — would propose {len(new_items)} item(s):")
+            for item in new_items:
+                print(f"  [{item['id']}] ({item['pillar']}/{item['kind']}) {item['title']}  value={item['value']}")
+            return
 
-    PROPOSED_BACKLOG.write_text(
-        json.dumps(proposed, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+        proposed["items"] = existing_proposed + new_items
+        proposed["generated_at"] = datetime.now(timezone.utc).isoformat()
+        write_proposed_atomic(proposed)
 
     print(f"Proposed {len(new_items)} items. Review: bin/ronin propose")
     for item in new_items:

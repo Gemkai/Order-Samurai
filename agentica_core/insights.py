@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 _THIS = Path(__file__).resolve()
@@ -111,7 +112,12 @@ METRIC_CONFIG: dict[str, dict] = {
     # shrinks pip_outdated); the codebase-cleanup mechanism reflex was audit_only
     # and stuck 0/8 — killed. When dependency_audit.json returns (S3), grade the
     # CVE subset (Open_CVEs) rather than this raw outdated count.
-    "Deprecated_Deps":          {"skill": "pip-safe-upgrade",             "command": "/pip-safe-upgrade",                    "dir": "lower",  "warn": 20,    "fail": 120, "weight": 1.0},
+    # mechanism re-measures via a dry-run plan only (no --apply) -- same read-only
+    # convention as the other mechanism-backed metrics; actually applying an
+    # upgrade stays a human/skill action via /pip-safe-upgrade. timeout_s raised
+    # to 180 (vs the usual 120) because pip's --dry-run install hits the real
+    # package index per candidate, slower than the other mechanisms' local scans.
+    "Deprecated_Deps":          {"skill": "pip-safe-upgrade",             "command": "/pip-safe-upgrade",                    "dir": "lower",  "warn": 20,    "fail": 120, "weight": 1.0, "mechanism": {"script": "pip_safe_upgrade.py", "args": ["--tiers", "cve,security", "--json"], "read_only": True, "timeout_s": 180}},
     "Governance_Review_Findings": {"skill": "governance-review",          "command": "/governance-review",                   "dir": "lower",  "warn": 3,     "fail": 8, "weight": 2.0},
     # Graded successor of Kill_Chains_Detected (2026-07-08 audit consolidation):
     # open exposure = detected − disrupted this week. Advisory — /guard reviews
@@ -170,6 +176,15 @@ METRIC_CONFIG: dict[str, dict] = {
     # the surface that shows and re-checks them (METRIC_DOCS already said so).
     "Hardcoded_Path_Incidents": {"skill": "doctor",                       "command": "/doctor",                              "dir": "lower",  "warn": 1,     "fail": 5, "weight": 1.0},
     "Root_Hygiene_Issues":      {"skill": "doctor",                       "command": "/doctor",                              "dir": "lower",  "warn": 1,     "fail": 4, "weight": 1.0},
+    # Unbounded_Wait_Count (2026-08-04, metric-gap remediation, phase D2): runtime code
+    # sites that can block forever -- `while`+`sleep` with no deadline, or a remote /
+    # subprocess call with no `timeout=`. Instruments Core Principle #8, which until now
+    # was honor-system with no reading at all. Advisory, not auto-fire: choosing a correct
+    # timeout is a judgment call, so /timeout-audit reviews and a human sets the value.
+    # warn=1 is deliberately tight rather than a loose day-one placeholder -- Principle #8
+    # admits no exceptions, and a measured baseline of 0 makes first-violation warning
+    # affordable. Re-check this if the baseline ever moves off 0.
+    "Unbounded_Wait_Count":     {"skill": "timeout-audit",                "command": "/timeout-audit",                       "dir": "lower",  "warn": 1,     "fail": 3, "readonly": True, "auto_remediable": False, "maturity": "OBSERVE", "weight": 2.0},
     "Architecture_Scorecard_Grade": {"skill": "runtime-refactor-hardening", "command": "/runtime-refactor-hardening",        "dir": "higher", "warn": 85,    "fail": 70, "weight": 3.0},
     # Arts — craft & UX
     # Output-quality tool-use triad (llm-judged; values from bin/tool_quality_scout.py via
@@ -226,6 +241,11 @@ METRIC_CONFIG: dict[str, dict] = {
     # Thresholds mirror verify_knowledge.py constants — change both together.
     "OKF_Conformance":          {"skill": "wiki",                         "command": "python3 Knowledge/okf/okf_tools.py validate Knowledge/vault --list 20", "dir": "higher", "warn": 95, "fail": 80, "auto_remediable": False, "weight": 1.0},  # validate lists offenders; fixing frontmatter is editorial
     "Orphan_Concepts":          {},  # informational until a baseline exists — threshold once history accumulates
+    # SOJI: vault link-integrity scanner (scouts.knowledge_signals reads Data/soji/memory.findings.json,
+    # written by Execution/soji_scan.py, scheduled as com.agentica.soji-cycle). DETECT-ONLY findings —
+    # informational until a baseline exists, same as Orphan_Concepts above.
+    "Soji_Broken_Links":        {},
+    "Soji_Orphan_Notes":        {},
     # DEMOTE 2026-07-19 (Part C): consolidate-memory is 0/12 lifetime — advisory
     # for both metrics it maps to until it demonstrates efficacy.
     "Archive_Ratio":            {"skill": "consolidate-memory",           "command": "/consolidate-memory",                  "dir": "lower",  "warn": 75,    "fail": 90, "weight": 0.5, "auto_remediable": False},
@@ -342,7 +362,8 @@ def remediation_kind(command, *, readonly, auto_remediable, explicit_kind=None):
     """
     if explicit_kind:
         return explicit_kind
-    skill = (command or "").lstrip("/").split()[0] if command else ""
+    words = (command or "").lstrip("/").split()
+    skill = words[0] if words else ""
     if skill in SESSION_HYGIENE_SKILLS:
         return "session_hygiene"
     if readonly or auto_remediable is False:
@@ -711,9 +732,17 @@ def _24h_clause(pk: str, store: Path) -> str:
     if store.exists():
         for ln in store.read_text(encoding="utf-8", errors="ignore").splitlines():
             try:
-                rows.append(json.loads(ln))
+                row = json.loads(ln)
             except ValueError:
-                pass
+                continue
+            # backfill_history's kind:"weekly" rows aggregate one ISO week — a
+            # different population from append_snapshot's 30-day-window live rows
+            # (see _get_prior_week_val, which skips live rows for the mirror
+            # reason). Comparing across them fabricates "24h" movers the size of
+            # the window difference; only live (or legacy un-kinded) rows may
+            # serve as a 24h baseline or recent point.
+            if isinstance(row, dict) and row.get("kind") != "weekly":
+                rows.append(row)
     if len(rows) < 2:
         return ""
 
@@ -1031,6 +1060,57 @@ def default_history_path() -> Path:
     return _THIS.parents[2] / "Data" / "telemetry" / "metrics_history.jsonl"
 
 
+def _comparable_history_rows(rows: list[dict]) -> list[dict]:
+    """The subset of history rows that form ONE comparable population.
+
+    The store holds three different populations, and every series statistic
+    (σ-anomaly, delta/trend, trajectory regression, the dashboard sparkline) is
+    meaningless across them. Measured live 2026-08-17, ISO W34 weekday 1:
+
+        kind=weekly  W33   Frustration_Signals 382   Session_Count 1133   <- complete week
+        kind=weekly  W34   Frustration_Signals  24   Session_Count   49   <- PARTIAL, 1 day in
+        kind=live    W34   Frustration_Signals 985   Session_Count 4387   <- 30-DAY window
+
+    Comparing a 30-day total against a series of one-week totals makes every raw-sum
+    metric sit permanently ~2σ "high" — a standing false-alarm generator, not a
+    behavioural signal. reflexes._sigma_tier applies no population check of its own;
+    it trusts whatever series it is handed, so the filtering has to happen here.
+
+    The series must match the population of the value populate_history appends to it,
+    which is the payload's LIVE 30-day reading. So keep `kind == "live"` rows and drop
+    `kind == "weekly"` ones: two consecutive 30-day snapshots are comparable, a 30-day
+    total against a one-week total is not. The weekly rows remain in the store and
+    remain the backfill's business — they are simply not a baseline for this value.
+
+    Consequence, deliberate: the live store retains one live row (the rubric pins
+    max_live_rows=1), so the series is 2 points — the previous 30-day snapshot plus
+    this one. Delta and trend stay correct (30-day vs 30-day). reflexes._sigma_tier
+    needs 4 points and the trajectory regression needs 3, so both stop firing on the
+    live payload — correctly, because there was never a valid same-population baseline
+    to compare against. That removes the false alarms rather than replacing them with
+    different ones. The cost is a shorter dashboard sparkline; the alternative (keep
+    the weekly points for DISPLAY and carry a separate comparison series for the
+    maths) needs a payload-schema change and is recorded in the handoff rather than
+    smuggled in here.
+
+    There is deliberately NO "skip the in-progress period" rule. That hazard belongs
+    to weekly rows, where the current ISO week is a partial sum that reads as a
+    collapse — and weekly rows are already excluded above. A live row is always a full
+    30-day window, never partial, so excluding the newest one would leave a 1-point
+    series and silently drop delta, trend and the sparkline for every metric.
+
+    Rows with NO `kind` are KEPT: a legacy row written before the field existed, or a
+    synthetic store built by a test, is one homogeneous series by construction, and
+    dropping it would silently empty the history rather than fix it. Anything with an
+    unrecognised `kind` (a future "daily", "hourly", …) is excluded — an unknown
+    window is precisely the thing that must not be averaged in.
+
+    (2026-08-16 audit, P2 CONFIRMED; also logged as T2 in
+    artifacts/overnight_bug_sweep_report_2026-08-11T0305Z.md and never fixed.)
+    """
+    return [r for r in rows if isinstance(r, dict) and r.get("kind") in (None, "live")]
+
+
 def populate_history(pillars: dict, store: Path | None = None, max_points: int = 7) -> dict:
     """Read prior snapshots and set each metric's history[]/delta/trend.
     Returns the current snapshot dict (caller persists it via append_snapshot)."""
@@ -1042,7 +1122,9 @@ def populate_history(pillars: dict, store: Path | None = None, max_points: int =
                 rows.append(json.loads(ln))
             except ValueError:
                 pass
-    rows = rows[-(max_points - 1):]
+    rows = _comparable_history_rows(rows)[-max_points:]
+    # Rows are now population-matched to the value appended below, so it always
+    # belongs at the end of the series.
 
     # Per-metric history + delta
     current: dict[str, float] = {}
@@ -1055,10 +1137,20 @@ def populate_history(pillars: dict, store: Path | None = None, max_points: int =
                 key = f"{pk}/{gname}/{mk}"
                 current[key] = v
                 hist = [r["values"][key] for r in rows if key in r.get("values", {})]
+                # `v` is the payload's 30-day window, and _comparable_history_rows has
+                # already restricted `rows` to that same population, so appending it is
+                # sound. The defect this fixes was appending it to a base of one-week
+                # totals: σ then compared a 30-day sum against weekly sums and every
+                # raw-sum metric read ~2σ "high" forever. When the store is unlabelled
+                # (legacy rows, or a synthetic series in a test) it is one population by
+                # construction and `v` is its newest point, so the long-standing
+                # behaviour — including the trajectory regression that is designed to
+                # project from the CURRENT value — is preserved exactly.
                 hist = hist + [v]
                 env["history"] = hist[-max_points:]
                 if len(env["history"]) >= 2:
-                    delta = round(v - env["history"][-2], 2)
+                    # Both sides of the delta now come from the same population.
+                    delta = round(env["history"][-1] - env["history"][-2], 2)
                     env["delta"] = ("+" if delta >= 0 else "") + str(delta)
                     env["trend"] = "up" if delta > 0 else ("down" if delta < 0 else "neutral")
 

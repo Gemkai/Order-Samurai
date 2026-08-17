@@ -59,6 +59,35 @@ class VerifyPathAuthorityTests(unittest.TestCase):
 
         self.assertEqual(offenders, ["execution/bad.py"])
 
+    def test_scan_covers_ts_shell_and_extensionless_code_files(self) -> None:
+        # LIVE_SCAN_PATHS deliberately includes api/src (TypeScript reflex
+        # engine) and bin/ (shell + extensionless operational scripts). A
+        # suffix filter that only admits .py-family text silently skips them
+        # — the verifier printed an all-clear over files it never opened.
+        sandbox = REPO_ROOT / ".tmp" / "test_verify_path_authority" / self._testMethodName
+        api_src = sandbox / "api" / "src"
+        bin_dir = sandbox / "bin"
+        api_src.mkdir(parents=True, exist_ok=True)
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        literal = "C:/Users/example/Desktop/Projects/Order Samurai"
+        (api_src / "engine.ts").write_text(
+            f'const ROOT = "{literal}";\n', encoding="utf-8")
+        (bin_dir / "runner.sh").write_text(
+            f'ROOT="{literal}"\n', encoding="utf-8")
+        (bin_dir / "ronin-probe").write_text(
+            f'#!/usr/bin/env bash\nROOT="{literal}"\n', encoding="utf-8")
+
+        offenders = scan_hardcoded_path_literals(
+            scan_paths=[api_src, bin_dir],
+            path_literals=(literal,),
+            base_root=sandbox,
+        )
+
+        self.assertEqual(
+            offenders,
+            ["api/src/engine.ts", "bin/ronin-probe", "bin/runner.sh"],
+        )
+
     def test_scan_hardcoded_path_literals_ignores_clean_file(self) -> None:
         sandbox = REPO_ROOT / ".tmp" / "test_verify_path_authority" / self._testMethodName
         live_root = sandbox / "execution"

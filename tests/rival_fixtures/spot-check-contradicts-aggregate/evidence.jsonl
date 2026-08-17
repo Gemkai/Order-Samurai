@@ -1,0 +1,11 @@
+{"call_id": "c1", "ms": 288}
+{"call_id": "c2", "ms": 412}
+{"call_id": "c3", "ms": 355}
+{"call_id": "c4", "ms": 301}
+{"call_id": "c5", "ms": 268}
+{"call_id": "c6", "ms": 394}
+{"call_id": "c7", "ms": 322}
+{"call_id": "c8", "ms": 419}
+{"call_id": "c9", "ms": 287}
+{"call_id": "c10", "ms": 341}
+{"aggregate": "p95_ms", "value": 980, "note": "precomputed rollup row"}

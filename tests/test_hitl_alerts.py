@@ -24,6 +24,17 @@ _SPEC.loader.exec_module(hitl_alerts)
 FIXED_NOW = datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def _no_real_keychain(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_resend_key() falls back to the macOS Keychain (2026-08-16 M1). Without this,
+    any test that deletes RESEND_API_KEY from the env resolves the REAL key and hits
+    the live Resend API (observed: real 403 from api.resend.com in a dry-run test).
+    Tests that exercise the fallback override sys.modules['secret_env'] themselves."""
+    monkeypatch.setitem(
+        sys.modules, "secret_env", SimpleNamespace(lookup=lambda name: None)
+    )
+
+
 @pytest.fixture
 def isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Path]:
     queue = tmp_path / "hitl_queue.json"
@@ -220,6 +231,24 @@ def test_resend_requires_a_confirmed_message_id(
 
     monkeypatch.setattr(urllib.request, "urlopen", lambda *args, **kwargs: _ResendResponse(body))
     assert hitl_alerts._send_resend("subject", "body", "owner@example.test", "key") is expected
+
+
+def test_resend_request_carries_a_non_default_user_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """2026-08-17: Cloudflare in front of api.resend.com blocks Python's default
+    urllib User-Agent (error 1010) before Resend's own auth ever runs, which
+    masqueraded as a plain 403 regardless of key validity."""
+    import urllib.request
+
+    captured: dict = {}
+
+    def fake_urlopen(req, *args, **kwargs):
+        captured["user_agent"] = req.get_header("User-agent")
+        return _ResendResponse({"id": "email-123"})
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    hitl_alerts._send_resend("subject", "body", "owner@example.test", "key")
+    assert captured["user_agent"]
+    assert "python-urllib" not in captured["user_agent"].lower()
 
 
 # ── pending-patch surfacing (propose-only lane consumers, 2026-08-08) ────────
@@ -484,11 +513,14 @@ def test_lag_alarm_kill_switch(isolated, monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def _plant_fleet_probe(
-    tmp_path: Path, failing: list[str] | None = None, unreachable: list[str] | None = None
+    tmp_path: Path,
+    failing: list[str] | None = None,
+    unreachable: list[str] | None = None,
+    generated_at: str = "2026-08-02T11:55:00+00:00",  # 5min before FIXED_NOW -- fresh
 ) -> None:
     (tmp_path / "fleet_probe.json").write_text(
         json.dumps({
-            "generated_at": "2026-08-02T11:55:00+00:00",
+            "generated_at": generated_at,
             "failing_jobs": failing or [],
             "unreachable_services": unreachable or [],
         }),
@@ -598,6 +630,53 @@ def test_fleet_banner_stays_quiet_when_probe_has_not_run(
 
     assert hitl_alerts.do_notify() == 0
     assert not any("fleet health" in a for c in calls for a in c)
+
+
+def test_stale_probe_banner_fires_even_when_failing_set_is_empty(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A crashed prober freezes on its last snapshot -- which can be a CLEAN one. The
+    staleness alarm must not be gated behind a non-empty failing/unreachable set, or a
+    prober that dies right after a healthy read goes silently unnoticed forever."""
+    queue, state = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    _plant_fleet_probe(tmp_path, generated_at="2026-08-02T08:00:00+00:00")  # 4h stale, clean
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    stale_calls = [c for c in calls if any("fleet probe is STALE" in a for a in c)]
+    assert len(stale_calls) == 1
+    assert not any("fleet health" in a for c in calls for a in c)  # no failing set, no separate banner
+    saved = json.loads(state.read_text())
+    assert saved["last_fleet_stale_banner_at"] == FIXED_NOW.isoformat()
+
+
+def test_stale_probe_banner_does_not_refire_within_remind_window(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, state = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    _plant_fleet_probe(tmp_path, generated_at="2026-08-02T08:00:00+00:00")  # 4h stale
+    state.write_text(
+        json.dumps({"last_fleet_stale_banner_at": FIXED_NOW.isoformat()}),
+        encoding="utf-8",
+    )
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    assert not any("fleet probe is STALE" in a for c in calls for a in c)
+
+
+def test_stale_probe_banner_stays_quiet_when_probe_is_fresh(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, _ = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    _plant_fleet_probe(tmp_path)  # default generated_at is 5min before FIXED_NOW
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    assert not any("fleet probe is STALE" in a for c in calls for a in c)
 
 
 def test_fleet_banner_stays_quiet_on_malformed_probe_data(
@@ -754,3 +833,141 @@ def test_mail_launch_kill_switch_skips_ensure(
     monkeypatch.setattr(hitl_alerts.subprocess, "run", fake_run)
     monkeypatch.setenv("HITL_MAIL_LAUNCH", "false")
     assert hitl_alerts._send_mail_app("s", "b", "owner@example.test") is True
+
+
+# ── decide_email / email_channel (M7.4: pure decisions, no env or network) ────
+# Extracted from do_email, which could only be exercised by setting env vars,
+# writing state files, and stubbing a mail transport. The two skip rules exist to
+# stop a scheduled job mailing noise, so they are worth testing directly.
+
+def _decision(**over):
+    base = dict(force=False, today="2026-08-16", last_email_date=None,
+                pending=[], expired=[], patches=[])
+    base.update(over)
+    return hitl_alerts.decide_email(**base)
+
+
+def test_digest_is_skipped_when_one_already_went_out_today():
+    decision = _decision(last_email_date="2026-08-16", pending=[{"id": "a"}])
+
+    assert decision.send is False
+    assert "already sent 2026-08-16" in decision.skip_message
+
+
+def test_yesterdays_send_does_not_block_todays():
+    decision = _decision(last_email_date="2026-08-15", pending=[{"id": "a"}])
+
+    assert decision.send is True
+
+
+def test_nothing_to_report_sends_nothing():
+    decision = _decision()
+
+    assert decision.send is False
+    assert "no email today" in decision.skip_message
+
+
+def test_force_overrides_an_already_sent_digest():
+    decision = _decision(force=True, last_email_date="2026-08-16")
+
+    assert decision.send is True
+
+
+def test_force_sends_even_with_an_empty_queue():
+    decision = _decision(force=True)
+
+    assert decision.send is True
+    assert decision.subject.endswith("queue clear")
+
+
+def test_subject_counts_pending_and_patches_but_not_expired():
+    """Expired items are reported in the body but are not awaiting anyone."""
+    decision = _decision(pending=[{"id": "a"}], patches=[{"name": "p"}],
+                         expired=[{"id": "x"}, {"id": "y"}])
+
+    assert decision.subject == "[Order Samurai] 2 approval(s) waiting"
+
+
+def test_expired_items_alone_still_warrant_a_digest():
+    decision = _decision(expired=[{"id": "x"}])
+
+    assert decision.send is True
+    assert decision.subject.endswith("queue clear")
+
+
+def test_a_sending_decision_carries_no_skip_message():
+    assert _decision(pending=[{"id": "a"}]).skip_message == ""
+
+
+def test_an_api_key_selects_resend_and_its_absence_selects_mail_app():
+    assert hitl_alerts.email_channel("re_abc123") == "resend"
+    assert hitl_alerts.email_channel("") == "Mail.app"
+
+
+class TestResendKeyResolution:
+    """_resend_key: env wins; Keychain (secret_env) fallback; empty on failure."""
+
+    def test_env_var_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("RESEND_API_KEY", "from-env")
+        assert hitl_alerts._resend_key() == "from-env"
+
+    def test_keychain_fallback_when_env_absent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("RESEND_API_KEY", raising=False)
+        fake = SimpleNamespace(lookup=lambda name: {"RESEND_API_KEY": "from-keychain"}.get(name))
+        monkeypatch.setitem(sys.modules, "secret_env", fake)
+        assert hitl_alerts._resend_key() == "from-keychain"
+
+    def test_empty_when_both_absent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("RESEND_API_KEY", raising=False)
+        fake = SimpleNamespace(lookup=lambda name: None)
+        monkeypatch.setitem(sys.modules, "secret_env", fake)
+        assert hitl_alerts._resend_key() == ""
+
+    def test_empty_on_resolver_crash(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("RESEND_API_KEY", raising=False)
+
+        def _boom(name: str) -> str:
+            raise RuntimeError("keychain unavailable")
+
+        monkeypatch.setitem(sys.modules, "secret_env", SimpleNamespace(lookup=_boom))
+        assert hitl_alerts._resend_key() == ""
+
+
+class TestResendMailFallback:
+    """A rejected Resend key falls back to Mail.app unless HITL_MAIL_FALLBACK=false."""
+
+    def _arm(self, isolated, monkeypatch: pytest.MonkeyPatch, resend_ok: bool) -> dict:
+        queue, state = isolated
+        queue.write_text('{"items": []}', encoding="utf-8")
+        state.write_text("{}", encoding="utf-8")
+        monkeypatch.setenv("HITL_DIGEST_TO", "owner@example.test")
+        monkeypatch.setenv("RESEND_API_KEY", "resolved-but-maybe-dead")
+        calls: dict = {"resend": 0, "mail": 0}
+
+        def fake_resend(subject, body, to, key):
+            calls["resend"] += 1
+            return resend_ok
+
+        def fake_mail(subject, body, to):
+            calls["mail"] += 1
+            return True
+
+        monkeypatch.setattr(hitl_alerts, "_send_resend", fake_resend)
+        monkeypatch.setattr(hitl_alerts, "_send_mail_app", fake_mail)
+        return calls
+
+    def test_resend_failure_falls_back_to_mail_app(self, isolated, monkeypatch) -> None:
+        calls = self._arm(isolated, monkeypatch, resend_ok=False)
+        assert hitl_alerts.do_email(force=True) == 0
+        assert calls == {"resend": 1, "mail": 1}
+
+    def test_resend_success_skips_mail_app(self, isolated, monkeypatch) -> None:
+        calls = self._arm(isolated, monkeypatch, resend_ok=True)
+        assert hitl_alerts.do_email(force=True) == 0
+        assert calls == {"resend": 1, "mail": 0}
+
+    def test_kill_switch_restores_fail_hard(self, isolated, monkeypatch) -> None:
+        calls = self._arm(isolated, monkeypatch, resend_ok=False)
+        monkeypatch.setenv("HITL_MAIL_FALLBACK", "false")
+        assert hitl_alerts.do_email(force=True) == 1
+        assert calls == {"resend": 1, "mail": 0}

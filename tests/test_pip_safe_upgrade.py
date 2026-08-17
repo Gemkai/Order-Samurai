@@ -221,6 +221,25 @@ class RunPlanTests(unittest.TestCase):
         )
         self.assertTrue(report["applied"][0]["upgraded"])
 
+    def test_failed_or_rolled_back_upgrade_is_not_reported_as_applied(self) -> None:
+        # apply_fn returning False is _real_apply's contract for "pip failed or
+        # the post-upgrade audit rolled the package back" — the package is still
+        # at the vulnerable version and must not be counted as applied.
+        audit = _audit(
+            outdated=[_outdated("requests", "2.31.0", "2.32.5")],
+            cves=[_cve("requests", "2.31.0")],
+        )
+        report = run_plan(
+            audit,
+            installed=set(),
+            do_apply=True,
+            dry_run_fn=lambda name: f"Would install {name}-x",
+            apply_fn=lambda name: False,
+        )
+        self.assertEqual(report["counts"]["applied"], 0)
+        self.assertEqual([r["name"] for r in report["failed"]], ["requests"])
+        self.assertEqual(report["counts"]["failed"], 1)
+
     def test_does_not_call_apply_when_plan_only(self) -> None:
         calls: list[str] = []
         audit = _audit(outdated=[_outdated("certifi", "2025.1.1", "2026.1.1")])

@@ -232,6 +232,44 @@ def test_efficacy_reports_zero_attempts_when_exec_log_absent(monkeypatch, tmp_pa
     result = rem.efficacy(history_path=hist, records=[])
     assert result["attempted"] == 0
     assert result["completed"] == 0
+    assert result["execution_success_rate"] is None
+
+
+def test_efficacy_execution_success_rate_isolates_completion_from_improvement(monkeypatch, tmp_path):
+    """A run can complete (status='done') without ever moving its metric, and a run can
+    fail to complete (no_change/error/timeout) — these are different failure classes.
+    execution_success_rate (completed/attempted) must answer "did the engine finish
+    running at all", independent of improvement_rate (improved/attempted)."""
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row("2026-01-01T00:00:00+00:00", "no_change"),
+        _exec_row("2026-01-02T00:00:00+00:00", "error"),
+        _exec_row("2026-01-03T00:00:00+00:00", "no_change"),
+        _exec_row("2026-01-04T00:00:00+00:00", "done"),
+    ])
+    monkeypatch.setattr(rem, "_EXEC_LOG", exec_log)
+    hist = tmp_path / "hist.jsonl"
+    hist.write_text("", encoding="utf-8")
+    result = rem.efficacy(history_path=hist, records=[])
+    assert result["attempted"] == 4
+    assert result["completed"] == 1
+    assert result["execution_success_rate"] == 25.0
+
+
+def test_efficacy_execution_success_rate_zero_when_nothing_ever_completes(monkeypatch, tmp_path):
+    """The diagnostic case this field exists for: every attempt ran but none finished —
+    a 0% improvement_rate here means 'check the execution gate', not 'wrong skill'."""
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row("2026-01-01T00:00:00+00:00", "no_change"),
+        _exec_row("2026-01-02T00:00:00+00:00", "error"),
+    ])
+    monkeypatch.setattr(rem, "_EXEC_LOG", exec_log)
+    hist = tmp_path / "hist.jsonl"
+    hist.write_text("", encoding="utf-8")
+    result = rem.efficacy(history_path=hist, records=[])
+    assert result["execution_success_rate"] == 0.0
+    assert result["improvement_rate"] == 0.0
 
 
 def test_efficacy_builds_event_from_fire_time_measurement_without_snapshots(monkeypatch, tmp_path):
@@ -367,6 +405,55 @@ def test_human_improvement_cannot_raise_autonomous_rate(monkeypatch, tmp_path):
     assert result["improvement_rate"] is None
     assert result["events"] == []
     assert result["human_correlated"] == 1
+
+
+# ---------------------------------------------------------------------------
+# per-session metrics (cfg "per": "session") must be graded on the rate, not
+# the raw cumulative total -- same normalization annotate() and correlation.py
+# apply (SENSEI-6).
+# ---------------------------------------------------------------------------
+
+def test_healthy_per_session_rate_is_not_spuriously_flagged(monkeypatch, tmp_path):
+    # Rework_Loops is per-session (dir=lower, warn=1, fail=3). A raw cumulative total of
+    # 10 across 50 sessions is a true rate of 0.2/session -- healthy, well inside warn.
+    # Grading the raw 10 directly against fail=3 reads as a deep breach and spuriously
+    # flags every snapshot for this metric regardless of the real per-session rate.
+    monkeypatch.setattr(rem, "_EXEC_LOG", tmp_path / "no_exec_log.jsonl")
+    hist = tmp_path / "hist.jsonl"
+    lines = [
+        json.dumps({"ts": "2026-01-01T00:00:00+00:00",
+                    "values": {"bow/Activity/Rework_Loops": 10, "bow/Activity/Session_Count": 50}}),
+        json.dumps({"ts": "2026-01-03T00:00:00+00:00",
+                    "values": {"bow/Activity/Rework_Loops": 12, "bow/Activity/Session_Count": 60}}),
+    ]
+    hist.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    records = [_make_record("2026-01-02T00:00:00+00:00", ["insights"])]
+
+    result = rem.efficacy(history_path=hist, records=records)
+
+    ev = [e for e in result["human_events"] if e["metric"] == "Rework_Loops"]
+    assert ev == [], f"a healthy per-session rate (0.2/session) was wrongly flagged as breaching: {ev}"
+
+
+def test_unhealthy_per_session_rate_is_still_flagged(monkeypatch, tmp_path):
+    # Sanity partner: a genuinely bad rate (10/session, far past fail=3) must still be
+    # caught, so the fix isn't just suppressing all per-session events.
+    monkeypatch.setattr(rem, "_EXEC_LOG", tmp_path / "no_exec_log.jsonl")
+    hist = tmp_path / "hist.jsonl"
+    lines = [
+        json.dumps({"ts": "2026-01-01T00:00:00+00:00",
+                    "values": {"bow/Activity/Rework_Loops": 50, "bow/Activity/Session_Count": 5}}),
+        json.dumps({"ts": "2026-01-03T00:00:00+00:00",
+                    "values": {"bow/Activity/Rework_Loops": 5, "bow/Activity/Session_Count": 5}}),
+    ]
+    hist.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    records = [_make_record("2026-01-02T00:00:00+00:00", ["insights"])]
+
+    result = rem.efficacy(history_path=hist, records=records)
+
+    ev = [e for e in result["human_events"] if e["metric"] == "Rework_Loops"]
+    assert len(ev) == 1
+    assert ev[0]["outcome"] == "improved"
     assert result["human_correlated_improved"] == 1
 
 

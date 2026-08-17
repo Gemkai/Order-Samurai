@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "CONFIRMED",
+  "rationale": "The count re-derives exactly: evidence.jsonl holds 8 link rows, of which precisely 6 carry status 'broken' and 2 carry 'ok'. The claimed re_measured of 6 matches a direct count with no cherry-picking — the full row set is used. Each broken row names a distinct concrete target, so a spot-check of any one holds. The proposed fix is the skill that owns vault link repair, and is proportionate to the defect. The hardest available attack — that 'broken' might include the 2 ok rows, inflating 6 to 8 — fails on inspection."
+}

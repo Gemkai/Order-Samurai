@@ -284,7 +284,18 @@ def classify_licence(licence: str | None) -> str:
     low = licence.strip().lower()
     if any(marker in low for marker in COPYLEFT_MARKERS):
         return "copyleft"
-    if " and " in low or " or " in low:
+    # A genuine SPDX composite expression ("Apache-2.0 OR BSD-3-Clause") is always a
+    # handful of short tokens. Some packages instead embed the licence NAME followed by
+    # the full verbatim legal body in the metadata "License" field -- that prose also
+    # contains "and"/"or" many times as ordinary English, so it used to take this same
+    # split path, which shreds a recognizable name like "MIT" apart from the surrounding
+    # fragment it needs to match in. No split-part matched, so real MIT/BSD/etc. text
+    # was flagged "unknown" for review even though the plain any-token check just below
+    # (and the docstring's own claim to accept "prose" licence strings) already grants it.
+    # Cap the split path to short strings so long prose falls through to that check instead.
+    _MAX_SPDX_EXPRESSION_WORDS = 12
+    is_short = len(low.split()) <= _MAX_SPDX_EXPRESSION_WORDS
+    if is_short and (" and " in low or " or " in low):
         parts = [
             p.strip()
             for p in re.split(r"\band\b|\bor\b", low.replace("(", " ").replace(")", " "))
@@ -363,6 +374,14 @@ def build_audit(
         "licences": [f for f in licence_flags if f["flag"] in ("copyleft", "unknown")],
         "cves": [c for c in pip_cves],  # every CVE wants a human/skill confirmation
     }
+    # Which ecosystems this run actually looked at. Without this, `counts.cves: 0`
+    # reads as "the codebase has no known vulnerabilities" when the npm scanner is
+    # off — which it is by default and on every scheduled run, because the mechanism
+    # registry invokes this script with no --npm. A clean count must never imply
+    # coverage that did not happen. (2026-08-16 audit; --npm stays opt-in on purpose,
+    # since `npm audit` transmits the lockfiles' dependency graph to the npm registry.)
+    ecosystems_scanned = ["pip"] + (["npm"] if npm_audits else [])
+    ecosystems_unscanned = [] if npm_audits else ["npm"]
     return {
         "generated_at": generated_at,
         "pip_outdated": pip_outdated,
@@ -370,6 +389,18 @@ def build_audit(
         "npm_audits": npm_audits,
         "licence_flags": licence_flags,
         "needs_review": needs_review,
+        "coverage": {
+            "ecosystems_scanned": ecosystems_scanned,
+            "ecosystems_unscanned": ecosystems_unscanned,
+            "complete": not ecosystems_unscanned,
+            "note": (
+                "pip only — npm was NOT scanned; `counts.cves` covers Python "
+                "dependencies alone. Re-run with --npm to include the Node "
+                "projects (this transmits their dependency graph to the npm registry)."
+                if ecosystems_unscanned else
+                "pip and npm both scanned; `counts.cves` spans both ecosystems."
+            ),
+        },
         "counts": {
             "outdated": len(pip_outdated),
             "cves": pip_vulnerability_count + npm_vulnerability_count,
@@ -638,6 +669,19 @@ def _format_report(audit: dict, out_path: Path) -> str:
         f"  outdated: {c['outdated']}  ·  CVEs: {c['cves']}  ·  "
         f"licence flags: {c['licence_flags']}  ·  needs review: {c['needs_review']}",
     ]
+    # Scope, printed next to the count it qualifies. A reader who sees "CVEs: 0"
+    # must not have to know about a CLI flag to learn that npm was never scanned.
+    cov = audit.get("coverage") or {}
+    if cov:
+        scanned = ", ".join(cov.get("ecosystems_scanned") or []) or "none"
+        if cov.get("complete"):
+            lines.append(f"  coverage: {scanned}")
+        else:
+            missing = ", ".join(cov.get("ecosystems_unscanned") or [])
+            lines.append(
+                f"  coverage: {scanned} ONLY — {missing} NOT scanned; "
+                f"the CVE count above does not cover {missing} (re-run with --npm)"
+            )
     if audit["pip_cves"]:
         lines.append("\nCVEs:")
         for cve in audit["pip_cves"]:

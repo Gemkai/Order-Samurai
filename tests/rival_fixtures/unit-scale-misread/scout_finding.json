@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:brush:Synthetic_Mu_Ratio",
+  "real": true,
+  "evidence": {
+    "re_measured": 0.82,
+    "snapshot": 0.15,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "Synthetic_Mu_Ratio reached 0.82, far above the 0.65 fail threshold.",
+  "proposed_fix": "/simplify",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

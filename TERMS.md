@@ -20,7 +20,7 @@ Order Samurai operates under a dual-tier distribution model:
 We want you to be completely satisfied with Order Samurai Pro.
 
 * **Guarantee Term**: Every purchase of Order Samurai Pro includes a **14-day, 100% money-back guarantee**.
-* **How to Request a Refund**: If Order Samurai Pro does not seamlessly fit into your developer workflow, email us at `support@agentica-llc.biz` or initiate a refund through our payment processor (Gumroad — our current Merchant of Record; Lemon Squeezy may be used as an alternate checkout) within 14 days of purchase.
+* **How to Request a Refund**: If Order Samurai Pro does not seamlessly fit into your developer workflow, email us at `support@ordersamurai.ai` or initiate a refund through our payment processor within 14 days of purchase.
 * **Processing**: Refunds are processed within 3–5 business days to your original payment method. Upon refund issuance, the associated Pro license key will be deactivated.
 
 ---
@@ -57,7 +57,7 @@ OUR AGGREGATE FINANCIAL LIABILITY FOR ANY CLAIMS UNDER THESE TERMS IS STRICTLY L
 
 ## 6. Privacy & Data Ownership
 
-Order Samurai is engineered with a **zero-cloud telemetry** architecture. All logs, telemetry, secret scrubbing records, and Dojo state files remain 100% on your local machine (`~/.samurai/`). We do not collect, transmit, or store your code, prompt histories, or API keys.
+Order Samurai is engineered with a **local-first** architecture. All logs, telemetry, secret scrubbing records, and Dojo state files remain local to your machine (`~/.samurai/`) by default. Order Samurai does not collect, transmit, or store your code, prompt histories, or API keys.
 
 ---
 
@@ -70,5 +70,5 @@ These Terms are governed by and construed in accordance with applicable laws, wi
 ## 8. Contact
 
 For legal inquiries, support, or refund requests:
-- **Email**: `support@agentica-llc.biz`
-- **Security**: `security@ordersamurai.dev`
+- **Email**: `support@ordersamurai.ai`
+- **Security**: `security@ordersamurai.ai`

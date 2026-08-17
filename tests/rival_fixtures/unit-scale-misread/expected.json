@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "REFUTED",
+  "rationale": "Category (f)/(a): the finding is off by a factor of ten. The newest row in evidence.jsonl reads ratio 0.082 on an explicit 0..1 scale, with a note spelling out '8.2 percent'. The finding cites 0.82. Against fail_above 0.80 the true value 0.082 is an order of magnitude below threshold, and the three rows (0.065, 0.071, 0.082) show no threshold crossing at all."
+}

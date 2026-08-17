@@ -109,7 +109,13 @@ def _real_pending() -> tuple[list[str], bool]:
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         pending = mod.check_raw_pending()
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # Broad on purpose (same boundary as wiki_link._real_orphans): exec_module
+        # runs a foreign script and this audit must degrade to uncalibrated rather
+        # than crash. The reason is logged instead of discarded — "uncalibrated"
+        # with no diagnosis is not something an operator can act on.
+        print(f"wiki_compile: vault-health probe failed ({type(exc).__name__}: {exc}) "
+              f"— reporting uncalibrated", file=sys.stderr)
         return [], False
     return [Path(p).name for p in pending], True
 

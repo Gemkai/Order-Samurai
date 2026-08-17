@@ -21,6 +21,44 @@ def _store(rows):
     return Path(tmp.name)
 
 
+def test_weekly_backfill_row_is_never_a_24h_baseline():
+    # backfill_history writes kind:"weekly" rows (one ISO week's population) and
+    # append_snapshot writes kind:"live" rows (the payload's 30-day window). A
+    # week-to-date total compared against a 30-day total is not a 24h move —
+    # on the live cadence it fabricated "rework loops moved up by 882" while
+    # the true 24h change was ~3.
+    now = datetime.now(timezone.utc)
+    store = _store([
+        {"ts": (now - timedelta(hours=27)).isoformat(), "week": "2026-W33",
+         "kind": "weekly", "values": {"arts/Rework_Loops": 100.0}},
+        {"ts": (now - timedelta(hours=1)).isoformat(),
+         "kind": "live", "values": {"arts/Rework_Loops": 982.0}},
+    ])
+    try:
+        clause = insights._24h_clause("arts", store)
+        assert "rework loops" not in clause
+    finally:
+        store.unlink()
+
+
+def test_24h_delta_is_live_row_to_live_row_when_both_exist():
+    now = datetime.now(timezone.utc)
+    store = _store([
+        {"ts": (now - timedelta(hours=27)).isoformat(), "week": "2026-W33",
+         "kind": "weekly", "values": {"arts/Rework_Loops": 100.0}},
+        {"ts": (now - timedelta(hours=25)).isoformat(),
+         "kind": "live", "values": {"arts/Rework_Loops": 982.0}},
+        {"ts": (now - timedelta(hours=1)).isoformat(),
+         "kind": "live", "values": {"arts/Rework_Loops": 985.0}},
+    ])
+    try:
+        clause = insights._24h_clause("arts", store)
+        assert "rework loops moved up by 3" in clause
+        assert "882" not in clause and "885" not in clause
+    finally:
+        store.unlink()
+
+
 def test_graded_new_metric_outranks_ungraded_in_now_tracking():
     now = datetime.now(timezone.utc)
     store = _store([

@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "CONFIRMED",
+  "rationale": "3 producer rows, exactly 2 with an empty readers list — the claimed count is a direct read of the file. The third row has a named consumer and is correctly excluded rather than counted, which is the discrimination that would catch a sloppy finding. Each orphan row names a concrete producer and output path, so a spot-check holds at either. The proposed fix is the wiring audit that owns producer/consumer orphans specifically."
+}

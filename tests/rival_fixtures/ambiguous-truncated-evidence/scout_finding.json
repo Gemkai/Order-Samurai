@@ -1,0 +1,15 @@
+{
+  "reflex_id": "metric:bow:Synthetic_Phi_Events",
+  "real": true,
+  "evidence": {
+    "re_measured": 17,
+    "snapshot": 6,
+    "source_file": "evidence.jsonl",
+    "window_days": 30
+  },
+  "root_cause": "17 boundary events in the window (evidence.jsonl), up from 6.",
+  "proposed_fix": "/guard",
+  "target_repo": "claude-config",
+  "risk_tier": "readonly",
+  "fixability": "code"
+}

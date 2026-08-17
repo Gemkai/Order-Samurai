@@ -1,0 +1,4 @@
+{
+  "expected_verdict": "REFUTED",
+  "rationale": "Category (c): a concrete spot-check of the underlying records contradicts the aggregate. The 10 individual call rows range 268-419ms; the true p95 over them is ~419ms, nowhere near 980. The finding's number comes solely from a precomputed 'p95_ms: 980' rollup row that no underlying record supports. Rival's step 5 explicitly requires verifying one concrete record rather than trusting the aggregate — doing so here breaks the finding."
+}
