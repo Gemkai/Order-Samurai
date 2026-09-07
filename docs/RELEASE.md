@@ -12,9 +12,11 @@ SemVer: MAJOR = breaking CLI/config change, MINOR = new feature, PATCH = fix.
 
 ## 2. Test gates (all must pass before packaging)
 ```bash
-python3 -m pytest tests/ agentica_core/tests/ -q          # full pack suite
+python3 -m pytest tests/ agentica_core/tests/ -q          # full pack suite, incl. live_machine
+                                                            # (this is a real machine; CI excludes
+                                                            # live_machine via -m in ci.yml instead)
 cd dashboard-ui && npm run build && cd ..                  # demo/dashboard bundle
-bash -n bin/*.sh                                           # shell syntax
+for f in bin/*.sh; do bash -n "$f" || exit 1; done         # shell syntax, per file
 ```
 
 ## 3. Build artifacts

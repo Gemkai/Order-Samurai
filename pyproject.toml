@@ -21,6 +21,15 @@ dependencies = [
     "pip-audit>=2.7",
 ]
 
+[project.optional-dependencies]
+# CI installs this extra (`pip install -e ".[test]"`) so `python3 -m pytest` actually has
+# pytest available. No other third-party test plugin is used anywhere under tests/ or
+# agentica_core/tests/ (checked by import inventory, 2026-09) -- mocking uses stdlib
+# unittest.mock, not pytest-mock.
+test = [
+    "pytest>=8.0",
+]
+
 [project.scripts]
 # Canonical name per the productization scope decision. `samurai` (bin/samurai) stays as-is: the
 # installed hook registrations reference it, so renaming it here would break existing installs.
