@@ -34,7 +34,30 @@ jobs:
         # -m "not live_machine": excludes tests that need real platform homes or local
         # services (see pyproject.toml's marker definition and its own comment, which
         # claimed this flag was already here -- it was not, until this fix).
-        run: python3 -m pytest tests/ agentica_core/tests/ -q -m "not live_machine"
+        #
+        # set -o pipefail: without it, `tee`'s own exit code (always 0) replaces
+        # pytest's in a pipeline, so a genuine test failure would report green here.
+        run: |
+          set -o pipefail
+          python3 -m pytest tests/ agentica_core/tests/ -q -m "not live_machine" 2>&1 | tee /tmp/pytest-output.txt
+
+      - name: Enforce a minimum passed-test floor
+        # Exit 0 with a low pass count looks identical to exit 0 with a healthy one --
+        # that gap is exactly how CI never running any tests went unnoticed here for
+        # this repo's entire history (fixed above). This doesn't re-guard that specific
+        # cause (pytest is now a declared dependency); it guards against a DIFFERENT,
+        # still-open failure mode: a future change that makes pytest exit 0 while
+        # silently collecting or running far fewer tests than before (a bad conftest.py,
+        # an accidentally-widened -m filter, a directory quietly dropped from the
+        # invocation). 1600 is comfortably below the 1652 measured at the time this was
+        # added -- bump it up (never down) as the suite legitimately grows.
+        run: |
+          count="$(grep -oE '[0-9]+ passed' /tmp/pytest-output.txt | tail -1 | grep -oE '[0-9]+')"
+          echo "tests passed: ${count:-0}"
+          if [ -z "$count" ] || [ "$count" -lt 1600 ]; then
+            echo "::error::only ${count:-0} tests passed (floor: 1600) -- possible silent collection failure or test-suite shrinkage"
+            exit 1
+          fi
 
   install-smoke:
     name: install smoke test
@@ -151,6 +174,22 @@ jobs:
             exit 1
           fi
           echo "install-smoke: doctor correctly reported failure with the guard removed"
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shellcheck every tracked shell script
+        run: |
+          # git ls-files, not a shell glob: tracked scripts only, and it correctly
+          # reaches bin/*.sh, dashboard-ui/public/install.sh, and root install.sh in one
+          # pass -- exactly what a shell glob like bin/*.sh silently fails to do (see
+          # the git-hygiene fix above for that exact bug in the documented syntax check).
+          mapfile -t scripts < <(git ls-files '*.sh')
+          echo "checking ${#scripts[@]} tracked shell scripts"
+          shellcheck --severity=warning "${scripts[@]}"
 
   packaging:
     name: public export pack integrity
