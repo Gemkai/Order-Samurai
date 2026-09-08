@@ -54,7 +54,9 @@ The install's tier is a runtime fact of this machine, not a build variant:
 - Dashboard UI: `cd dashboard-ui && npm run dev` (http://localhost:5173) · build:
   `npm run build` · tests: `npm run test:run` · lint: `npm run lint`
 - CLI: `./bin/samurai {install,doctor,uninstall,activate,license,deactivate}`
-- Shell script syntax check: `bash -n bin/*.sh`
+- Shell script syntax check: `for f in bin/*.sh; do bash -n "$f" || exit 1; done` (`bash -n
+  bin/*.sh` only checks the first glob match -- every other filename becomes a positional
+  arg, not a script to parse -- so it silently skips the rest)
 
 ## Layout
 
