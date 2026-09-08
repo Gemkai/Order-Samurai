@@ -48,7 +48,13 @@ BENIGN_TEXT = "def add(a, b):\n    return a + b\n" * 3
 NODE = shutil.which("node")
 
 
-pytestmark = pytest.mark.skipif(NODE is None, reason="node is not on PATH")
+# live_machine: the unit under test IS the installed hook at ~/.claude/hooks —
+# real platform-home state, absent on a bare CI checkout. On the Mac (verify.sh,
+# no -m filter) the canary below still fails loudly if the hook goes missing.
+pytestmark = [
+    pytest.mark.live_machine,
+    pytest.mark.skipif(NODE is None, reason="node is not on PATH"),
+]
 
 
 def _run(tool_name: str, tool_input: dict, tool_response) -> tuple[int, dict | None, str]:

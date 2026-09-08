@@ -106,7 +106,13 @@ dashboard-ui/public/media/*
 !dashboard-ui/public/wid_payload.json
 
 # internal dev docs
-backlog/
+backlog/*
+# claude_verifier_backlog.md is a required product artifact, not an internal dev doc:
+# execution/claude_runtime_target.py's BACKLOG_PATH is asserted to exist unconditionally
+# by tests/test_claude_runtime_target.py (both in the repo and in a standalone
+# distribution) -- the blanket backlog/ ignore above was silently dropping it from
+# every export.
+!backlog/claude_verifier_backlog.md
 docs/handoffs/
 
 # Internal working dirs — never ship (design assets, dev-tool state)
