@@ -18,7 +18,6 @@ import { RemediationPanel } from "@/components/RemediationPanel"
 import { PillarPage } from "@/components/PillarPage"
 import { useDojo, type DojoProps } from "@/hooks/useDojo"
 import { DojoPanel } from "@/components/DojoPanel"
-import { AsciiGallery } from "@/components/AsciiGallery"
 import { IconTorii, IconShuriken, IconKatana, IconFan, IconArmor, IconYinYang } from "@/components/SamuraiIcons"
 import { LandingPage } from "@/components/LandingPage"
 
@@ -531,16 +530,13 @@ function MetricModal({ metric, color, contributions, scopeLabel, onClose, dojoPr
 
 // ── App root ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [mode, setMode] = useState<"landing" | "dashboard" | "gallery">(() => {
+  const [mode, setMode] = useState<"landing" | "dashboard">(() => {
     if (typeof window !== "undefined") {
       const q = window.location.search.toLowerCase()
       const h = window.location.hash.toLowerCase()
       const p = window.location.pathname.toLowerCase()
       if (q.includes("landing") || h.includes("landing") || p.includes("landing")) {
         return "landing"
-      }
-      if (q.includes("gallery") || q.includes("ascii") || h.includes("gallery") || h.includes("ascii")) {
-        return "gallery"
       }
     }
     return "dashboard"
@@ -577,10 +573,6 @@ export default function App() {
 
   if (mode === "landing") {
     return <LandingPage onOpenDashboard={() => setMode("dashboard")} />
-  }
-
-  if (mode === "gallery") {
-    return <AsciiGallery onBack={() => setMode("dashboard")} />
   }
 
   if (err) return <div className="mono" style={{ color: "var(--sword)", padding: 40 }}>Failed to load wid_payload.json: {err}</div>
@@ -730,23 +722,6 @@ export default function App() {
               ? <><span className="status-dot-live">●</span>{" DOJO ONLINE"}</>
               : "○ DOJO OFFLINE"}
           </div>
-          <button
-            onClick={() => setMode("gallery")}
-            className="mono"
-            style={{
-              display: "block",
-              marginTop: 10,
-              fontSize: "0.6rem",
-              color: "rgba(250,204,21,0.75)",
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: 0,
-              textAlign: "left"
-            }}
-          >
-            ⛩️ 3D / ASCII Art Gallery →
-          </button>
           <a href="mailto:support@ordersamurai.ai" className="mono" style={{ display: "block", marginTop: 8, fontSize: "0.6rem", color: "rgba(255,255,255,0.4)", textDecoration: "none" }}>
             🐛 Bug Report: support@ordersamurai.ai
           </a>

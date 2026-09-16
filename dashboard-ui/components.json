@@ -22,7 +22,6 @@
   "menuColor": "default",
   "menuAccent": "subtle",
   "registries": {
-    "@bklit": "https://ui.bklit.com/r/{name}.json",
-    "@canvas-ui": "https://canvasui.dev/r/{name}.json"
+    "@bklit": "https://ui.bklit.com/r/{name}.json"
   }
 }
