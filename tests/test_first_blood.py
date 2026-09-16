@@ -141,6 +141,25 @@ class ParseTranscript(unittest.TestCase):
             self.assertEqual(rec["project"], "myproject")
             self.assertGreater(rec["total_cost"], 0)
 
+    def test_project_label_keeps_a_hyphenated_repo_name_intact(self):
+        # Claude Code encodes a project's cwd as its transcript-directory name by
+        # replacing every "/" with "-" (e.g. "/Users/someone/AgenticaOS-bot" ->
+        # "-Users-someone-AgenticaOS-bot"). path.parent.name.rsplit("-", 1)[-1]
+        # took only the LAST dash-separated fragment, so a repo whose own name
+        # contains a hyphen (AgenticaOS-bot, Order-Samurai, ...) collapsed to just
+        # its final word ("bot", "Samurai") instead of the real project name.
+        with TemporaryDirectory() as td:
+            proj = Path(td) / "-Users-someone-AgenticaOS-bot"
+            proj.mkdir()
+            transcript = proj / "abc123.jsonl"
+            transcript.write_text(
+                _assistant_line(input_tokens=100, output_tokens=50) + "\n",
+                encoding="utf-8",
+            )
+            rec = parse_transcript(transcript)
+            self.assertIsNotNone(rec)
+            self.assertEqual(rec["project"], "AgenticaOS-bot")
+
     def test_stub_transcript_with_no_assistant_turns_returns_none(self):
         with TemporaryDirectory() as td:
             transcript = Path(td) / "empty.jsonl"

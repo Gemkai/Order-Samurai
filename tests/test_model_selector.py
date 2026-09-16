@@ -124,6 +124,16 @@ class ExtractSignalsTests(unittest.TestCase):
         }
         self.assertEqual(extract_signals(session), (45, 1, 2))
 
+    def test_explicit_turns_zero_is_not_overridden_by_turn_count(self) -> None:
+        # `turns = int(session.get("turns", 0) or session.get("turn_count", 0) or 0)`
+        # treats an explicit turns=0 (a real, trivial 0-turn session) the same as
+        # "turns" key absent, since `0 or X` evaluates to X — so a snapshot
+        # carrying both keys reads the stale/wrong turn_count instead of the true
+        # zero, feeding score_complexity a wrong signal and skewing the recommended
+        # model tier for what is genuinely a 0-turn session.
+        session = {"turns": 0, "turn_count": 40}
+        self.assertEqual(extract_signals(session), (0, 0, 0))
+
 
 # ---------------------------------------------------------------------------
 # select — end-to-end

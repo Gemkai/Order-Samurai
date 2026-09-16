@@ -10,6 +10,8 @@ applies_when:
   - Editing a file under .claude/workflows/ and wanting a fast local syntax check before invoking Workflow
   - node --check reports "Illegal return statement" or "Unexpected token 'export'" on a file that Workflow itself runs fine
 tags: [workflow-dsl, node-check, syntax-check, false-positive]
+disposition: accepted-workaround
+cost: strip and wrap each Workflow DSL file before every manual Node syntax check
 ---
 
 ## Symptom

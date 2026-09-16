@@ -15,7 +15,7 @@ Decision mode (default):
         1  QUEUE/HITL — suppressed, enqueued in state/hitl_queue.json
         2  HARD_STOP   — blocked (also: engine error on a SENSITIVE skill —
            fail-closed, JSON carries "fail_closed": true)
-        3  Python error on a low-risk/unknown skill — caller fails open
+        3  Python error on a known routine skill — caller fails open
 
     KNOWN AMBIGUITY (2026-08-08 root-cause investigation, unresolved by design —
     awaiting an explicit human decision; do NOT "fix" this unilaterally):
@@ -38,9 +38,14 @@ Review mode (the human decision this queue exists for):
     python bin/bushido_check.py --approve <queue_id> [--reason "..."]
     python bin/bushido_check.py --reject <queue_id> --reason "..."
     python bin/bushido_check.py --expire <queue_id> --reason "..."
+    python bin/bushido_check.py --retire <queue_id> --reason "..."
 
-    Only acts on an item still `pending`; already-decided items are untouched.
-    Exit: 0 if item was found and reviewed, 1 if not found/not pending, 3 on error.
+    approve/reject/expire act on an item still `pending`. --retire (coverage review
+    R4.1, 2026-09-02) is the "seen, no action" decision and is the ONE action also
+    valid on an `expired` item — it is how an item leaves the digest's EXPIRED
+    WITHOUT DECISION list. Already-decided items are untouched.
+    Exit: 0 if item was found and reviewed, 1 if not found/not in a reviewable
+    state, 3 on error.
 
     --approve DISPATCHES IMMEDIATELY (since 2026-08-08). Approval no longer just
     flips a status and wait for the same reflex to fire again — it claims the item
@@ -96,7 +101,6 @@ try:
         BlastRadius,
         ROLE_REQUESTED_CEILING,
         Tier,
-        WorkItem,
         decide,
         list_standing_approvals,
         mark_complete,
@@ -118,27 +122,17 @@ _SENSITIVE_TIERS = {"hitl", "hard_stop"}
 
 
 def _is_sensitive_skill(skill_name: str, repo_root: Path) -> bool:
-    """Classify a skill as sensitive by reading state/skill_tiers.json DIRECTLY.
-
-    Engine-independent on purpose: the decision-error path that calls this is
-    reached precisely because the engine raised, so it must not route back
-    through the engine. A skill is sensitive when any high-risk attribute holds:
-      - blast_radius in {system, irreversible}
-      - reversible is explicitly False
-      - approval_tier in {hitl, hard_stop}
-    Unknown / untabled skills are NOT sensitive — preserve fail-open for the
-    long tail of low-risk skills. Any read/parse error -> False (the engine
-    error already yields exit 3; a missing table must not manufacture a
-    hard-stop).
-    """
+    """Read policy independently of the engine; unknown authority fails closed."""
     try:
         name = (skill_name or "").lstrip("/")
         path = Path(repo_root) / "state" / "skill_tiers.json"
         data = json.loads(path.read_text(encoding="utf-8"))
         skills = data.get("skills", {})
         meta = skills.get(name) if isinstance(skills, dict) else None
-        if not isinstance(meta, dict):
-            return False
+        if not isinstance(meta, dict) or not meta:
+            return True
+        if meta.get("decision_category", "routine") != "routine":
+            return True
         if str(meta.get("blast_radius", "")).lower() in _SENSITIVE_BLAST:
             return True
         if meta.get("reversible") is False:
@@ -147,7 +141,7 @@ def _is_sensitive_skill(skill_name: str, repo_root: Path) -> bool:
             return True
         return False
     except Exception:  # noqa: BLE001
-        return False
+        return True
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -168,6 +162,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--consecutive", dest="consecutive", type=int, default=0,
                    help="Consecutive no-improvement count.")
     p.add_argument("--context", default="", help="Free-form context for HITL reviewers.")
+    p.add_argument("--decision-category", default=None,
+                   choices=["security", "privacy", "spending", "business", "strategic", "unknown"],
+                   help="Reserve this decision for the owner; cannot lower a skill's classification.")
     p.add_argument("--command", default=None,
                    help="Override the auto-derived /skill command line.")
     p.add_argument("--complete", dest="complete", metavar="QUEUE_ID", default=None,
@@ -187,8 +184,13 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Review mode: reject a pending queue item. Requires --reason.")
     p.add_argument("--expire", dest="expire", metavar="QUEUE_ID", default=None,
                    help="Review mode: expire a pending queue item. Requires --reason.")
+    p.add_argument("--retire", dest="retire", metavar="QUEUE_ID", default=None,
+                   help="Review mode: retire a pending OR expired queue item ('seen, no "
+                        "action'); the only decision valid after expiry. Requires --reason.")
+    p.add_argument("--expected-proposal-hash", default=None,
+                   help="Refuse review if execution fields changed since human approval.")
     p.add_argument("--reason", default="",
-                   help="With --approve/--reject/--expire: the human's stated reason.")
+                   help="With --approve/--reject/--expire/--retire: the human's stated reason.")
     p.add_argument("--resolve-role-binding", dest="resolve_role_binding", nargs=2,
                    metavar=("ROLE", "CEILING"),
                    help="D1: resolve mode. Narrow ROLE's intrinsic requested blast_radius "
@@ -246,15 +248,20 @@ def main(argv: list[str] | None = None) -> int:
 
     # ── Review mode ───────────────────────────────────────────────────────────
     review = [(a, v) for a, v in (("approve", args.approve), ("approve_always", args.approve_always),
-                                   ("reject", args.reject), ("expire", args.expire)) if v]
+                                   ("reject", args.reject), ("expire", args.expire),
+                                   ("retire", args.retire)) if v]
     if len(review) > 1:
-        parser.error("only one of --approve/--approve-always/--reject/--expire may be given at a time")
+        parser.error("only one of --approve/--approve-always/--reject/--expire/--retire "
+                     "may be given at a time")
     if review:
         action, queue_id = review[0]
-        if action in ("reject", "expire") and not args.reason:
+        if action in ("reject", "expire", "retire") and not args.reason:
             parser.error(f"--reason is required with --{action}")
         try:
-            ok = review_hitl(queue_id, REPO_ROOT, action, reason=args.reason)
+            review_kwargs = {"reason": args.reason}
+            if args.expected_proposal_hash:
+                review_kwargs["expected_proposal_hash"] = args.expected_proposal_hash
+            ok = review_hitl(queue_id, REPO_ROOT, action, **review_kwargs)
         except Exception as e:  # noqa: BLE001
             sys.stderr.write(f"bushido_check: review_hitl failed: {e}\n")
             sys.stderr.write(traceback.format_exc())
@@ -317,6 +324,8 @@ def main(argv: list[str] | None = None) -> int:
             kwargs["stuck"] = True
         if args.context:
             kwargs["context"] = args.context
+        if args.decision_category:
+            kwargs["decision_category"] = args.decision_category
         if args.command:
             kwargs["command"] = args.command
 
@@ -338,6 +347,7 @@ def main(argv: list[str] | None = None) -> int:
             "tier": tier.value,
             "queue_id": queue_id,
             "ronin_mode": ronin,
+            "decision_category": work_item.decision_category,
             "blast_radius": (
                 work_item.blast_radius.value
                 if isinstance(work_item.blast_radius, BlastRadius)
@@ -355,9 +365,9 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(traceback.format_exc())
         # Fail CLOSED for sensitive skills: an engine error must never let a
         # high-blast/irreversible skill auto-fire. Callers already block on
-        # exit 2 (HARD_STOP), so no caller change is needed. Low-risk/unknown
+        # exit 2 (HARD_STOP), so no caller change is needed. Known routine
         # skills keep the historical fail-open behaviour (exit 3).
-        if _is_sensitive_skill(args.skill, REPO_ROOT):
+        if args.decision_category or _is_sensitive_skill(args.skill, REPO_ROOT):
             try:
                 print(json.dumps({
                     "tier": "hard_stop",

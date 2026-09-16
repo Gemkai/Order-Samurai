@@ -125,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
         event["kind"] = args.kind
 
     try:
-        target = append_event(event)
+        append_event(event)
     except Exception as exc:  # noqa: BLE001
         print(f"error: {exc}", file=sys.stderr)
         return 1

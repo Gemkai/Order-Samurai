@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -105,17 +106,33 @@ def server_is_enabled(name: str, cfg: dict, mcp_payload: dict) -> bool:
     return cfg.get("disabled") is not True
 
 
+#: Matches a value that IS (in full) a ${VAR}/$VAR placeholder, capturing the
+#: referenced variable name. Mirrors ~/.claude/scripts/launch_mcp_server.py's
+#: expand_arg_template, which resolves such a placeholder by looking up this
+#: captured name in os.environ — the env dict's own key never enters that
+#: lookup at all.
+_ENV_PLACEHOLDER_RE = re.compile(r"^\$\{([A-Za-z0-9_]+)\}$|^\$([A-Za-z0-9_]+)$")
+
+
 def required_activation_env(cfg: dict) -> list[str]:
-    """Env keys whose value is a ${VAR}/$VAR placeholder — the declared
-    activation condition the server must have provided to run."""
+    """Env VARIABLE NAMES referenced by a ${VAR}/$VAR placeholder in this
+    server's env block — the declared activation condition the server must
+    have provided (via os.environ) to run. This is the name INSIDE the
+    placeholder, not the env dict's own key: a server can name its env entry
+    anything while pointing at a differently-named variable, e.g.
+    {"STRIPE_TOKEN": "${STRIPE_API_KEY}"}'s real activation condition is
+    STRIPE_API_KEY, not STRIPE_TOKEN. Found 2026-09-01: the prior version
+    returned the key whenever the VALUE merely started with "$"/"${", which
+    is only ever coincidentally correct when key and referenced variable
+    share a spelling."""
     env = cfg.get("env")
     if not isinstance(env, dict):
         return []
-    required: list[str] = []
-    for key, value in env.items():
-        text = str(value).strip()
-        if text.startswith("${") or (text.startswith("$") and len(text) > 1):
-            required.append(key)
+    required: set[str] = set()
+    for value in env.values():
+        match = _ENV_PLACEHOLDER_RE.match(str(value).strip())
+        if match:
+            required.add(match.group(1) or match.group(2))
     return sorted(required)
 
 
@@ -136,7 +153,15 @@ def literal_home_hits(cfg: dict) -> list[str]:
 def has_activation_metadata(mcp_payload: dict, servers: dict) -> bool:
     """Whether mcp.json carries any machine-readable enabled/disabled or
     env-activation metadata at all."""
-    enabled_set = mcp_payload.get("enabledServers") or mcp_payload.get("enabled")
+    # Same precedence as server_is_enabled(): prefer "enabledServers" when it is
+    # a list, even an EMPTY one — `enabledServers: []` is a real (if empty)
+    # allow-list that server_is_enabled uses to disable every server, so this
+    # must agree it's real metadata. The old `... or mcp_payload.get("enabled")`
+    # short-circuited past `[]` (falsy) to check "enabled" instead, so it
+    # disagreed with server_is_enabled on the exact payload doing real gating.
+    enabled_set = mcp_payload.get("enabledServers")
+    if not isinstance(enabled_set, list):
+        enabled_set = mcp_payload.get("enabled")
     if isinstance(enabled_set, list):
         return True
     for cfg in servers.values():

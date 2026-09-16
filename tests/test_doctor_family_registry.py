@@ -38,8 +38,11 @@ EXPECTED_ORDER = [
     "path-authority", "stale-paths", "live-sources", "runtime-contract",
     "root-hygiene", "agentica-root-hygiene", "archive-boundaries",
     "meditation-timestamps", "schema-violations", "local-llm",
-    "container-services", "audit-gate-canary", "telemetry-freshness",
-    "claude-telemetry", "exec-chain", "factory", "claude-architecture",
+    "dep-scanner-presence", "injection-hook", "container-services", "audit-gate-canary",
+    "telemetry-freshness", "claude-telemetry", "claude-hook-health", "exec-chain", "factory",
+    "activation-drift", "escalation-sla", "open-pr-health", "shared-checkout-health",
+    "scheduled-run-outcomes", "incident-coverage",
+    "claude-architecture",
 ]
 
 
@@ -53,12 +56,13 @@ def test_every_family_is_callable():
 
 
 def test_the_gating_families_are_exactly_the_ones_that_fail_doctor():
-    """These eleven feed the exit code; the rest are spectators by design."""
+    """These thirteen feed the exit code; the rest are spectators by design."""
     gating = {f.name for f in doctor.CHECK_FAMILIES if f.gating}
     assert gating == {
         "path-authority", "stale-paths", "live-sources", "runtime-contract",
         "root-hygiene", "agentica-root-hygiene", "archive-boundaries",
-        "telemetry-freshness", "claude-telemetry", "exec-chain",
+        "telemetry-freshness", "claude-telemetry", "claude-hook-health", "exec-chain",
+        "shared-checkout-health",
         "claude-architecture",
     }
 
@@ -117,6 +121,12 @@ def test_a_spectator_family_failure_neither_counts_nor_gates():
     assert exit_code == 0
 
 
+def test_a_spectator_failure_is_retained_with_its_policy():
+    report = doctor.run_report((_family("probe", [_row("FAIL")], gating=False),))
+    assert report.fails == [{"family": "probe", "label": "x", "detail": "d",
+                             "status": "FAIL", "gating": False}]
+
+
 def test_a_suppressed_warn_family_still_reports_its_row():
     """warns=False affects the COUNT only — the row is still printed, or the
     operator would lose the finding entirely."""
@@ -154,7 +164,7 @@ def test_counts_accumulate_across_families():
 
     _, counts, exit_code = doctor.run_families(families)
 
-    assert counts == {"OK": 2, "WARN": 1, "FAIL": 1}
+    assert counts == {"OK": 2, "WARN": 1, "FAIL": 1, "ERROR": 0}
     assert exit_code == 1
 
 
@@ -164,5 +174,5 @@ def test_an_empty_family_contributes_nothing():
     lines, counts, exit_code = doctor.run_families(families)
 
     assert lines == []
-    assert counts == {"OK": 0, "WARN": 0, "FAIL": 0}
+    assert counts == {"OK": 0, "WARN": 0, "FAIL": 0, "ERROR": 0}
     assert exit_code == 0

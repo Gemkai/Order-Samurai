@@ -62,6 +62,10 @@ def _past_lease_expiry() -> datetime:
 @pytest.fixture
 def tmp_repo(tmp_path):
     (tmp_path / "state").mkdir()
+    (tmp_path / "state" / "budget_ledger.json").write_text(json.dumps({
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "spent_usd": 0, "daily_limit_usd": 5,
+    }))
     (tmp_path / "state" / "hitl_queue.json").write_text(
         json.dumps({"schema_version": 1, "items": [], "created_at": "x", "updated_at": "x"}),
         encoding="utf-8",
@@ -225,7 +229,10 @@ def test_post_targets_the_loopback_manual_run_route_with_a_bounded_timeout(tmp_r
     request, timeout = calls[0]
     assert request.full_url == "http://127.0.0.1:3001/api/reflex/exec"
     assert request.get_method() == "POST"
-    assert json.loads(request.data.decode("utf-8")) == {"command": "/wiki"}
+    assert json.loads(request.data.decode("utf-8")) == {
+        "reflexId": "metric:arts:Wiki_Health_Score",
+        "command": "/wiki",
+    }
     assert isinstance(timeout, float) and 0 < timeout <= 60   # never unbounded
 
 
@@ -283,6 +290,16 @@ def test_item_without_a_slash_command_is_never_claimed(tmp_repo):
     assert _consume_approval(wi, tmp_repo) == qid
 
 
+def test_non_reflex_item_without_metric_identity_stays_on_pull_path(tmp_repo):
+    """The hardened route only runs an exact current reflex, never a backlog item."""
+    wi, qid = _enqueue(tmp_repo, source="meditation", metric_id=None, backlog_id="BACKLOG-1")
+
+    assert review_hitl(qid, tmp_repo, "approve") is True
+
+    assert _item(tmp_repo, qid)["status"] == "approved"
+    assert _consume_approval(wi, tmp_repo) == qid
+
+
 @pytest.mark.parametrize("action,reason", [("reject", "stale"), ("expire", "recovered")])
 def test_reject_and_expire_never_push(tmp_repo, action, reason):
     _, qid = _enqueue(tmp_repo)
@@ -327,12 +344,15 @@ def test_route_refusal_returns_the_approval_to_the_pull_path(tmp_repo, monkeypat
 @pytest.mark.parametrize("exc", [
     TimeoutError("timed out"),
     urllib.error.URLError(TimeoutError("timed out")),
+    urllib.error.URLError(ConnectionResetError("peer reset after request")),
+    urllib.error.URLError(BrokenPipeError("peer closed after request")),
     urllib.error.HTTPError("http://127.0.0.1:3001/api/reflex/exec", 500, "boom", {}, None),
 ])
 def test_indeterminate_result_is_left_on_the_execution_lease(tmp_repo, monkeypatch, exc):
-    """A timeout or 5xx may mean the request LANDED and the run started. Reverting
-    to `approved` there could double-fire, so the item stays on the lease that
-    reconcile_stale_executing already owns — recoverable and visible, never twice."""
+    """A timeout, reset, broken pipe, or 5xx may mean the request LANDED and the
+    run started. Reverting to `approved` there could double-fire, so the item
+    stays on the lease that reconcile_stale_executing already owns — recoverable
+    and visible, never twice."""
     _mock_urlopen(monkeypatch, raises=exc)
     wi, qid = _enqueue(tmp_repo)
 
@@ -395,6 +415,7 @@ def test_a_broken_audit_sink_never_breaks_the_push(tmp_repo, monkeypatch):
 def _write_approved(tmp_repo, approved_at: str | None, **extra) -> None:
     item = {
         "id": "hitl-stale", "source": "reflex", "status": "approved",
+        "blast_radius": "repo", "reversible": True,
         "skill": "wiki", "command": "/wiki", "pillar": "arts",
         "metric_id": "metric:arts:Wiki_Health_Score", "backlog_id": None,
         "approved_at": approved_at, "executing_at": None, "completed_at": None,

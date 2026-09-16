@@ -119,6 +119,9 @@ class VerifyClaudePromotionPolicyTests(unittest.TestCase):
         self.assertIn("3 of 5", honor_rows[0]["detail"])
 
     def test_run_checks_returns_single_failure_when_policy_file_is_missing(self) -> None:
+        # Plan M3.1 / audit finding S1: a verifier that cannot read its own
+        # policy made NO measurement. It reports ERROR ("could not run"), not a
+        # synthetic FAIL that reads to every consumer as a measured verdict.
         sandbox = self._sandbox()
         policy_path = sandbox / "does_not_exist.json"
         matrix_path = sandbox / "claude_surface_matrix.json"
@@ -127,10 +130,13 @@ class VerifyClaudePromotionPolicyTests(unittest.TestCase):
         results = run_checks(policy_path=policy_path, matrix_path=matrix_path)
 
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["status"], "FAIL")
+        self.assertEqual(results[0]["status"], "ERROR")
         self.assertEqual(results[0]["detail"], "missing")
 
     def test_run_checks_fails_matrix_row_but_keeps_policy_rows_when_matrix_missing(self) -> None:
+        # Plan M3.1 / audit finding S1: a verifier that cannot read its own
+        # policy made NO measurement. It reports ERROR ("could not run"), not a
+        # synthetic FAIL that reads to every consumer as a measured verdict.
         sandbox = self._sandbox()
         policy_path = sandbox / "claude_promotion_policy.json"
         policy_path.write_text(json.dumps(make_policy_payload()), encoding="utf-8")
@@ -141,7 +147,7 @@ class VerifyClaudePromotionPolicyTests(unittest.TestCase):
 
         matrix_rows = [row for row in results if row["label"] == "claude_surface_matrix.json"]
         self.assertEqual(len(matrix_rows), 1)
-        self.assertEqual(matrix_rows[0]["status"], "FAIL")
+        self.assertEqual(matrix_rows[0]["status"], "ERROR")
         policy_row_labels = {row["label"] for row in results}
         self.assertIn("claude_promotion_policy.lifecycleStates", policy_row_labels)
         self.assertIn("claude_promotion_policy.promotionChecklist", policy_row_labels)

@@ -5,14 +5,19 @@ guards (CLAUDE.md "Local LLM Routing"): a local call must set max_tokens >= 512,
 fall back to the reasoning/thinking field when a thinking model returns empty
 content, carry an explicit timeout, and treat unparseable output as failure.
 """
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+import agentica_core.llm.gateway as gw
+from agentica_core.emit import emit as real_emit
 from agentica_core.llm.gateway import (
     LLMGateway,
     OLLAMA_TIMEOUT_SEC,
     _dedupe_chain,
+    _is_local_model,
+    call_routed_llm,
 )
 
 
@@ -125,6 +130,18 @@ def test_parse_jsonish_payload_unparseable_is_failure_not_success(gateway):
     # garbage for a valid payload.
     assert gateway.parse_jsonish_payload("total garbage, no json") == {}
     assert gateway.parse_jsonish_payload("[1, 2, 3]") == {}
+
+
+def test_parse_jsonish_payload_ignores_second_brace_fragment_after_object(gateway):
+    # A trailing prose aside that itself contains braces (a very common LLM
+    # habit -- "for example {...}") must not get glued onto the real object.
+    raw = 'Sure thing! {"foo": 1} Note: for example {"bar": 2} is another format.'
+    assert gateway.parse_jsonish_payload(raw) == {"foo": 1}
+
+
+def test_parse_jsonish_payload_preserves_nested_object(gateway):
+    raw = 'Result: {"outer": {"inner": 1}} — done.'
+    assert gateway.parse_jsonish_payload(raw) == {"outer": {"inner": 1}}
 
 
 def test_parse_legacy_content_without_required_keys(gateway):
@@ -281,6 +298,19 @@ def test_call_openrouter_null_content_is_failure_not_success(gateway):
             gateway._call_openrouter("hi")
 
 
+def test_call_openrouter_auto_sentinel_reaches_the_api_unmangled(gateway):
+    # "openrouter/auto" is OpenRouter's own auto-routing pseudo-model id and
+    # is the FREE-tier chain's default (_call_openrouter's own default kwarg,
+    # and _build_legacy_chain inserts it for FREE tier). It must reach the
+    # API verbatim -- normalizing it like an ordinary routed model strips the
+    # "openrouter/" prefix and sends the meaningless bare id "auto" instead.
+    with patch("agentica_core.llm.gateway.requests.post") as post:
+        post.return_value = _openai_style_response("ok")
+        gateway._call_openrouter("hi")
+    sent_body = json.loads(post.call_args.kwargs["data"])
+    assert sent_body["model"] == "openrouter/auto"
+
+
 # ---------------------------------------------------------- _call_anthropic
 
 def _anthropic_response(text) -> MagicMock:
@@ -303,3 +333,178 @@ def test_call_anthropic_empty_content_is_failure_not_success(gateway):
         post.return_value = _anthropic_response("")
         with pytest.raises(Exception):
             gateway._call_anthropic("anthropic/claude-3.5-sonnet", "hi")
+
+
+# --------------------------------------------------- _is_local_model
+
+def test_is_local_model_true_for_bare_ollama_tag():
+    assert _is_local_model("gemma4:12b") is True
+    assert _is_local_model("qwen3.6:35b") is True
+
+
+def test_is_local_model_false_for_provider_prefixed_model():
+    assert _is_local_model("anthropic/claude-sonnet-4-6") is False
+    assert _is_local_model("gemini-2.5-flash") is False  # no ":" -> not a bare tag
+
+
+def test_is_local_model_false_for_none():
+    assert _is_local_model(None) is False
+
+
+# -------------------------------------------------- generate_text telemetry
+#
+# Until 2026-08-19 no call through this gateway emitted any telemetry at all —
+# every real per-project Local_Routing_Share call was invisible. Instrumented
+# INSIDE generate_text() itself (not call_routed_llm/call_llm) because that is
+# the one method every real caller funnels through: call_routed_llm, call_llm,
+# AND the direct gateway.generate_text() callers (tools/local_ui_patch.py,
+# Order Samurai/execution/audit_remediation_patch.py, dashboard-ui/qa/local_audit.py,
+# agentica_core/evals/judge.py). An earlier pass instrumented call_routed_llm
+# only, which silently missed all four of those direct callers — this is the
+# corrected, structurally-complete version.
+#
+# These tests exercise the real agentica_core.emit.emit() pipeline (schema
+# validation included), not a mock of it, redirected to a tmp_path file via the
+# same `path=` override test_emit.py already uses: prove a real record lands,
+# not that a mock was called. Only the HTTP layer (requests.post) is mocked, so
+# generate_text's own code — including the telemetry call — actually runs.
+
+def _redirect_telemetry(monkeypatch, tmp_path):
+    target = tmp_path / "governance_llm.jsonl"
+
+    def _emit_to_tmp(platform, task_name, **kwargs):
+        return real_emit(platform, task_name, path=target, **kwargs)
+
+    monkeypatch.setattr(gw, "_emit_telemetry", _emit_to_tmp)
+    return target
+
+
+def test_generate_text_emits_local_tier_telemetry_with_real_project(gateway, monkeypatch, tmp_path):
+    target = _redirect_telemetry(monkeypatch, tmp_path)
+    with patch("agentica_core.llm.gateway.requests.post") as post:
+        post.return_value = _ollama_response({"content": "classified: yes"})
+        result = gateway.generate_text("classify this", local_only=True,
+                                       task_name="classify.triage", project="agentica_core")
+
+    assert result == "classified: yes"
+    rec = json.loads(target.read_text(encoding="utf-8").strip())
+    assert rec["platform"] == "governance-local"
+    assert rec["project"] == "agentica_core"
+    assert rec["task_name"] == "classify.triage"
+    assert rec["model_tier"] == "LOCAL"
+
+
+def test_generate_text_emits_cloud_tier_telemetry_for_non_ollama_model(gateway, monkeypatch, tmp_path):
+    target = _redirect_telemetry(monkeypatch, tmp_path)
+    gateway.anthropic_key = "test-key"
+    with patch("agentica_core.llm.gateway.requests.post") as post:
+        post.return_value = _anthropic_response("analysis result")
+        gateway.generate_text("analyze this", model="anthropic/claude-3.5-sonnet",
+                              task_name="analysis", project="Order Samurai")
+
+    rec = json.loads(target.read_text(encoding="utf-8").strip())
+    assert rec["model_tier"] == "CLOUD"
+    assert rec["project"] == "Order Samurai"
+
+
+def test_generate_text_defaults_task_name_and_project_when_not_passed(gateway, monkeypatch, tmp_path):
+    """Covers the direct gateway.generate_text() callers that don't yet pass
+    either kwarg (tools/local_ui_patch.py, dashboard-ui/qa/local_audit.py,
+    Order Samurai/execution/audit_remediation_patch.py, agentica_core/evals/judge.py)
+    -- they must still show up, honestly bucketed, not silently invisible."""
+    target = _redirect_telemetry(monkeypatch, tmp_path)
+    with patch("agentica_core.llm.gateway.requests.post") as post:
+        post.return_value = _ollama_response({"content": "ok"})
+        gateway.generate_text("no project given", local_only=True)
+
+    rec = json.loads(target.read_text(encoding="utf-8").strip())
+    assert rec["project"] == "unknown"
+    assert rec["task_name"] == "generate_text"
+
+
+def test_generate_text_survives_telemetry_emission_failure(gateway, monkeypatch):
+    """A telemetry-side bug must never turn a successful LLM call into a failed
+    one -- this is a fire-and-forget side channel, not part of the contract."""
+    monkeypatch.setattr(gw, "_emit_telemetry",
+                        lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("telemetry backend exploded")))
+    with patch("agentica_core.llm.gateway.requests.post") as post:
+        post.return_value = _ollama_response({"content": "still works"})
+        result = gateway.generate_text("hi", local_only=True)
+
+    assert result == "still works"
+
+
+def test_generate_text_emits_nothing_when_the_call_itself_fails(gateway, monkeypatch, tmp_path):
+    """No result, no telemetry record -- a total failure has nothing real to
+    report, and emitting a fabricated record would corrupt the metric."""
+    target = _redirect_telemetry(monkeypatch, tmp_path)
+    with patch("agentica_core.llm.gateway.requests.post") as post:
+        post.return_value = _ollama_response({"content": ""})  # empty -> failure, not success
+        with pytest.raises(Exception):
+            gateway.generate_text("hi", local_only=True)
+
+    assert not target.exists()
+
+
+# ------------------------------ call_routed_llm / call_llm telemetry wiring
+#
+# Telemetry emission itself is fully covered above at its real source
+# (generate_text). These just prove each public entry point threads its own
+# project-naming kwarg through to generate_text's task_name/project -- a pure
+# wiring check, generate_text mocked wholesale on purpose since re-proving
+# emission here would be redundant with the tests above.
+
+def test_call_routed_llm_passes_task_and_project_through_to_generate_text(monkeypatch):
+    captured = {}
+
+    def _fake_generate_text(self, **kw):
+        captured.update(kw)
+        return {"text": "ok", "model": "gemma4:4b"}
+
+    monkeypatch.setattr(LLMGateway, "generate_text", _fake_generate_text)
+
+    call_routed_llm("sys", "user prompt", task="analysis", project="agentica_core")
+
+    assert captured["task_name"] == "analysis"
+    assert captured["project"] == "agentica_core"
+
+
+def test_call_routed_llm_defaults_project_to_unknown_when_not_passed(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        LLMGateway, "generate_text",
+        lambda self, **kw: (captured.update(kw), {"text": "ok", "model": "gemma4:4b"})[1],
+    )
+
+    call_routed_llm("sys", "no project given", task="classification")
+
+    assert captured["project"] == "unknown"
+
+
+def test_call_routed_llm_emits_nothing_when_the_call_itself_fails(monkeypatch, tmp_path):
+    target = tmp_path / "governance_llm.jsonl"
+
+    def _fake_generate_text(self, **kw):
+        raise RuntimeError("all providers failed")
+
+    monkeypatch.setattr(LLMGateway, "generate_text", _fake_generate_text)
+
+    result = call_routed_llm("sys", "user prompt", task="classification")
+
+    assert result is None
+    assert not target.exists()
+
+
+def test_call_llm_passes_project_context_through_to_generate_text_as_project(gateway, monkeypatch):
+    captured = {}
+
+    def _fake_generate_text(self, **kw):
+        captured.update(kw)
+        return {"text": "ok", "fallback_index": 0}
+
+    monkeypatch.setattr(LLMGateway, "generate_text", _fake_generate_text)
+
+    gateway.call_llm("my_task", "prompt", project_context="Order Samurai")
+
+    assert captured["task_name"] == "my_task"
+    assert captured["project"] == "Order Samurai"

@@ -283,3 +283,41 @@ def test_one_detected_secret_must_not_grade_pass():
     rule = insights.METRIC_RULES["Secrets_Detected"]
     assert insights._health(0, rule) == 100.0
     assert insights._health(1, rule) < 60.0
+
+
+def test_trend_clause_does_not_double_negative_a_falling_metric():
+    """_trend_clause's sentence already carries the direction word ('went down by');
+    it must show the unsigned magnitude, not the raw signed delta string. env["delta"]
+    is stored signed (e.g. "-3.0" for a fall — see populate_history), and the prior
+    code only .lstrip('+')'d it, which does nothing to a leading '-', producing the
+    double negative 'error rate went down by -3.0' instead of 'went down by 3.0'."""
+    pillars = {
+        "bow": {
+            "Ops": {
+                "Error_Rate": {
+                    "is_simulated": False, "delta": "-3.0", "trend": "down", "val": 5.0,
+                },
+            },
+        },
+    }
+    scores = {"bow": {"flags": []}}
+    clause = insights._trend_clause(pillars, "bow", scores)
+    assert "went down by 3.0" in clause, clause
+    assert "-3.0" not in clause, clause
+
+
+def test_health_higher_is_better_negative_fail_tapers_instead_of_flooring():
+    """Remediation_Delta ships with dir=higher, warn=0, fail=-0.01 (METRIC_CONFIG).
+    _health's own docstring promises "40 = at the fail threshold; ->0 as it runs
+    further past fail" — a smooth taper, mirroring how the lower-is-better branch
+    already guards fail<=0 by falling back to a unit scale instead of dividing by
+    a non-positive fail. The higher-is-better branch instead special-cased
+    `fail > 0` to a hard 0.0, so a marginal -0.01 regression graded identically
+    (0.0/F) to a catastrophic -10.0 regression, and even the at-threshold value
+    itself (which the docstring says must be 40) came out 0."""
+    rule = {"dir": "higher", "warn": 0, "fail": -0.01}
+    assert insights._health(-0.01, rule) == 40.0   # at fail: docstring promises 40
+    assert insights._health(0.01, rule) == 100.0   # inside warn: sanity check
+    # A deep regression must floor toward 0, but must NOT grade identically to
+    # a marginal one — that's the flattening this bug caused.
+    assert insights._health(-0.01, rule) > insights._health(-10.0, rule)

@@ -116,7 +116,7 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
 
     policy_payload, policy_error = _load_json(ANTI_DRIFT_POLICY_PATH)
     if policy_error:
-        results.append(_make_result("FAIL", "anti_drift_policy.json", policy_error))
+        results.append(_make_result("ERROR", "anti_drift_policy.json", policy_error))
         return results
 
     rule_ids = {rule.get("id") for rule in (policy_payload or {}).get("rules", [])}

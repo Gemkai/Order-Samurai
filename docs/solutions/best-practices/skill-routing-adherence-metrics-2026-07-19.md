@@ -16,6 +16,9 @@ related_components:
   - "~/.claude/scripts/skill_invocation_logger.py (writes data/skill_invocations.jsonl)"
   - "~/.claude/scripts/skill_routing_gate.py (Stop-hook enforcement tier)"
 tags: [skill-routing, governance, sword, metrics, order-samurai]
+covered_by:
+  - kind: metric
+    id: Skill_Routing_Adherence
 ---
 
 # Skill_Routing_Adherence + Governance_Work_Volume

@@ -11,7 +11,7 @@ if str(ROOT_DIR) not in sys.path:
 from execution.verifier_results import make_result as _make_result  # noqa: F401
 from execution.verifier_results import summarize  # noqa: F401  (re-exported for doctor/CLI)
 
-from execution.runtime_paths import ANTI_SPRAWL_POLICY_PATH, CONFIG_DIR, REPO_ROOT
+from execution.runtime_paths import ANTI_SPRAWL_POLICY_PATH, REPO_ROOT
 
 # Anti-sprawl policy rules whose role is truth separation: a hand-maintained
 # registry/manifest must resolve against on-disk reality. These rule ids declare
@@ -81,7 +81,7 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
 
     policy_payload, policy_error = _load_json(ANTI_SPRAWL_POLICY_PATH)
     if policy_error:
-        results.append(_make_result("FAIL", "anti_sprawl_policy.json", policy_error))
+        results.append(_make_result("ERROR", "anti_sprawl_policy.json", policy_error))
         return results
 
     rules = index_truth_separation_rules(payload=policy_payload or {})
@@ -108,7 +108,16 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
     # A missing expected artifact is factual drift, not an advisory gap.
     declared_artifacts: list[tuple[str, str]] = []
     for rule_id, rule in sorted(rules.items()):
-        severity = rule.get("severity", "high")
+        # Not severity-differentiated on purpose. TRUTH_SEPARATION_RULE_IDS is exactly
+        # ("every-surface-must-be-classified", "discovery-must-be-factual") -- severity
+        # "critical" and "high" respectively in anti_sprawl_policy.json -- but the
+        # policy's OWN separate warningModel.failOn list already classifies both rules'
+        # missing-artifact scenario as always-FAIL ("surface governance artifacts
+        # missing", "discoverability contracts unresolved"), independent of the
+        # severity label. Wiring severity in here would contradict the policy's own
+        # classification, not fix a gap. Decided 2026-08-20 (flagged, then resolved,
+        # during the lint-tranche cleanup) -- `rule.get("severity")` was read but never
+        # used; removed.
         for artifact in rule.get("expectedArtifacts", []):
             declared_artifacts.append((rule_id, artifact))
 

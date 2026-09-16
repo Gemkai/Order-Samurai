@@ -26,6 +26,12 @@ if [ "$PY_OK" != "1" ]; then
   exit 1
 fi
 
+PIP_INSTALL_ARGS=(--quiet)
+if ! "$PY" -c 'import sys; raise SystemExit(0 if sys.prefix != sys.base_prefix else 1)' \
+    >/dev/null 2>&1; then
+  PIP_INSTALL_ARGS+=(--user)
+fi
+
 ensure_dependency() {
   local module="$1"
   local requirement="$2"
@@ -35,7 +41,7 @@ ensure_dependency() {
   fi
 
   echo "install.sh: installing runtime dependency (${requirement})..."
-  "$PY" -m pip install --quiet --user "$requirement"
+  "$PY" -m pip install "${PIP_INSTALL_ARGS[@]}" "$requirement"
 
   # A zero pip exit is not enough: user-site loading may be disabled or pip may
   # target a different environment. Verify the exact interpreter this installer
@@ -47,7 +53,9 @@ ensure_dependency() {
 }
 
 ensure_dependency jsonschema 'jsonschema>=4.0'
+ensure_dependency requests 'requests>=2.31'
 ensure_dependency pip_audit 'pip-audit>=2.7'
 
 echo "install.sh: scanning Claude Code session logs..."
-exec "$PY" "$HERE/bin/first_blood.py" "$@"
+PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}" \
+  exec "$PY" "$HERE/bin/first_blood.py" "$@"

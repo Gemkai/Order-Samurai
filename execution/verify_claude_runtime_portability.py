@@ -27,6 +27,9 @@ from execution.claude_runtime_target import (  # type: ignore[import-not-found] 
     pinned_home_paths,
     runtime_root,
 )
+from execution.verify_claude_mcp_contract import (  # type: ignore[import-not-found]  # noqa: E402
+    server_is_enabled,
+)
 
 #: Runtime homes a portable command must never pin, POSIX-spelled. The matcher
 #: (claude_runtime_target.pinned_home_paths) is a pattern over any user's home,
@@ -89,9 +92,11 @@ def run_checks(*, runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
                                     "settings.json absent — hook portability unchecked"))
 
     mcp_servers: dict = {}
+    mcp_payload: dict = {}
     if mcp_path.exists():
         try:
             mcp = json.loads(mcp_path.read_text(encoding="utf-8"))
+            mcp_payload = mcp if isinstance(mcp, dict) else {}
             mcp_servers = mcp.get("mcpServers", mcp) if isinstance(mcp, dict) else {}
             for name, spec in mcp_servers.items() if isinstance(mcp_servers, dict) else []:
                 lit = _pinned_home(json.dumps(spec))
@@ -127,7 +132,7 @@ def run_checks(*, runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
     bypass: list[str] = []
     if isinstance(mcp_servers, dict):
         for name, spec in mcp_servers.items():
-            if not isinstance(spec, dict) or spec.get("disabled") is True:
+            if not isinstance(spec, dict) or not server_is_enabled(name, spec, mcp_payload):
                 continue
             blob = json.dumps(spec)
             if "launch_mcp_server" not in blob and "mcp_server_registry" not in blob:

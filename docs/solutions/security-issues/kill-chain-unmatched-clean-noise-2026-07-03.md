@@ -16,6 +16,11 @@ related_components:
   - "kill_chain_discovery scout"
   - "Order Samurai state"
 tags: [prompt-injection, kill-chain, telemetry, signal-to-noise, alert-stream, security-telemetry]
+covered_by:
+  - kind: metric
+    id: Kill_Chains_Open
+  - kind: hook
+    id: prompt-injection-guard
 ---
 
 # Injection guard logged Clean scans into the kill-chain alert stream, burying real events

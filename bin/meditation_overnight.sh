@@ -8,9 +8,10 @@ tmo() {
   local secs="${1%s}"; shift
   if command -v timeout >/dev/null 2>&1; then timeout "${secs}s" "$@"; return $?; fi
   "$@" & local pid=$!
-  ( sleep "$secs" && kill -TERM "$pid" 2>/dev/null ) & local wd=$!
+  ( sleep "$secs" && kill -TERM "$pid" 2>/dev/null ) </dev/null >/dev/null 2>&1 & local wd=$!
   local rc=0; wait "$pid" || rc=$?
   kill "$wd" 2>/dev/null || true
+  pkill -P "$wd" 2>/dev/null || true
   return "$rc"
 }
 REPO_DIR="${REPO_DIR:-$(pwd)}"
@@ -30,9 +31,17 @@ MAX_BUDGET_USD="${MAX_BUDGET_USD:-8.00}"   # mid-cycle brake; must match meditat
 MEDITATION_DRYRUN="${MEDITATION_DRYRUN:-0}"
 
 cd "$REPO_DIR"
+STATE_DIR="${MEDITATION_STATE_DIR:-$PWD/state}"
+if [ -e "$STATE_DIR/MEDITATION_STOP" ] || [ -L "$STATE_DIR/MEDITATION_STOP" ]; then
+  echo "Legacy meditation paused (MEDITATION_STOP)." >&2
+  exit 2
+fi
+PREFLIGHT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/meditation_preflight.py"
 MAIN_DIR="$(pwd)"   # absolute main-tree Order Samurai dir — stable even after we cd into a worktree
 REPO_ROOT="$(git -C "$MAIN_DIR" rev-parse --show-toplevel)"   # superproject root (for Data/)
 [ -f meditation.env ] && set -a && . ./meditation.env && set +a
+STATE_DIR="${MEDITATION_STATE_DIR:-$PWD/state}"
+python3 "$PREFLIGHT" --state-dir "$STATE_DIR"
 
 # Arts output-quality: freshen the llm-judged tool-use metrics once per night (the offline
 # scout is too costly for the 15-min dashboard-refresh hot path). Invoked by ABSOLUTE main-tree
@@ -44,11 +53,11 @@ REPO_ROOT="$(git -C "$MAIN_DIR" rev-parse --show-toplevel)"   # superproject roo
 # meditation.env if the box is widened.
 TOOL_QUALITY_MAX_JUDGMENTS="${TOOL_QUALITY_MAX_JUDGMENTS:-15}" \
 TOOL_QUALITY_MAX_TOOL_USES="${TOOL_QUALITY_MAX_TOOL_USES:-20}" \
-tmo 600s python3 "$MAIN_DIR/bin/tool_quality_scout.py" >/dev/null 2>&1 \
-  || echo "[meditation] tool_quality_scout skipped (nonzero exit or timeout)"
+[ -f "$MAIN_DIR/bin/tool_quality_scout.py" ] && tmo 600s python3 "$MAIN_DIR/bin/tool_quality_scout.py" >/dev/null 2>&1 \
+  || echo "[meditation] tool_quality_scout skipped (nonzero exit, timeout, or missing)"
 
-tmo 300s python3 "$MAIN_DIR/bin/tool_trust_annotator.py" >/dev/null 2>&1 \
-  || echo "[meditation] tool_trust_annotator skipped (nonzero exit or timeout)"
+[ -f "$MAIN_DIR/bin/tool_trust_annotator.py" ] && tmo 300s python3 "$MAIN_DIR/bin/tool_trust_annotator.py" >/dev/null 2>&1 \
+  || echo "[meditation] tool_trust_annotator skipped (nonzero exit, timeout, or missing)"
 
 # The self-harness loop USED to run here (weakness_mining_scout, heldout_rotation, and the M4
 # round itself). It moved to the sensei cycle's `self_harness` transition
@@ -57,6 +66,26 @@ tmo 300s python3 "$MAIN_DIR/bin/tool_trust_annotator.py" >/dev/null 2>&1 \
 # LaunchAgent is not dark, it is dead, and the two read identically from the output.
 # Deliberately NOT left here as a second carrier — two schedules for one weekly loop is how a
 # cadence guard gets bypassed by the job nobody remembered was still wired.
+
+# Deterministic daily reconciliation pass: executes the deterministic scanners/healers,
+# rolls telemetry logs, runs falsifiability fixtures, and writes a per-stage report to
+# state/reconciliation_report.json. $0.00 token cost, <15s runtime in the healthy case.
+# `log`/`$LOGBOOK` aren't defined yet at this point in the script (same reason the two
+# tmo-wrapped calls above use plain `echo`, not `log`) — matches that established pattern
+# rather than introducing a helper this call site can't actually reach.
+# The exit code is captured, not swallowed: a total crash (missing script, ImportError,
+# syntax error) must never read identically to "ran and reported a soft warning" in this
+# log — see state/reconciliation_report.json for full per-stage detail either way.
+# 300s: reconcile_state.py's own worst case is its 7 subprocess stages (6 sweep
+# scripts + 1 falsifiability run) each hitting their own internal 30s timeout —
+# up to ~210s if every one legitimately hangs. 300s gives a real margin above
+# that ceiling without approaching tool_quality_scout's/tool_trust_annotator's
+# much larger budgets above (this pass is meant to be the fast, cheap one).
+_rc=0
+tmo 300s python3 "$MAIN_DIR/bin/reconcile_state.py" >/dev/null 2>&1 || _rc=$?
+if [ "$_rc" -ne 0 ]; then
+  echo "[meditation] reconcile_state exited ${_rc} (nonzero exit or timeout) — see state/reconciliation_report.json"
+fi
 
 # Worktree isolation (default ON). When MEDITATION_WORKTREE=1 the whole cycle runs in a
 # dedicated git worktree instead of switching the MAIN working tree — so it can run
@@ -304,6 +333,7 @@ while :; do
   CYCLE_LOG="$STATE_DIR/logs/cycle_${DATE}_$(printf '%03d' "$cycle")"
 
   set +e
+  python3 "$PREFLIGHT" --state-dir "$STATE_DIR" || break
   tmo "${CYCLE_TIMEOUT}s" claude -p "$CYCLE_PROMPT" \
       --allowedTools "$ALLOWED" \
       --permission-mode acceptEdits \

@@ -13,7 +13,9 @@ to `state/exec_log.jsonl`. Vision docs: `PROJECT.md`, `RONIN_SPEC.md`.
   hand-edit a `.jsonl` event log — append via `bin/emit_event.py` or the owning script.
 - `.tmp/` is gitignored scratch. `.tmp/worktrees/` may hold a LIVE worktree from an overnight
   remediation or meditation run — check `git worktree list` before deleting anything there.
-- Concurrent sessions commit to `work`. Stage explicit paths only; audit `git show --stat HEAD`.
+- Concurrent sessions commit to `work` from an isolated worktree (root `CLAUDE.md`'s "Git in this
+  repo" — hook-enforced since 2026-08-31, not optional). Inside that worktree commit: stage
+  explicit paths only, audit `git show --stat HEAD` after.
 - Local LLM calls go through `agentica_core/llm/local_guards.py` — never re-implement the
   Ollama malformed-output guards inline.
 

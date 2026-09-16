@@ -33,7 +33,6 @@ scoring this remediation plan retires) — narrative judgment calls now live in 
 below the rosters instead of per-row.
 
 <!-- GENERATED:ROSTER:BOW:START -->
-| **Fake_Nonexistent_Metric** | Test | Graded | `x` | `/x` | advisory |
 | Metric Name | Group | Status | Skill | Command | Kind |
 | :--- | :--- | :---: | :--- | :--- | :---: |
 | **Avg_Session_Turns** | Activity | Graded | `insights` | `/insights` | advisory |
@@ -46,14 +45,18 @@ below the rosters instead of per-row.
 | **Tool_Calls** | Activity | Observational | `tool-diversity-audit` | `/tool-diversity-audit` | advisory |
 | **Lesson_Graduation_Rate** | Agent Operation | Observational | `—` | `—` | no_route |
 | **Agent_Process_Count** | Autonomic | Observational | `self-heal` | `/self-heal` | mis_route |
-| **Mechanism_Liveness** | Autonomic | Observational | `—` | `—` | no_route |
+| **Daemon_Restart_Count** | Autonomic | Observational | `—` | `—` | no_route |
+| **Mean_Time_To_Heal** | Autonomic | Observational | `—` | `—` | no_route |
+| **Mechanism_Liveness** | Autonomic | Graded | `audit-mechanisms` | `/audit-mechanisms` | advisory |
 | **Mechanism_Orphans** | Autonomic | Graded | `audit-mechanisms` | `/audit-mechanisms` | advisory |
 | **Mitigation_Route_Validity** | Autonomic | Observational | `—` | `—` | no_route |
-| **Remediation_Delta** | Autonomic | Graded | `insights` | `/insights` | advisory |
+| **Remediation_Delta** | Autonomic | Observational | `insights` | `/insights` | advisory |
+| **Scheduled_Job_Failures** | Autonomic | Graded | `audit-mechanisms` | `/audit-mechanisms` | advisory |
 | **Self_Correction_Rate** | Autonomic | Observational | `—` | `—` | no_route |
-| **Instrumentation_Coverage** | Coverage | Observational | `audit-mechanisms` | `/audit-mechanisms` | auto_fix |
+| **Instrumentation_Coverage** | Coverage | Observational | `audit-mechanisms` | `/audit-mechanisms` | advisory |
 | **Config_Drift_Rate** | Governance | Observational | `—` | `—` | no_route |
 | **Governance_Pass_Rate** | Governance | Graded | `runtime-refactor-hardening` | `/runtime-refactor-hardening` | auto_fix |
+| **Fake_Nonexistent_Metric** | Test | Graded | `x` | `/x` | advisory |
 <!-- GENERATED:ROSTER:BOW:END -->
 
 ---
@@ -70,7 +73,7 @@ regeneration command and why per-row Utility/Safety scores are not regenerated.
 | **Gate_Canary_Fault** | Audit Trail | Observational | `canary-fault-diagnosis` | `/canary-fault-diagnosis` | advisory |
 | **Boundary_Violations** | Code Security | Graded | `guard` | `/guard` | mis_route |
 | **Secrets_Detected** | Code Security | Graded | `security-audit` | `/security-audit` | auto_fix |
-| **Instrumentation_Coverage** | Coverage | Observational | `audit-mechanisms` | `/audit-mechanisms` | auto_fix |
+| **Instrumentation_Coverage** | Coverage | Observational | `audit-mechanisms` | `/audit-mechanisms` | advisory |
 | **Governance_Review_Findings** | Governance | Graded | `governance-review` | `/governance-review` | auto_fix |
 | **Governance_Work_Volume** | Governance | Observational | `—` | `—` | no_route |
 | **Kill_Chains_Disrupted** | Governance | Observational | `—` | `—` | no_route |
@@ -78,9 +81,9 @@ regeneration command and why per-row Utility/Safety scores are not regenerated.
 | **Pending_Chain_Proposals** | Governance | Observational | `—` | `—` | no_route |
 | **Rule_Violations** | Governance | Graded | `policy-enforcement-audit` | `/policy-enforcement-audit` | advisory |
 | **Skill_Routing_Adherence** | Governance | Graded | `insights` | `/insights` | advisory |
-| **Verifier_Falsifiability** | Governance | Graded | `insights` | `/insights` | advisory |
-| **Deprecated_Deps** | Supply Chain | Graded | `pip-safe-upgrade` | `/pip-safe-upgrade` | auto_fix |
-| **Open_CVEs** | Vulnerability | Graded | `pip-safe-upgrade` | `/pip-safe-upgrade` | auto_fix |
+| **Verifier_Falsifiability** | Governance | Observational | `insights` | `/insights` | advisory |
+| **Deprecated_Deps** | Supply Chain | Graded | `pip-safe-upgrade` | `/pip-safe-upgrade` | advisory |
+| **Open_CVEs** | Vulnerability | Graded | `pip-safe-upgrade` | `/pip-safe-upgrade` | advisory |
 <!-- GENERATED:ROSTER:SWORD:END -->
 
 ---
@@ -95,14 +98,17 @@ regeneration command and why per-row Utility/Safety scores are not regenerated.
 | Metric Name | Group | Status | Skill | Command | Kind |
 | :--- | :--- | :---: | :--- | :--- | :---: |
 | **Architecture_Scorecard_Grade** | Architecture | Graded | `runtime-refactor-hardening` | `/runtime-refactor-hardening` | auto_fix |
+| **Dead_Rule_Count** | Code Health | Observational | `—` | `—` | no_route |
 | **Hardcoded_Path_Incidents** | Code Health | Graded | `doctor` | `/doctor` | auto_fix |
 | **Revision_Ratio** | Code Health | Observational | `simplify` | `/simplify` | advisory |
 | **Root_Hygiene_Issues** | Code Health | Graded | `doctor` | `/doctor` | auto_fix |
-| **Instrumentation_Coverage** | Coverage | Observational | `audit-mechanisms` | `/audit-mechanisms` | auto_fix |
+| **Unbounded_Wait_Count** | Code Health | Observational | `timeout-audit` | `/timeout-audit` | advisory |
+| **Instrumentation_Coverage** | Coverage | Observational | `audit-mechanisms` | `/audit-mechanisms` | advisory |
 | **Chain_Depth_Avg** | Orchestration | Graded | `subagent-audit` | `/subagent-audit` | auto_fix |
 | **MCP_vs_CLI_Ratio** | Orchestration | Observational | `—` | `—` | no_route |
 | **Subagent_Efficiency_Index** | Orchestration | Observational | `subagent-audit` | `/subagent-audit` | advisory |
 | **Cache_Hit_Rate** | Token Efficiency | Observational | `—` | `—` | no_route |
+| **Compaction_Events** | Token Efficiency | Observational | `—` | `—` | no_route |
 | **Context_Cliff_Events** | Token Efficiency | Graded | `token-optimizer` | `/token-optimizer` | advisory |
 | **Cost_Per_Outcome** | Token Efficiency | Observational | `—` | `—` | no_route |
 | **Cost_Per_Task** | Token Efficiency | Observational | `cost-breakdown-audit` | `/cost-breakdown-audit` | advisory |
@@ -124,7 +130,7 @@ regeneration command and why per-row Utility/Safety scores are not regenerated.
 <!-- GENERATED:ROSTER:ARTS:START -->
 | Metric Name | Group | Status | Skill | Command | Kind |
 | :--- | :--- | :---: | :--- | :--- | :---: |
-| **Instrumentation_Coverage** | Coverage | Observational | `audit-mechanisms` | `/audit-mechanisms` | auto_fix |
+| **Instrumentation_Coverage** | Coverage | Observational | `audit-mechanisms` | `/audit-mechanisms` | advisory |
 | **Craft_Improvements** | Craft | Observational | `—` | `—` | no_route |
 | **Estimated_Human_Time_Saved** | Craft | Observational | `—` | `—` | no_route |
 | **Skill_Conflicts** | Craft | Graded | `skill-consolidator` | `/skill-consolidator` | auto_fix |
@@ -138,14 +144,16 @@ regeneration command and why per-row Utility/Safety scores are not regenerated.
 | **Knowledge_Staleness_Days** | Knowledge | Graded | `consolidate-memory` | `/consolidate-memory` | advisory |
 | **OKF_Conformance** | Knowledge | Graded | `wiki` | `python3 Knowledge/okf/okf_tools.py validate Knowledge/vault --list 20` | advisory |
 | **Orphan_Concepts** | Knowledge | Observational | `—` | `—` | no_route |
-| **Raw_Pending** | Knowledge | Graded | `wiki` | `/wiki` | advisory |
+| **Raw_Pending** | Knowledge | Graded | `wiki` | `/wiki` | auto_fix |
 | **Retrieval_Relevance** | Knowledge | Graded | `wiki` | `/wiki` | advisory |
+| **Soji_Broken_Links** | Knowledge | Observational | `—` | `—` | no_route |
+| **Soji_Orphan_Notes** | Knowledge | Observational | `—` | `—` | no_route |
 | **Wiki_Article_Count** | Knowledge | Observational | `—` | `—` | no_route |
 | **Wiki_Health_Score** | Knowledge | Observational | `wiki` | `/wiki` | auto_fix |
-| **Wiki_Orphans** | Knowledge | Graded | `wiki` | `/wiki` | advisory |
+| **Wiki_Orphans** | Knowledge | Graded | `wiki` | `/wiki` | auto_fix |
 | **Faithfulness_Score** | Output Quality | Graded | `insights` | `/insights` | advisory |
 | **Refusal_Appropriateness** | Output Quality | Graded | `insights` | `/insights` | advisory |
-| **Slop_Density** | Output Quality | Graded | `humanizer` | `/humanizer` | auto_fix |
+| **Slop_Density** | Output Quality | Graded | `humanizer` | `/humanizer` | advisory |
 | **Tool_Arg_Correctness** | Output Quality | Graded | `insights` | `/insights` | advisory |
 | **Tool_Response_Utilization** | Output Quality | Graded | `insights` | `/insights` | advisory |
 | **Tool_Selection_Accuracy** | Output Quality | Graded | `insights` | `/insights` | advisory |

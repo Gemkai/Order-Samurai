@@ -88,13 +88,13 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
 
     root_policy_payload, root_policy_error = _load_json(ROOT_HYGIENE_POLICY_PATH)
     if root_policy_error:
-        results.append(_make_result("FAIL", "root_hygiene_policy.json", root_policy_error))
+        results.append(_make_result("ERROR", "root_hygiene_policy.json", root_policy_error))
         return results
     results.append(_make_result("OK", "root_hygiene_policy.json", "root hygiene policy loaded"))
 
     promotion_payload, promotion_error = _load_json(PROMOTION_POLICY_PATH)
     if promotion_error:
-        results.append(_make_result("FAIL", "promotion_policy.json", promotion_error))
+        results.append(_make_result("ERROR", "promotion_policy.json", promotion_error))
         return results
     if not promotion_payload.get("promotionChecklist"):
         results.append(_make_result("FAIL", "promotion_policy.json", "missing promotion checklist"))

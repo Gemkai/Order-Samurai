@@ -3,12 +3,46 @@
 _Established 2026-07-18. Three loops, three names — chosen to match what the code already calls
 them, so the container and its contents never mean opposite things._
 
+## Operational status and safeguards (2026-09-11)
+
+Ronin is an **approval policy**, not a health or activity indicator. Where applicable it
+promotes queue/HITL decisions to automatic execution; hard stops still apply. A global
+configuration override takes precedence over a pillar toggle. The dashboard displays that
+override and prevents a pillar click from pretending to change it.
+
+Legacy meditation remains paused. The API engine and both shell entry points reject
+`MEDITATION_STOP` before launching a worker; the overnight entry also rejects before its
+maintenance work. The flag is rechecked when queued work reaches execution. Pausing does not
+cancel a worker that already started. REST returns 423 with `started:false`; WebSocket clients
+receive the pause explanation. The dashboard shows the current pause independently of Ronin.
+
+Autonomous budget checks require a complete **current UTC-day** ledger with valid nonnegative
+`spent_usd` and `daily_limit_usd`. Missing, stale, future-dated, malformed or exhausted input
+blocks execution, including previously approved work. Refresh accounting through the existing
+budget owner with measured spending; never reset it to zero merely to unblock a run. This gate
+checks the ledger; it does not create a new accounting producer or reserve concurrent spend.
+
+**Keep:** Bushido approval policy, Sensei verification, ReflexEngine's guarded repair path,
+and the existing skill-autoresearch workflow. **Deprecation recommendation:** the old overnight
+meditation scheduler, pillar-wide RUN controls and direct `ronin-pillar` execution path. Retain
+their code/history while paused until the parent production-readiness plan accounts for all
+maintenance producers and consumers. Do not delete `MEDITATION_STATE.json` yet: approval policy
+still reads its Ronin settings. Move that dependency before removing legacy state. No scheduler
+activation or deletion is part of the safeguards change.
+
+The sections below preserve the July design terminology. Current installation checks on
+September 6 found a daily Sensei interval (86400 seconds) and a separate skill-autoresearch
+workflow. The missing learning work is connecting qualified repair evidence to that workflow;
+the historical “NOT YET BUILT” statement below applies to the proposed keiko integration, not
+to all skill revision/evaluation capability. See the September 6 consolidation plan for evidence.
+
 ## The three cycles
 
 ### Meditation cycle — improves the SYSTEM
 One agent-driven remediation run over pillar metrics.
-- **Entry:** `bin/ronin-pillar <pillar>` → `prompts/meditation_cycle.md`; write-capable `ronin`
-  workers (project agent, Sonnet tier via `CYCLE_MODEL`).
+- **Entry:** `bin/ronin-pillar <pillar>` → `prompts/meditation_cycle.md`; write-capable `ronin-worker`
+  agents (project agent, renamed from bare `ronin` 2026-08-24 to end confusion with the
+  read-only `ronin-<pillar>` sensei-cycle scouts; Sonnet tier via `CYCLE_MODEL`).
 - **Changes:** code, mechanisms, docs — the system itself.
 - **Owns:** `state/MEDITATION_STATE.json`, the meditation-api, the dashboard RUN button.
 
@@ -71,3 +105,13 @@ beats the current version on replayed evals — the difference between compoundi
 - Local-first for bulk work: `bin/ronin-local` uses Ollama, falling back to `RONIN_LOCAL_FALLBACK`
   (haiku) when it's down. Agentic work uses the cheapest cloud tier that clears the bar; only
   rival's judgment call uses the top tier (Fable → Opus on outage).
+
+## Production disposition — 2026-09-11
+
+Ronin remains supported as an approval-policy control. Legacy overnight meditation is
+**deprecated and disabled**. Its paused run controls and preflight checks remain for
+compatibility and enforcement; they are not an invitation to resume unattended work.
+Use the existing grant-gated, proposal-only repair path and separate Sensei verification.
+No legacy state, history or maintenance script has been deleted. Restoring the old loop
+requires current measured budget accounting, concurrent spend reservations, a refreshed
+backlog and staging enforcement; those requirements are not satisfied by this installation.

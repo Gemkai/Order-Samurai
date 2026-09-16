@@ -1,3 +1,10 @@
+---
+title: Overnight meditation worktree destroyed mid-cycle
+component: meditation worktree lifecycle
+disposition: accepted-workaround
+cost: supervised rerun with a filesystem watcher whenever cleanup behavior is in doubt
+---
+
 # INCIDENT 2026-07-12 — overnight meditation worktree destroyed mid-cycle
 
 Reconstructed 2026-07-12 ~02:3x from live-state verification (the memory entry

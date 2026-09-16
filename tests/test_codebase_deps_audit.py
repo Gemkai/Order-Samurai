@@ -24,6 +24,8 @@ if str(REPO_ROOT) not in sys.path:
 
 from bin.codebase_deps_audit import (  # type: ignore[import-not-found]
     _format_report,
+    _real_pip_audit,
+    _real_pip_outdated,
     build_audit,
     classify_licence,
     parse_npm_audit,
@@ -531,10 +533,10 @@ class CoverageIsDeclared(unittest.TestCase):
     Node surfaces had never been looked at. The flag stays opt-in on purpose (npm
     audit transmits the dependency graph); the SCOPE is what had to become explicit."""
 
-    def _audit(self, npm_audits=None):
+    def _audit(self, npm_audits=None, npm_ok=None):
         return build_audit(
             pip_outdated=[], pip_cves=[], licence_flags=[],
-            generated_at="2026-08-16T00:00:00Z", npm_audits=npm_audits,
+            generated_at="2026-08-16T00:00:00Z", npm_audits=npm_audits, npm_ok=npm_ok,
         )
 
     def test_pip_only_run_declares_npm_unscanned(self):
@@ -550,6 +552,22 @@ class CoverageIsDeclared(unittest.TestCase):
         self.assertEqual(cov["ecosystems_unscanned"], [])
         self.assertTrue(cov["complete"])
 
+    def test_npm_partial_failure_does_not_declare_full_coverage(self):
+        """1 of N npm projects scanned OK (non-empty npm_audits) while the scanner
+        overall reports npm_ok=False (run_audit's real signal for a partial failure,
+        e.g. a timeout or missing lockfile on the other projects). Bug: build_audit
+        used to infer "npm fully scanned" purely from `npm_audits` being non-empty,
+        so this exact shape reported `coverage.complete: True` and a "both scanned"
+        note — even though 2 of 3 npm projects were never actually audited and their
+        CVEs are absent from `counts.cves`."""
+        cov = self._audit(
+            npm_audits=[{"project": "Governance", "total": 1}], npm_ok=False,
+        )["coverage"]
+        self.assertFalse(cov["complete"])
+        self.assertIn("npm", cov["ecosystems_unscanned"])
+        self.assertIn("PARTIALLY scanned", cov["note"])
+        self.assertNotIn("both scanned", cov["note"])
+
     def test_report_prints_the_scope_next_to_the_cve_count(self):
         report = _format_report(self._audit(), Path("/tmp/x.json"))
         self.assertIn("CVEs: 0", report)
@@ -560,3 +578,68 @@ class CoverageIsDeclared(unittest.TestCase):
         report = _format_report(
             self._audit(npm_audits=[{"project": "api", "total": 0}]), Path("/tmp/x.json"))
         self.assertNotIn("NOT scanned", report)
+
+
+class ScannerRetryTests(unittest.TestCase):
+    """remediation-loops A9: a lone transient network blip (pip against the index,
+    pip-audit against PyPI's OSV feed) must not cost a full week of SCANNER FAILURE on
+    this weekly job -- but a scanner that is genuinely, persistently broken must still
+    report failure, never invent a clean result. No test sleeps for real: the backoff
+    is patched out so these run at unit-test speed."""
+
+    def setUp(self):
+        patcher = mock.patch.object(deps_audit.time, "sleep")
+        self.addCleanup(patcher.stop)
+        self.mock_sleep = patcher.start()
+
+    # --- pip-audit ---------------------------------------------------------
+
+    def test_pip_audit_retries_after_one_empty_attempt_then_succeeds(self):
+        empty = SimpleNamespace(returncode=1, stdout="", stderr="transient")
+        ok = SimpleNamespace(returncode=0, stdout='{"dependencies": []}', stderr="")
+        with mock.patch.object(deps_audit.subprocess, "run", side_effect=[empty, ok]) as run:
+            result = _real_pip_audit()
+        self.assertEqual(result, '{"dependencies": []}')
+        self.assertEqual(run.call_count, 2)
+        self.mock_sleep.assert_called_once()
+
+    def test_pip_audit_still_fails_closed_after_exhausting_retries(self):
+        empty = SimpleNamespace(returncode=1, stdout="", stderr="still down")
+        with mock.patch.object(deps_audit.subprocess, "run", side_effect=[empty, empty]) as run:
+            result = _real_pip_audit()
+        self.assertIsNone(result)
+        self.assertEqual(run.call_count, deps_audit._SCAN_RETRY_ATTEMPTS)
+
+    def test_pip_audit_succeeds_on_first_try_without_retrying(self):
+        ok = SimpleNamespace(returncode=1, stdout='{"dependencies": []}', stderr="1 vuln")
+        with mock.patch.object(deps_audit.subprocess, "run", return_value=ok) as run:
+            result = _real_pip_audit()
+        self.assertEqual(result, '{"dependencies": []}')
+        self.assertEqual(run.call_count, 1)
+        self.mock_sleep.assert_not_called()
+
+    def test_pip_audit_retries_a_launch_exception_then_succeeds(self):
+        ok = SimpleNamespace(returncode=0, stdout='{"dependencies": []}', stderr="")
+        with mock.patch.object(
+            deps_audit.subprocess, "run", side_effect=[OSError("no such interpreter"), ok],
+        ) as run:
+            result = _real_pip_audit()
+        self.assertEqual(result, '{"dependencies": []}')
+        self.assertEqual(run.call_count, 2)
+
+    # --- pip outdated --------------------------------------------------------
+
+    def test_pip_outdated_retries_after_one_nonzero_exit_then_succeeds(self):
+        bad = SimpleNamespace(returncode=1, stdout="", stderr="index unreachable")
+        ok = SimpleNamespace(returncode=0, stdout="[]", stderr="")
+        with mock.patch.object(deps_audit.subprocess, "run", side_effect=[bad, ok]) as run:
+            result = _real_pip_outdated()
+        self.assertEqual(result, "[]")
+        self.assertEqual(run.call_count, 2)
+
+    def test_pip_outdated_still_fails_closed_after_exhausting_retries(self):
+        bad = SimpleNamespace(returncode=1, stdout="", stderr="index unreachable")
+        with mock.patch.object(deps_audit.subprocess, "run", side_effect=[bad, bad]) as run:
+            result = _real_pip_outdated()
+        self.assertIsNone(result)
+        self.assertEqual(run.call_count, deps_audit._SCAN_RETRY_ATTEMPTS)

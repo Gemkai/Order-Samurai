@@ -126,3 +126,37 @@ def test_default_path_matches_platform_registry():
     resolved = vtf._default_telemetry_path()
     assert resolved.name == "telemetry.jsonl"
     assert ".claude" in str(resolved)
+
+
+# ── absent runtime home: unmeasured, not a dead emitter (export gate, 2026-09-06) ──
+
+def test_absent_runtime_home_is_unmeasured_not_a_dead_emitter(tmp_path, monkeypatch):
+    """No ~/.claude at all (a CI runner; a fresh clone on a host that never ran
+    Claude Code): nothing to measure, so WARN -- never FAIL, never a synthetic OK."""
+    home = tmp_path / ".claude"
+    monkeypatch.setenv("CLAUDE_RUNTIME_ROOT", str(home))
+    monkeypatch.setattr(vtf, "_default_telemetry_path",
+                        lambda: home / "telemetry" / "telemetry.jsonl")
+    results = vtf.run_checks(now=_NOW)
+    assert [r["status"] for r in results] == ["WARN"]
+    assert "cannot be measured" in results[0]["detail"]
+
+
+def test_existing_runtime_home_with_no_stream_still_fails(tmp_path, monkeypatch):
+    """The carve-out is for an ABSENT home only. A home that exists with no stream
+    is the 15-day-silent emitter this gate was written for."""
+    home = tmp_path / ".claude"
+    home.mkdir()
+    monkeypatch.setenv("CLAUDE_RUNTIME_ROOT", str(home))
+    monkeypatch.setattr(vtf, "_default_telemetry_path",
+                        lambda: home / "telemetry" / "telemetry.jsonl")
+    results = vtf.run_checks(now=_NOW)
+    assert [r["status"] for r in results] == ["FAIL"]
+    assert "stream missing" in results[0]["detail"]
+
+
+def test_injected_missing_path_fails_regardless_of_runtime_home(tmp_path, monkeypatch):
+    """An explicit `path` keeps exact semantics: the caller named the stream."""
+    monkeypatch.setenv("CLAUDE_RUNTIME_ROOT", str(tmp_path / "no-such-home"))
+    results = vtf.run_checks(path=tmp_path / "nope.jsonl", now=_NOW)
+    assert [r["status"] for r in results] == ["FAIL"]

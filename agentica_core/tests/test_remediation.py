@@ -2,7 +2,6 @@
 import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-import pytest
 from agentica_core import remediation as rem
 
 
@@ -291,6 +290,45 @@ def test_efficacy_builds_event_from_fire_time_measurement_without_snapshots(monk
     assert result["applied"] == 1 and result["improved"] == 1
 
 
+def test_efficacy_keeps_dashboard_repair_as_human_evidence_only(monkeypatch, tmp_path):
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(
+            "2026-01-01T00:00:00+00:00",
+            "done",
+            source="dashboard_exec",
+            reflex_id="metric:bow:Error_Rate",
+            metric_before=5.0,
+            metric_after=1.0,
+        ),
+    ])
+    monkeypatch.setattr(rem, "_EXEC_LOG", exec_log)
+    hist = tmp_path / "hist.jsonl"
+    hist.write_text("", encoding="utf-8")
+
+    result = rem.efficacy(history_path=hist, records=[])
+
+    assert result["attempted"] == 0
+    assert result["completed"] == 0
+    assert result["applied"] == 0
+    assert result["improved"] == 0
+    assert result["improvement_rate"] is None
+    assert result["events"] == []
+    assert result["human_correlated"] == 1
+    assert result["human_correlated_improved"] == 1
+    assert result["human_events"] == [{
+        "metric": "Error_Rate",
+        "skill": "investigate",
+        "command": "/investigate",
+        "before": 5.0,
+        "after": 1.0,
+        "outcome": "improved",
+        "used_at": "2026-01-01T00:00:00+00:00",
+        "actor": "human",
+        "evidence": "fire_time",
+    }]
+
+
 def test_efficacy_keeps_proposal_only_measurement_out_of_live_results(monkeypatch, tmp_path):
     exec_log = tmp_path / "exec_log.jsonl"
     _write_exec_log(exec_log, [
@@ -319,6 +357,37 @@ def test_efficacy_keeps_proposal_only_measurement_out_of_live_results(monkeypatc
     assert result["proposed_improved"] == 1
     assert result["proposal_improvement_rate"] == 100.0
     assert result["proposal_events"][0]["outcome"] == "improved"
+
+
+def test_efficacy_excludes_read_only_mechanism_row_from_fire_time_events(monkeypatch, tmp_path):
+    exec_log = tmp_path / "exec_log.jsonl"
+    _write_exec_log(exec_log, [
+        _exec_row(
+            "2026-01-01T00:00:00+00:00",
+            "done",
+            reflex_id="metric:bow:Error_Rate",
+            metric_before=5.0,
+            metric_after=1.0,
+            kind="mechanism",
+            read_only=True,
+        ),
+    ])
+    monkeypatch.setattr(rem, "_EXEC_LOG", exec_log)
+    hist = tmp_path / "hist.jsonl"
+    hist.write_text("", encoding="utf-8")
+
+    result = rem.efficacy(history_path=hist, records=[])
+
+    # A read-only diagnostic mechanism is not an autonomous remediation attempt --
+    # _is_autonomous_attempt() explicitly excludes it (kind="mechanism", read_only=
+    # True), and the attempted-counting loop honors that (attempted stays 0). The
+    # fire-time event loop must honor the same channel filter, or `improved` can
+    # exceed its own `attempted` denominator -- exactly what _is_autonomous_attempt's
+    # own docstring says must never happen.
+    assert result["attempted"] == 0
+    assert result["applied"] == 0
+    assert result["improved"] == 0
+    assert result["events"] == []
 
 
 def test_efficacy_judges_fire_time_no_change_run_as_flat(monkeypatch, tmp_path):

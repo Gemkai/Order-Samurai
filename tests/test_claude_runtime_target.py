@@ -142,3 +142,35 @@ class PinnedHomePathsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GovernanceRootTests(unittest.TestCase):
+    """governance_root(): the Governance-level directory in BOTH layouts.
+
+    hitl_alerts and scheduled_run_outcomes reached Governance files by a fixed hop
+    (`_ROOT.parent`, `parents[3] / "Governance"`). In the public export both
+    landed outside the distribution, and the export gate had never been green.
+    """
+
+    def _tree(self, *rel: str) -> Path:
+        import tempfile
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        for r in rel:
+            (root / r).mkdir(parents=True, exist_ok=True)
+        return root.resolve()  # macOS /var -> /private/var
+
+    def test_nested_pack_resolves_to_governance(self) -> None:
+        root = self._tree("Governance/agentica_core", "Governance/Order Samurai/execution")
+        here = root / "Governance" / "Order Samurai" / "execution" / "m.py"
+        self.assertEqual(target.governance_root(here), root / "Governance")
+
+    def test_flat_export_resolves_to_the_pack_root(self) -> None:
+        """The public export: agentica_core/, config/ and tools/ sit beside execution/."""
+        root = self._tree("agentica_core", "execution", "tools")
+        self.assertEqual(target.governance_root(root / "execution" / "m.py"), root)
+
+    def test_this_checkout_holds_agentica_core(self) -> None:
+        """Whatever the layout, the resolved directory is the one agentica_core lives in."""
+        self.assertTrue((target.governance_root() / "agentica_core").is_dir())

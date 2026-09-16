@@ -330,7 +330,12 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
         }
         if row.get("propose_only") is True:
             proposal_events.append(event)
-        else:
+        elif _is_autonomous_attempt(row):
+            events.append(event)
+        elif row.get("source") != "reflex_engine":
+            # A dashboard-authorized exact reflex carries the same direct numeric
+            # evidence, but remains a human channel. The split below keeps it out
+            # of every autonomous numerator and denominator.
             events.append(event)
 
     # ── Tier 2: engine verdict. The row has no numeric pair, but the run SETTLED

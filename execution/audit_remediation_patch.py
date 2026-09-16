@@ -79,9 +79,39 @@ def _added_code_lines(patch_content: str):
         # must not flip the state (spoofable scoping in both directions).
         if line.startswith("+++ ") and prev.startswith("--- "):
             target_is_code = line[4:].strip().endswith(CODE_EXTENSIONS)
-        elif target_is_code and line.startswith("+") and not line.startswith("+++"):
+        # A real "+++ file" header always has a trailing space ("+++ b/path" or
+        # "+++ /dev/null") — an added CONTENT line whose own text happens to
+        # start with "++" (e.g. `++counter;`) renders as "+++counter;" and must
+        # still be yielded, not mistaken for a header and dropped.
+        elif target_is_code and line.startswith("+") and not line.startswith("+++ "):
             yield line
         prev = line
+
+
+def _patch_file_segments(patch_content: str) -> list[str]:
+    """Split a multi-file unified diff into each file's own segment (its "--- "/
+    "+++ " header pair through just before the next file's header pair), using
+    the same header-pair heuristic as _added_code_lines above. Per-file checks
+    (e.g. the Debug Handlers check) run against each segment individually so an
+    unrelated file elsewhere in the same patch can't satisfy a condition that
+    should be scoped to the file being judged. Non-diff input (no diff markers)
+    is a single whole-content segment.
+    """
+    lines = patch_content.splitlines(keepends=True)
+    if not any(l.startswith(("+++", "---", "@@")) for l in lines):
+        return [patch_content]
+    starts = []
+    prev = ""
+    for i, line in enumerate(lines):
+        if line.startswith("+++ ") and prev.startswith("--- "):
+            starts.append(i - 1)
+        prev = line
+    if not starts:
+        return [patch_content]
+    return [
+        "".join(lines[start:(starts[idx + 1] if idx + 1 < len(starts) else len(lines))])
+        for idx, start in enumerate(starts)
+    ]
 
 
 def _added_code(patch_content: str) -> str:
@@ -98,7 +128,12 @@ def _added_code(patch_content: str) -> str:
     lines = patch_content.splitlines()
     if not any(l.startswith(("+++", "---", "@@")) for l in lines):
         return patch_content
-    return "\n".join(l[1:] for l in lines if l.startswith("+") and not l.startswith("+++"))
+    # A real "+++ file" header always has a trailing space ("+++ b/path" or
+    # "+++ /dev/null") — an added line whose own CONTENT starts with "++" (e.g.
+    # `++counter;`) renders as "+++counter;" (no space) and must still count as
+    # added code, not be mistaken for a header and silently dropped from every
+    # check this feeds (CORS, CLI injection, debug handlers, shell:true).
+    return "\n".join(l[1:] for l in lines if l.startswith("+") and not l.startswith("+++ "))
 
 
 def run_static_checks(patch_content: str) -> list[str]:
@@ -109,8 +144,15 @@ def run_static_checks(patch_content: str) -> list[str]:
     if re.search(r"\borigin\s*:\s*['\"]\*['\"]", added) or re.search(r"cors\(\s*\)", added):
         failures.append("CORS configured to allow wildcard '*' origin.")
 
-    # 2. CLI Argument Injection (CWE-88) check
-    if re.search(r"spawn\([^)]*(\+|\$\{)", added) or re.search(r"exec\([^)]*(\+|\$\{)", added):
+    # 2. CLI Argument Injection (CWE-88) check.
+    # `[^)]*` cannot span past ANY ")", including one belonging to a nested
+    # call inside the spawn/exec argument list (e.g.
+    # `spawn(resolveBinary(), [..., userInput + ext])`) — the regex engine
+    # hits the ")" closing the nested call before it can reach the "+",
+    # silently defeating this deterministic gate. Non-greedy `.*?` (still
+    # line-scoped: "." does not match newlines here) finds the nearest "+"
+    # or "${" after "spawn("/"exec(" regardless of intervening parens.
+    if re.search(r"spawn\(.*?(\+|\$\{)", added) or re.search(r"exec\(.*?(\+|\$\{)", added):
         failures.append("Potential CLI argument injection (CWE-88): raw concatenation in spawn/exec call.")
 
     # 3. gitignore check (inspects diff headers via the same space-safe
@@ -133,16 +175,36 @@ def run_static_checks(patch_content: str) -> list[str]:
             break
 
     # 4. Debug Handlers check (NODE_ENV gate may live on surrounding context lines,
-    # so only the added line is scoped, not the NODE_ENV guard check — main #56)
-    if re.search(r"console\.(error|log)\(\s*([a-zA-Z0-9_]+\.stack|err)\s*\)", added) and not "NODE_ENV" in patch_content:
-        failures.append("Debug handlers exposing stack trace in production (missing NODE_ENV !== 'production' gate).")
+    # so the added line isn't the only thing scoped — main #56). Scoped PER FILE
+    # (_patch_file_segments) so an unrelated file elsewhere in the same patch
+    # merely mentioning NODE_ENV can't silence an ungated leak in a different
+    # file (2026-08-24). The match itself also isn't limited to a sole argument
+    # any more — `console.error("context:", err.stack)` is the common real-world
+    # form and was previously missed.
+    for _segment in _patch_file_segments(patch_content):
+        _seg_added = _added_code(_segment)
+        if (re.search(r"console\.(error|log)\([^)]*\b(?:[a-zA-Z0-9_]+\.stack|err)\b", _seg_added)
+                and "NODE_ENV" not in _segment):
+            failures.append("Debug handlers exposing stack trace in production (missing NODE_ENV !== 'production' gate).")
+            break
 
-    # 5. Absolute path check — Windows drive letters anywhere; Unix abspaths
-    # only in added source-code lines (the patch-wide form auto-rejected every
-    # governance patch whose state/doc files record absolute paths)
-    if re.search(r"['\"][a-zA-Z]:\\[^\s'\"]*", patch_content) or any(
-        re.search(r"['\"]/(home|Users|tmp)/[^\s'\"]*", line)
-        for line in _added_code_lines(patch_content)
+    # 5. Absolute path check — Windows drive letters AND Unix abspaths, both
+    # scoped to added source-code lines only. The Windows half used to scan raw
+    # patch_content wholesale (including removed/context lines) while the Unix
+    # half was already scoped — the same "gate blocks the fix it exists to
+    # approve" class of bug as main #56: a remediation patch that only DELETES
+    # a hardcoded Windows path (e.g. one of verify_no_stale_paths.py's
+    # STALE_LITERALS) was rejected for containing the very literal it removes.
+    # Non-diff input has no header to scope by file type, so — like
+    # _added_code() — it is scanned wholesale.
+    _abspath_lines = (
+        patch_content.splitlines()
+        if not any(l.startswith(("+++", "---", "@@")) for l in patch_content.splitlines())
+        else list(_added_code_lines(patch_content))
+    )
+    if any(
+        re.search(r"['\"][a-zA-Z]:\\[^\s'\"]*", line) or re.search(r"['\"]/(home|Users|tmp)/[^\s'\"]*", line)
+        for line in _abspath_lines
     ):
         failures.append("Hardcoded absolute paths detected in patch.")
 
@@ -366,6 +428,11 @@ Evaluate if it violates any items in the Security Checklist. Output your audit r
                 "type": "object",
                 "required": ["approved", "failures", "reason"],
             },
+            # The patch being audited is always one the reflex engine proposed
+            # for THIS repo's own remediation skills (Order Samurai's own
+            # CLAUDE.md: "fires remediation skills based on pillar metrics") --
+            # --patch takes a local file path, never a cross-repo target.
+            task_name="audit_remediation_patch", project="Order Samurai",
         )
     except Exception as exc:
         print(f"Error calling LLM Gateway: {exc}", file=sys.stderr)

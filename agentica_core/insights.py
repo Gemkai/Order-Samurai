@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 _THIS = Path(__file__).resolve()
@@ -21,7 +21,7 @@ METRIC_CONFIG: dict[str, dict] = {
     # claude's constant zeros, not speed. Re-add with the emitter fix.
     # RETUNE 2026-07-08 audit: an audit skill can't move infra latency — advisory only.
     "Latency_P95":              {"skill": "investigate",                  "command": "/investigate",                         "dir": "lower",  "warn": 90000, "fail": 180000, "readonly": True, "auto_remediable": False, "weight": 1.0},
-    "Complexity_Weighted_Throughput": {"skill": "insights",               "command": "/insights",                                                                          "readonly": True},
+    "Complexity_Weighted_Throughput": {"skill": "insights",               "command": "/insights",                                                                          "readonly": True, "auto_remediable": False},  # F4 (remediation-loops, 2026-08-24): 0/13 lifetime improved -- nominally oracle-backed, never actually worked
     "Tool_Calls":               {"skill": "tool-diversity-audit",         "command": "/tool-diversity-audit",                                                              "readonly": True},
     # Fallback_Recovery_Rate / Agent_Autonomy_Ratio / Processes_Reaped RETIRED
     # 2026-07-08 audit (dead source / structural 100 / no Mac reaper) — removal,
@@ -43,6 +43,28 @@ METRIC_CONFIG: dict[str, dict] = {
     # path was dead while an item sat pending. NOT auto_remediable: each failure has its
     # own cause and fixing one blind is how you paper over a backup that is not running.
     "Scheduled_Job_Failures":   {"skill": "audit-mechanisms",             "command": "/audit-mechanisms",                    "dir": "lower",  "warn": 1,     "fail": 3, "auto_remediable": False, "weight": 1.0},
+    # Static_Wiring_Orphans (2026-09-01): find_orphans.py's static producer/consumer
+    # dataflow audit (skills/find-orphan-mechanisms), scheduled weekly via the app
+    # scheduler (find-orphan-mechanisms-weekly) since 2026-07-29 but until now its
+    # output had no scorecard consumer at all -- only Mechanism_Orphans above (a
+    # narrower, runtime-only check) fed the scorecard. Informational only ({} = no
+    # dir/warn/fail, same pattern as Session_Count/Instrumentation_Coverage below):
+    # the live baseline is double digits and unadjudicated (see
+    # claude-home-orphans-and-housekeeping item a), so grading this before that
+    # baseline is triaged/worked down would read permanently red. Calibrate
+    # warn/fail once a baseline is settled -- deliberately left as a decision for
+    # whoever adjudicates item (a), not invented here.
+    "Static_Wiring_Orphans":    {},
+    # Mechanism_Liveness GRADED 2026-08-25 (metric-integrity audit): weekly count of
+    # mechanism_run events in Data/telemetry/autonomic_events.jsonl. It sat informational
+    # while being the ONLY signal that detects a dead exec_log/mechanism-audit bridge —
+    # the 2026-08-14 exec_log silence ran 11 days with val=0, data_gap:true and nothing
+    # turned red. dir=higher: a healthy week has runs from both producers; 1 = degraded,
+    # 0 = the autonomy layer's own instrumentation is down (FAIL). A missing events file
+    # still yields val=None -> ungraded, never a fabricated zero. NOT auto_remediable:
+    # the fix is diagnosing which producer died (/audit-mechanisms), never a blind
+    # skill run.
+    "Mechanism_Liveness":       {"skill": "audit-mechanisms",             "command": "/audit-mechanisms",                    "dir": "higher", "warn": 2,     "fail": 0.5, "readonly": True, "auto_remediable": False, "weight": 1.0},
     # Remediation_Delta (2026-08-01, metric-gap remediation, phase B2): magnitude
     # companion to Self_Correction_Rate's yes/no judgment -- median(3 post-firing) -
     # median(3 pre-firing) history values per remediation attempt, sign-normalized so
@@ -81,7 +103,7 @@ METRIC_CONFIG: dict[str, dict] = {
     # dependency_audit.json is live again (codebase_deps_audit.py, scheduled weekly)
     # and pip-safe-upgrade causally closes CVEs. Re-add a real MTTR only when a
     # first-seen→resolved CVE ledger exists.
-    "Open_CVEs":                {"skill": "pip-safe-upgrade",             "command": "/pip-safe-upgrade",                    "dir": "lower",  "warn": 1,     "fail": 5, "weight": 2.0},
+    "Open_CVEs":                {"skill": "pip-safe-upgrade",             "command": "/pip-safe-upgrade",                    "dir": "lower",  "warn": 1,     "fail": 5, "weight": 2.0, "auto_remediable": False},  # F4 (remediation-loops, 2026-08-24): 0/7 lifetime improved
     "Boundary_Violations":      {"skill": "guard",                        "command": "/guard",                               "dir": "lower",  "warn": 1,     "fail": 3, "auto_remediable": False, "kind": "mis_route", "weight": 3.0},  # mis-route (DO-NOT-USE): guard is a preventive session toggle, not a remediator — can't fix existing violations; advisory only (real fix = a quarantine bin, not yet built)
     # warn:0 (main #59, 2026-07-26): a single detected secret must not grade a
     # perfect PASS — 1 was the "clean" floor, so exactly one secret scored the
@@ -117,7 +139,15 @@ METRIC_CONFIG: dict[str, dict] = {
     # upgrade stays a human/skill action via /pip-safe-upgrade. timeout_s raised
     # to 180 (vs the usual 120) because pip's --dry-run install hits the real
     # package index per candidate, slower than the other mechanisms' local scans.
-    "Deprecated_Deps":          {"skill": "pip-safe-upgrade",             "command": "/pip-safe-upgrade",                    "dir": "lower",  "warn": 20,    "fail": 120, "weight": 1.0, "mechanism": {"script": "pip_safe_upgrade.py", "args": ["--tiers", "cve,security", "--json"], "read_only": True, "timeout_s": 180}},
+    # RATCHET 2026-08-25 (goal deprecated-deps-cve-subset-disposition, option b): the
+    # reducer now subtracts the accepted-pinned allowlist
+    # (Governance/config/deprecated_deps_allowlist.json — the 62 deliberately-pinned
+    # ML-stack packages that made warn=20 unreachable and the metric a permanent WARN,
+    # per the 2026-07-19 HITL decision on hitl-d60af675). The count measures UNINTENDED
+    # drift only (starts at 0), so warn 20/fail 120 tightens to 10/30 —
+    # tighten-never-loosen per the ratchet rule. CVE exposure is unaffected:
+    # Open_CVEs ignores the allowlist.
+    "Deprecated_Deps":          {"skill": "pip-safe-upgrade",             "command": "/pip-safe-upgrade",                    "dir": "lower",  "warn": 10,    "fail": 30, "weight": 1.0, "auto_remediable": False, "mechanism": {"script": "pip_safe_upgrade.py", "args": ["--tiers", "cve,security", "--json"], "read_only": True, "timeout_s": 180}},  # F4 (remediation-loops, 2026-08-24): 0/7 lifetime improved
     "Governance_Review_Findings": {"skill": "governance-review",          "command": "/governance-review",                   "dir": "lower",  "warn": 3,     "fail": 8, "weight": 2.0},
     # Graded successor of Kill_Chains_Detected (2026-07-08 audit consolidation):
     # open exposure = detected − disrupted this week. Advisory — /guard reviews
@@ -196,7 +226,7 @@ METRIC_CONFIG: dict[str, dict] = {
     "Faithfulness_Score":       {"skill": "insights", "command": "/insights", "dir": "higher", "warn": 80, "fail": 60, "readonly": True, "auto_remediable": False, "weight": 3.0},
     "Refusal_Appropriateness":  {"skill": "insights", "command": "/insights", "dir": "higher", "warn": 70, "fail": 50, "readonly": True, "auto_remediable": False, "weight": 1.0},
     "Retrieval_Relevance":      {"skill": "wiki", "command": "/wiki", "dir": "higher", "warn": 70, "fail": 50, "readonly": True, "auto_remediable": False, "weight": 2.0},
-    "Slop_Density":             {"skill": "humanizer",                    "command": "/humanizer",                           "dir": "lower",  "warn": 15,    "fail": 30, "weight": 3.0, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "slop_strip.py", "args": ["--json"], "read_only": True, "timeout_s": 120}},
+    "Slop_Density":             {"skill": "humanizer",                    "command": "/humanizer",                           "dir": "lower",  "warn": 15,    "fail": 30, "weight": 3.0, "auto_remediable": False, "maturity": "DRY-RUN-GRADED", "mechanism": {"script": "slop_strip.py", "args": ["--json"], "read_only": True, "timeout_s": 120}},  # F4 (remediation-loops, 2026-08-24): 0/6 lifetime improved
     "Frustration_Signals":      {"skill": "insights",                     "command": "/insights",                            "dir": "lower",  "warn": 0.5,   "fail": 2,  "per": "session", "readonly": True, "auto_remediable": False, "weight": 2.0},
     "Rework_Loops":             {"skill": "insights",                     "command": "/insights",                            "dir": "lower",  "warn": 1,     "fail": 3,  "per": "session", "auto_remediable": False, "weight": 2.0},
     "Stop_Hook_Loops":          {"skill": "insights",                     "command": "/insights",                            "dir": "lower",  "warn": 1,     "fail": 2,  "per": "session", "readonly": True, "auto_remediable": False, "weight": 2.0},
@@ -252,7 +282,7 @@ METRIC_CONFIG: dict[str, dict] = {
     "Index_Drift":              {"skill": "wiki",                         "command": "python3 Knowledge/okf/okf_tools.py index Knowledge/vault/me --root", "dir": "lower", "warn": 1, "fail": 10, "weight": 1.0},  # command regenerates the index -> actually fixes drift
     "Knowledge_Staleness_Days": {"skill": "consolidate-memory",           "command": "/consolidate-memory",                  "dir": "lower",  "warn": 60,    "fail": 180, "weight": 1.0, "auto_remediable": False},  # DEMOTE 2026-07-19: see Archive_Ratio
     # Meta — informational, not scored (no dir). Shows pillar instrumentation depth.
-    "Instrumentation_Coverage": {"skill": "audit-mechanisms",             "command": "/audit-mechanisms"},
+    "Instrumentation_Coverage": {"skill": "audit-mechanisms",             "command": "/audit-mechanisms", "auto_remediable": False},  # F4 (remediation-loops, 2026-08-24): 0/8 lifetime improved
 }
 
 # Direction-only overrides for the 24h summary clause — used ONLY for improved/worsened labels.
@@ -413,6 +443,7 @@ _GRADED_METRIC_PILLARS: dict[str, tuple[str, ...]] = {
     "Avg_Session_Turns": ("bow",),
     "Mechanism_Orphans": ("bow",),
     "Scheduled_Job_Failures": ("bow",),
+    "Mechanism_Liveness": ("bow",),
     "Governance_Pass_Rate": ("bow",),
     "MCP_Smoke_Fails": ("bow",),
     "Open_CVEs": ("sword",),
@@ -500,7 +531,14 @@ def _health(v: float | None, rule: dict) -> float:
         if v >= warn:
             return 100.0
         if v <= fail:
-            return max(0.0, 40.0 * (v / fail)) if fail > 0 else 0.0
+            if fail > 0:
+                return max(0.0, 40.0 * (v / fail))
+            # fail<=0 (e.g. Remediation_Delta: warn=0, fail=-0.01): v/fail is
+            # meaningless once the threshold isn't a positive scale, so taper
+            # against a unit distance past fail instead of flooring to 0 for
+            # every breach — mirrors the lower-is-better branch's fail<=0 guard
+            # below, which does the same unit-scale fallback.
+            return max(0.0, 40.0 * (1.0 - (fail - v)))
         if warn == fail:
             return 40.0
         return 40.0 + 60.0 * (v - fail) / (warn - fail)
@@ -579,7 +617,12 @@ def annotate(pillars: dict) -> dict:
                     )
                 if "mechanism" in cfg and not env.get("is_simulated"):
                     env["mitigation_mechanism"] = cfg["mechanism"]
-                if "dir" not in cfg:
+                # OBSERVE maturity = thresholds are PROPOSED, not graded. METRIC_RULES
+                # already excludes them; before 2026-08-25 this gate checked only "dir",
+                # so the dashboard stamped OK/WARN/FAIL on metrics the reflex engine
+                # deliberately refused to grade — the two surfaces disagreed about what
+                # is graded (metric-integrity audit, 2026-08-25).
+                if "dir" not in cfg or cfg.get("maturity") == "OBSERVE":
                     continue
                 total_gradeable += 1
                 if env.get("is_simulated"):
@@ -852,7 +895,11 @@ def _trend_clause(pillars: dict, pk: str, scores: dict) -> str:
     movers = _movers(pillars, pk)
     if movers:
         ms = "; ".join(
-            f"{m['name'].replace('_',' ').lower()} went {'up' if m['trend']=='up' else 'down'} by {str(m['delta']).lstrip('+')}"
+            # "went up/down by" already carries the sign — show the unsigned magnitude
+            # (same rule _24h_clause follows via abs(m["delta"])). .lstrip('+') alone
+            # only strips a leading '+'; it leaves '-3.0' untouched, producing the
+            # double negative "went down by -3.0".
+            f"{m['name'].replace('_',' ').lower()} went {'up' if m['trend']=='up' else 'down'} by {str(m['delta']).lstrip('+-')}"
             for m in movers
         )
         parts.append(f"Since the last check, {ms}")
@@ -1128,6 +1175,7 @@ def populate_history(pillars: dict, store: Path | None = None, max_points: int =
 
     # Per-metric history + delta
     current: dict[str, float] = {}
+    sessions_now = _session_count(pillars)
     for pk, groups in pillars.items():
         for gname, metrics in groups.items():
             for mk, env in metrics.items():
@@ -1136,7 +1184,33 @@ def populate_history(pillars: dict, store: Path | None = None, max_points: int =
                     continue
                 key = f"{pk}/{gname}/{mk}"
                 current[key] = v
-                hist = [r["values"][key] for r in rows if key in r.get("values", {})]
+                rule = METRIC_RULES.get(mk)
+                # Per-session metrics (rule["per"] == "session") are normalized by that
+                # row's OWN Session_Count before joining the series -- the same
+                # normalization annotate(), correlation.py and remediation_delta.py apply
+                # (SENSEI-6). Without it, a raw cumulative total is compared directly
+                # against a per-session warn/fail bar (and fed to _sigma_tier/trajectory
+                # below), so a session-volume jump alone reads as a sigma-anomaly or an
+                # imminent breach even when the real per-session rate is flat (2026-09-05).
+                per_session = bool(rule and rule.get("per") == "session")
+                hist: list[float] = []
+                for r in rows:
+                    vals = r.get("values", {})
+                    if key not in vals:
+                        continue
+                    raw_hist_v = vals[key]
+                    if per_session:
+                        row_sessions = next(
+                            (float(v2) for k2, v2 in vals.items()
+                             if k2.split("/")[-1] == "Session_Count"
+                             and isinstance(v2, (int, float)) and v2 > 0),
+                            None,
+                        )
+                        if row_sessions is None:
+                            continue  # can't normalize this snapshot -> can't honestly compare
+                        hist.append(raw_hist_v / row_sessions)
+                    else:
+                        hist.append(raw_hist_v)
                 # `v` is the payload's 30-day window, and _comparable_history_rows has
                 # already restricted `rows` to that same population, so appending it is
                 # sound. The defect this fixes was appending it to a base of one-week
@@ -1146,7 +1220,8 @@ def populate_history(pillars: dict, store: Path | None = None, max_points: int =
                 # construction and `v` is its newest point, so the long-standing
                 # behaviour — including the trajectory regression that is designed to
                 # project from the CURRENT value — is preserved exactly.
-                hist = hist + [v]
+                v_for_hist = (v / sessions_now) if per_session else v
+                hist = hist + [v_for_hist]
                 env["history"] = hist[-max_points:]
                 if len(env["history"]) >= 2:
                     # Both sides of the delta now come from the same population.
@@ -1157,7 +1232,6 @@ def populate_history(pillars: dict, store: Path | None = None, max_points: int =
                 # Trajectory alerting (#G3): linear regression over history to project
                 # days until the fail threshold is breached.  Stored in env so reflexes.py
                 # can generate early-warning reflex entries (HIGH ≤3 days, MEDIUM ≤7 days).
-                rule = METRIC_RULES.get(mk)
                 env["trajectory_breach_days"] = None
                 if rule and len(env["history"]) >= 3:
                     hist_vals = env["history"]

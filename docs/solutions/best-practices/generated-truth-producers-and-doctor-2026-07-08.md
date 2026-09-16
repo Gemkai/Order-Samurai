@@ -18,6 +18,9 @@ related_components:
   - "artifacts/inventory.json"
   - "config/root_hygiene_policy.json"
 tags: [anti-drift, generated-truth, doctor, verifier, surface-governance, order-samurai]
+covered_by:
+  - kind: verifier
+    id: verify_registry_truth
 ---
 
 # Generated-truth producers + the single doctor flow

@@ -47,6 +47,7 @@ from execution.verifier_results import summarize  # noqa: F401  (re-exported for
 from execution.claude_runtime_target import (
     ANTI_DRIFT_POLICY_PATH,
     PROMOTION_POLICY_PATH,
+    home_rooted_re,
     pinned_home_paths,
     runtime_root,
 )
@@ -141,18 +142,43 @@ def collect_hook_commands(settings_payload: dict) -> tuple[list[str], list[str]]
     return commands, errors
 
 
+#: Absolute home-rooted ".claude" paths (POSIX or Windows spellings) — used to
+#: recognise a token GENUINELY anchored at the runtime home, as opposed to one
+#: that merely contains the substring ".claude/" further along an unrelated
+#: root (see _to_runtime_relative).
+_HOME_CLAUDE_RE = home_rooted_re(".claude")
+
+
 def _to_runtime_relative(token: str) -> str | None:
     """Best-effort map a script token to a runtime-root-relative path.
 
     Returns None for tokens that cannot be reliably resolved under the runtime
     root (absolute paths outside a .claude home, home-anchored non-.claude
-    paths, or paths that climb out of the root).
+    paths, paths that climb out of the root, or a ".claude/" segment that is
+    not genuinely anchored at the runtime home — e.g. a project-scoped
+    $CLAUDE_PROJECT_DIR/.claude/... hook path, which resolves against the
+    project root, not ~/.claude, and merely happens to contain that literal
+    substring further along a different root entirely. Found 2026-09-01: the
+    prior version used str.rfind(".claude/"), which matched anywhere in the
+    token and silently re-homed such a path onto the runtime root, reporting
+    a real, present project file as a missing hook script.
     """
     cleaned = token.strip().replace("\\", "/")
     marker = ".claude/"
-    idx = cleaned.rfind(marker)
-    if idx != -1:
-        rel = cleaned[idx + len(marker):]
+    home_prefixes = tuple(p + marker for p in ("~/", "$HOME/", "${HOME}/"))
+    home_match = _HOME_CLAUDE_RE.search(cleaned)
+    if cleaned.startswith(marker):
+        rel = cleaned[len(marker):]
+    elif cleaned.startswith(home_prefixes):
+        rel = cleaned[cleaned.index(marker) + len(marker):]
+    elif home_match:
+        rel = cleaned[home_match.end():].lstrip("/")
+    elif marker in cleaned:
+        # Contains ".claude/" but not via a recognized runtime-home anchor —
+        # e.g. a project-scoped $CLAUDE_PROJECT_DIR/.claude/... hook path,
+        # which resolves against the project root, not the runtime home.
+        # Cannot be reliably re-homed onto the runtime root.
+        return None
     elif cleaned.startswith(("~/", "$HOME/", "${HOME}/")):
         # Home-anchored but not via .claude — not reliably under the runtime root.
         return None
@@ -262,7 +288,7 @@ def _check_anti_drift_rule(results: list[dict[str, str]]) -> dict | None:
 
     policy_payload, policy_error = _load_json(ANTI_DRIFT_POLICY_PATH)
     if policy_error:
-        results.append(_make_result("FAIL", "claude_anti_drift_policy.json", policy_error))
+        results.append(_make_result("ERROR", "claude_anti_drift_policy.json", policy_error))
         return None
 
     rule = find_hook_contract_rule(policy_payload or {})

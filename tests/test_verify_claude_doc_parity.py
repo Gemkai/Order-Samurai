@@ -116,6 +116,32 @@ class VerifyClaudeDocParityTests(unittest.TestCase):
         self.assertEqual(len(repo_rows), 2)
         self.assertEqual({row["status"] for row in repo_rows}, {"OK"})
 
+    def test_missing_backlog_in_standalone_distribution_is_a_fail_not_ok(self) -> None:
+        # claude_runtime_target.INTERNAL_ONLY_ARTIFACTS holds ONLY the hardening
+        # report -- its own comment says the backlog is deliberately excluded
+        # because "it ships, so its absence is rot in both layouts". A missing
+        # backlog in a standalone export is therefore real pack rot and must
+        # FAIL, not get the report's "absent by design" exemption.
+        self._build_all_runtime_docs()
+        fake_backlog = self.sandbox / "claude_verifier_backlog.md"  # never created
+
+        with mock.patch(
+            "execution.verify_claude_doc_parity.is_standalone_distribution",
+            return_value=True,
+        ), mock.patch(
+            "execution.verify_claude_doc_parity.BACKLOG_PATH", fake_backlog
+        ):
+            results = run_checks(runtime_root_dir=self.root)
+
+        backlog_rows = [row for row in self._repo_rows(results) if "backlog" in row["label"]]
+        self.assertEqual(len(backlog_rows), 1)
+        self.assertEqual(
+            backlog_rows[0]["status"],
+            "FAIL",
+            "a missing backlog doc in a standalone distribution was reported OK "
+            "instead of FAIL -- only the hardening report is exempt there",
+        )
+
     def test_co_movement_honor_system_row_is_ok_and_not_a_git_check(self) -> None:
         self._build_all_runtime_docs()
 

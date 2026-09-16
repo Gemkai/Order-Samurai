@@ -316,11 +316,11 @@ class RealApplyAuditGuardTests(unittest.TestCase):
     upgrade on a machine without pip-audit is applied, reverted, and reported
     failed while the vulnerable version stays installed."""
 
-    def _fake_run(self, calls, audit_rc, audit_err):
+    def _fake_run(self, calls, audit_rc, audit_err, audit_stdout=""):
         def run(cmd, **kwargs):
             calls.append([str(c) for c in cmd])
             if "pip_audit" in cmd:
-                return SimpleNamespace(returncode=audit_rc, stdout="", stderr=audit_err)
+                return SimpleNamespace(returncode=audit_rc, stdout=audit_stdout, stderr=audit_err)
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         return run
 
@@ -337,9 +337,12 @@ class RealApplyAuditGuardTests(unittest.TestCase):
         self.assertEqual(rollback, [])
 
     def test_vulnerability_verdict_still_rolls_back(self) -> None:
+        # A real pip-audit verdict prints its findings to stdout (this is the
+        # signal that distinguishes "found vulnerabilities" from "scan failed"
+        # -- see codebase_deps_audit._real_pip_audit's identical contract).
         calls: list[list[str]] = []
         with mock.patch.object(pip_safe_upgrade.subprocess, "run",
-                               self._fake_run(calls, 1, "Found 1 known vulnerability")), \
+                               self._fake_run(calls, 1, "", audit_stdout="Found 1 known vulnerability in certifi")), \
              mock.patch("importlib.metadata.version", return_value="1.0"), \
              mock.patch("importlib.util.find_spec", return_value=object()):
             result = pip_safe_upgrade._real_apply("certifi")
@@ -347,6 +350,25 @@ class RealApplyAuditGuardTests(unittest.TestCase):
         self.assertFalse(result)
         rollback = [c for c in calls if any("certifi==1.0" in part for part in c)]
         self.assertEqual(len(rollback), 1)
+
+    def test_scan_failure_with_empty_stdout_does_not_roll_back_clean_upgrade(self) -> None:
+        """pip-audit exits non-zero BOTH when it finds vulnerabilities and when
+        the scan itself fails to complete (e.g. a network/API error reaching
+        the OSV/PyPI vulnerability data source) -- the module IS installed and
+        DID run, so _pip_audit_available() doesn't catch this case. Only a
+        real verdict (non-empty stdout) may trigger a rollback; a scan failure
+        with no verdict must fail open like the auditor-unavailable case,
+        not revert a good upgrade because of a transient network blip."""
+        calls: list[list[str]] = []
+        with mock.patch.object(pip_safe_upgrade.subprocess, "run",
+                               self._fake_run(calls, 1, "ConnectionError: could not reach osv.dev")), \
+             mock.patch("importlib.metadata.version", return_value="1.0"), \
+             mock.patch("importlib.util.find_spec", return_value=object()):
+            result = pip_safe_upgrade._real_apply("certifi")
+
+        self.assertTrue(result)
+        rollback = [c for c in calls if any("certifi==1.0" in part for part in c)]
+        self.assertEqual(rollback, [])
 
     def test_rollback_subprocess_exception_still_reports_failure(self) -> None:
         """A confirmed-vulnerable package whose rollback subprocess call itself
@@ -356,7 +378,7 @@ class RealApplyAuditGuardTests(unittest.TestCase):
         known-vulnerable, not-verified-rolled-back package as upgraded."""
         def run(cmd, **kwargs):
             if "pip_audit" in cmd:
-                return SimpleNamespace(returncode=1, stdout="", stderr="Found 1 known vulnerability")
+                return SimpleNamespace(returncode=1, stdout="Found 1 known vulnerability", stderr="")
             if any("==" in str(part) for part in cmd):
                 raise pip_safe_upgrade.subprocess.TimeoutExpired(cmd, 30)
             return SimpleNamespace(returncode=0, stdout="", stderr="")

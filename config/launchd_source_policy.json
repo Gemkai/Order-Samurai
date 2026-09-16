@@ -1,0 +1,27 @@
+{
+  "description": "Scope boundary for doctor's reverse plist-drift check (_factory_plist_drift_checks). The forward direction asks 'was a committed plist edited without reinstalling?'. The reverse asks 'is every installed launchd job that runs this repo's code reproducible FROM this repo?' — the direction that was blind when five Order Samurai jobs ran with no source plist at all (audit 2026-09-01, finding B5).",
+  "rule": "Every installed com.agentica.*.plist whose ProgramArguments name a path under this checkout must have a source under Governance/automation/launchd/ or Governance/bin/. One WARN per plist that does not, unless its label is acknowledged below.",
+  "acknowledged_unsourced": {
+    "reason": "Owner-triaged 2026-09-01 (audit B5): these jobs run repo code but are owned by lanes outside the Order Samurai production-readiness milestone. They are WAIVERS: doctor does not WARN on them, so calling them 'not excused' would be inaccurate. They are not hidden either — doctor names every one of them in a factory.plist-acknowledged row on every run, and warns if an acknowledged label stops being installed. Adopting one is a matter of committing its source and deleting the entry here. Anything NOT on this list warns immediately, which is what makes a newly hand-installed job visible.",
+    "review": "Revisit when the owning lane next touches its scheduling; the entries are not permanent exemptions.",
+    "labels": {
+      "com.agentica.agent-hq": "Execution/agent_hq/serve.py — Agent HQ lane",
+      "com.agentica.antigravity.Evolution_Pulse": "sub-bundles/antigravity — Antigravity lane (submodule)",
+      "com.agentica.antigravity.Knowledge_Sync": "sub-bundles/antigravity — Antigravity lane (submodule)",
+      "com.agentica.antigravity.Mechanism_Audit": "sub-bundles/antigravity — Antigravity lane (submodule)",
+      "com.agentica.antigravity.Qdrant_Snapshot": "sub-bundles/antigravity — Antigravity lane (submodule)",
+      "com.agentica.antigravity.Security_Pulse": "sub-bundles/antigravity — Antigravity lane (submodule)",
+      "com.agentica.antigravity.Strategic_Pulse": "sub-bundles/antigravity — Antigravity lane (submodule)",
+      "com.agentica.antigravity.Venture_Pulse": "sub-bundles/antigravity — Antigravity lane (submodule)",
+      "com.agentica.antigravity.WID_Enrich": "sub-bundles/antigravity — Antigravity lane (submodule)",
+      "com.agentica.antigravity.WID_PreWarm": "sub-bundles/antigravity — Antigravity lane (submodule)",
+      "com.agentica.antigravity.weeklymaintenance": "sub-bundles/antigravity — Antigravity lane (submodule)",
+      "com.agentica.brain3-graph-guard": "Knowledge/dashboard/graph_guard.sh — <BRAND>3 lane",
+      "com.agentica.brain3-graph-refresh": "Knowledge/dashboard/build_graph.py — <BRAND>3 lane",
+      "com.agentica.consolidate-memory": "Governance/bin/consolidate_memory_weekly.sh — Governance lane",
+      "com.agentica.review-audit": "Governance/bin/review_audit_weekly.sh — Governance lane",
+      "com.agentica.vault-autocommit": "Governance/bin/with_repo_lock.sh — Governance lane",
+      "com.agentica.wiki-compile": "Governance/bin/wiki_compile_overnight.sh — Governance lane"
+    }
+  }
+}

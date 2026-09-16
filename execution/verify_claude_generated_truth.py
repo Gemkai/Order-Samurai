@@ -239,7 +239,7 @@ def run_checks(
 
     policy_payload, policy_error = _load_json(policy_path)
     if policy_error:
-        results.append(_make_result("FAIL", "claude_anti_drift_policy.json", policy_error))
+        results.append(_make_result("ERROR", "claude_anti_drift_policy.json", policy_error))
         return results
 
     results.append(

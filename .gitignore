@@ -42,7 +42,8 @@ wid_payload*.json
 Data/
 
 # ── Generated reports / run outputs ─────────────────────────
-reports/
+reports/*
+!reports/.gitkeep
 artifacts/*.json
 artifacts/*.md
 governance_review_output/
@@ -119,3 +120,4 @@ docs/handoffs/
 .mex/
 .impeccable/
 Order Samurai/
+.quality_register.md

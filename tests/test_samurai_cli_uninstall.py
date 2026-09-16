@@ -30,13 +30,13 @@ def _fake_paths(tmp_path: Path) -> dict:
     samurai_home = tmp_path / ".samurai"
     backups_dir = samurai_home / "backups"
     backups_dir.mkdir(parents=True)
-    claude_settings = tmp_path / ".claude" / "settings.json"
+    claude_settings = tmp_path / ".claude" / "hooks" / "settings.json"
     claude_settings.parent.mkdir(parents=True)
     return {
         "root": tmp_path / "order-samurai",
         "home": samurai_home,
         "samurai_settings": samurai_home / "settings.json",
-        "claude_hooks": tmp_path / ".claude" / "hooks",
+        "claude_hooks": claude_settings.parent,
         "claude_settings": claude_settings,
         "backups": backups_dir,
         "state": samurai_home / "state",
@@ -65,3 +65,31 @@ def test_uninstall_does_not_restore_an_unrelated_settings_backup_onto_claude_set
     assert restored.get("marker") == "claude-content", (
         f"claude_settings was overwritten by an unrelated samurai_settings backup: {restored}"
     )
+
+
+def test_uninstall_keep_data_deregisters_hooks_from_samurai_settings_too(tmp_path, monkeypatch):
+    """cmd_install() registers hooks into BOTH samurai_settings (the "agent-agnostic
+    primary") and claude_settings. cmd_uninstall() only ever deregistered
+    claude_settings -- with --keep-data (so ~/.samurai/settings.json survives instead
+    of being rmtree'd), the hooks stayed fully wired in samurai_settings while the CLI
+    printed "uninstalled cleanly."."""
+    paths = _fake_paths(tmp_path)
+    monkeypatch.setattr(samurai_cli, "get_paths", lambda: paths)
+
+    guard_script = str(paths["root"] / "hooks" / "prompt_injection_guard.py")
+    scrubber_script = str(paths["root"] / "hooks" / "secret_scrubber_realtime.py")
+    samurai_cli._register_hooks_in_file(
+        paths["samurai_settings"], guard_script, scrubber_script, paths["backups"], "samurai_settings"
+    )
+
+    samurai_cli.cmd_uninstall(argparse.Namespace(keep_data=True))
+
+    cfg = json.loads(paths["samurai_settings"].read_text(encoding="utf-8"))
+    guard_command = f"python3 {guard_script}"
+    pre = cfg.get("hooks", {}).get("PreToolUse", [])
+    still_registered = any(
+        isinstance(m, dict) and isinstance(m.get("hooks"), list)
+        and any(isinstance(h, dict) and h.get("command") == guard_command for h in m["hooks"])
+        for m in pre
+    )
+    assert not still_registered, "samurai uninstall --keep-data left hooks registered in samurai_settings"

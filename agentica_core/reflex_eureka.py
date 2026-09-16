@@ -24,7 +24,29 @@ from pathlib import Path
 
 from .reflex_id import parse_reflex_id
 
-# Output location — consistent with auto_eureka.py's data directory
+# Output location — consistent with auto_eureka.py's data directory. Resolved
+# at CALL time through _claude_home() so CLAUDE_RUNTIME_ROOT (the same override
+# execution/claude_runtime_target.runtime_root() honors for tests and sandboxes)
+# can redirect every side-effect: before 2026-09-06 the module-level constant
+# plus an unconditional mkdir in analyze() created ~/.claude/data on the REAL
+# home of every machine that ran the test suite -- including the public
+# export's CI runner, where a half-present ~/.claude then read as a Claude
+# install with a dead telemetry emitter and failed the export gate's doctor.
+def _claude_home() -> Path:
+    override = os.environ.get("CLAUDE_RUNTIME_ROOT")
+    return Path(override).expanduser() if override else Path.home() / ".claude"
+
+
+def _data_dir() -> Path:
+    return _claude_home() / "data"
+
+
+def _findings_file() -> Path:
+    return _data_dir() / "auto_eureka_skills.md"
+
+
+# Kept for callers that read the historical defaults; analyze() no longer
+# touches these paths unless they are the paths it is actually writing to.
 _DATA_DIR = Path.home() / ".claude" / "data"
 _FINDINGS_FILE = _DATA_DIR / "auto_eureka_skills.md"
 
@@ -94,12 +116,13 @@ def _parse_reflex_id(reflex_id: str) -> tuple[str, str]:
 # Core analysis
 # ---------------------------------------------------------------------------
 
-def analyze(log_path: Path, out_path: Path = _FINDINGS_FILE) -> dict:
+def analyze(log_path: Path, out_path: Path | None = None) -> dict:
     """Analyze exec_log and write findings to out_path.
 
     Returns a summary dict: {total_entries, skill_metric_pairs, gotchas, rules, context}.
     Always writes the output file — even if exec_log is empty (writes a 'no data' notice).
     """
+    out_path = out_path or _findings_file()
     records = _load_exec_log(log_path)
 
     # Group runs by (skill, pillar, metric)
@@ -154,7 +177,9 @@ def analyze(log_path: Path, out_path: Path = _FINDINGS_FILE) -> dict:
                if _LOW_IMPROVEMENT_THRESHOLD <= (s["effectiveness_rate"] or 0) < _HIGH_IMPROVEMENT_THRESHOLD]
 
     # ── Write findings ────────────────────────────────────────────────────────
-    _DATA_DIR.mkdir(parents=True, exist_ok=True)
+    # Only the directory of the file actually being written -- never the runtime
+    # home wholesale (see _claude_home above).
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     with_improved = sum(1 for r in records if "improved" in r)
 
@@ -283,17 +308,21 @@ def _export_to_lesson_pipeline(content: str, has_findings: bool) -> None:
     try:
         import hashlib
         digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-        state_file = _DATA_DIR / "auto_eureka_skills_export.json"
+        state_file = _data_dir() / "auto_eureka_skills_export.json"
         try:
             prev = json.loads(state_file.read_text(encoding="utf-8")).get("sha256")
         except (OSError, ValueError):
             prev = None
         if digest == prev:
             return
-        intel_dir = Path.home() / ".claude" / ".tmp" / "intelligence"
+        intel_dir = _claude_home() / ".tmp" / "intelligence"
         intel_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         (intel_dir / f"auto_eureka_{stamp}.md").write_text(content, encoding="utf-8")
+        # analyze() used to mkdir the whole data dir up front; now only the export
+        # creates what the export writes, or this best-effort block would swallow
+        # the FileNotFoundError and the dedupe state would never persist.
+        state_file.parent.mkdir(parents=True, exist_ok=True)
         state_file.write_text(json.dumps({"sha256": digest, "exported_at": stamp}),
                               encoding="utf-8")
     except Exception:

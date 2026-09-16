@@ -18,8 +18,7 @@ import { RemediationPanel } from "@/components/RemediationPanel"
 import { PillarPage } from "@/components/PillarPage"
 import { useDojo, type DojoProps } from "@/hooks/useDojo"
 import { DojoPanel } from "@/components/DojoPanel"
-import { AsciiBackground } from "@/components/AsciiBackground"
-import { SidebarParticles } from "@/components/SidebarParticles"
+import { AsciiGallery } from "@/components/AsciiGallery"
 import { IconTorii, IconShuriken, IconKatana, IconFan, IconArmor, IconYinYang } from "@/components/SamuraiIcons"
 import { LandingPage } from "@/components/LandingPage"
 
@@ -532,13 +531,16 @@ function MetricModal({ metric, color, contributions, scopeLabel, onClose, dojoPr
 
 // ── App root ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [mode, setMode] = useState<"landing" | "dashboard">(() => {
+  const [mode, setMode] = useState<"landing" | "dashboard" | "gallery">(() => {
     if (typeof window !== "undefined") {
       const q = window.location.search.toLowerCase()
       const h = window.location.hash.toLowerCase()
       const p = window.location.pathname.toLowerCase()
       if (q.includes("landing") || h.includes("landing") || p.includes("landing")) {
         return "landing"
+      }
+      if (q.includes("gallery") || q.includes("ascii") || h.includes("gallery") || h.includes("ascii")) {
+        return "gallery"
       }
     }
     return "dashboard"
@@ -575,6 +577,10 @@ export default function App() {
 
   if (mode === "landing") {
     return <LandingPage onOpenDashboard={() => setMode("dashboard")} />
+  }
+
+  if (mode === "gallery") {
+    return <AsciiGallery onBack={() => setMode("dashboard")} />
   }
 
   if (err) return <div className="mono" style={{ color: "var(--sword)", padding: 40 }}>Failed to load wid_payload.json: {err}</div>
@@ -670,11 +676,9 @@ export default function App() {
       )}
 
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        <AsciiBackground view={view} />
         <aside className={`glass nav-slide sidebar-glow-${view}`} style={{ width: 230, padding: "1.5rem 1rem", display: "flex", flexDirection: "column", gap: 8, borderRadius: 0, position: "relative", overflow: "hidden",
             borderTop: `2px solid ${navItems.find(n => n.key === view)?.accent ?? "var(--sword)"}`,
             transition: "border-top-color 0.4s ease, box-shadow 0.4s ease" }}>
-        <SidebarParticles key={view} pillar={view} />
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, position: "relative", zIndex: 1,
           paddingBottom: 14, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <img src={logoImg} alt="Order Samurai Logo" style={{ height: 52, width: "auto", objectFit: "contain", borderRadius: 6, background: "#000" }} />
@@ -726,7 +730,24 @@ export default function App() {
               ? <><span className="status-dot-live">●</span>{" DOJO ONLINE"}</>
               : "○ DOJO OFFLINE"}
           </div>
-          <a href="mailto:support@ordersamurai.ai" className="mono" style={{ display: "block", marginTop: 10, fontSize: "0.6rem", color: "rgba(255,255,255,0.4)", textDecoration: "none" }}>
+          <button
+            onClick={() => setMode("gallery")}
+            className="mono"
+            style={{
+              display: "block",
+              marginTop: 10,
+              fontSize: "0.6rem",
+              color: "rgba(250,204,21,0.75)",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              textAlign: "left"
+            }}
+          >
+            ⛩️ 3D / ASCII Art Gallery →
+          </button>
+          <a href="mailto:support@ordersamurai.ai" className="mono" style={{ display: "block", marginTop: 8, fontSize: "0.6rem", color: "rgba(255,255,255,0.4)", textDecoration: "none" }}>
             🐛 Bug Report: support@ordersamurai.ai
           </a>
         </div>

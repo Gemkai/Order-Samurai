@@ -33,22 +33,39 @@ FAKE_PYTHON = textwrap.dedent(
 
     args = sys.argv[1:]
     marker = Path(os.environ["FAKE_PIP_AUDIT_MARKER"])
+    requests_marker = Path(os.environ["FAKE_REQUESTS_MARKER"])
     if args[:1] == ["-c"]:
         code = args[1] if len(args) > 1 else ""
         if "version_info" in code:
             print("1")
             raise SystemExit(0)
+        if "sys.prefix != sys.base_prefix" in code:
+            in_venv = os.environ.get("FAKE_IN_VENV") == "1"
+            raise SystemExit(0 if in_venv else 1)
         if "import jsonschema" in code:
             raise SystemExit(0 if os.environ.get("FAKE_JSONSCHEMA") == "1" else 1)
         if "import pip_audit" in code:
             available = os.environ.get("FAKE_PIP_AUDIT") == "1" or marker.exists()
             raise SystemExit(0 if available else 1)
+        if "import requests" in code:
+            available = os.environ.get("FAKE_REQUESTS") == "1" or requests_marker.exists()
+            raise SystemExit(0 if available else 1)
 
     if args[:3] == ["-m", "pip", "install"]:
         returncode = int(os.environ.get("FAKE_PIP_RETURN_CODE", "0"))
         if returncode == 0 and os.environ.get("FAKE_INSTALL_STICKS", "1") == "1":
-            marker.touch()
+            if args[-1].startswith("pip-audit"):
+                marker.touch()
+            if args[-1].startswith("requests"):
+                requests_marker.touch()
         raise SystemExit(returncode)
+
+    if args and args[0].endswith("first_blood.py"):
+        if os.environ.get("FAKE_REQUIRE_PRODUCT_PATH") == "1":
+            product_root = str(Path(args[0]).resolve().parents[1])
+            python_paths = os.environ.get("PYTHONPATH", "").split(os.pathsep)
+            raise SystemExit(0 if product_root in python_paths else 1)
+        raise SystemExit(0)
 
     raise SystemExit(0)
     """
@@ -108,6 +125,9 @@ class InstallerRuntimeDependencyTests(unittest.TestCase):
         *,
         pip_audit_available: bool,
         install_sticks: bool = True,
+        requests_available: bool = True,
+        in_virtualenv: bool = False,
+        require_product_path: bool = False,
         pip_return_code: int = 0,
     ) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
         with tempfile.TemporaryDirectory() as tmp:
@@ -115,6 +135,7 @@ class InstallerRuntimeDependencyTests(unittest.TestCase):
             fake_python = root / "fake-python"
             log_path = root / "python-calls.jsonl"
             marker = root / "pip-audit-installed"
+            requests_marker = root / "requests-installed"
             fake_python.write_text(FAKE_PYTHON, encoding="utf-8")
             fake_python.chmod(0o755)
 
@@ -124,10 +145,14 @@ class InstallerRuntimeDependencyTests(unittest.TestCase):
                     "PYTHON": str(fake_python),
                     "FAKE_PYTHON_LOG": str(log_path),
                     "FAKE_PIP_AUDIT_MARKER": str(marker),
+                    "FAKE_REQUESTS_MARKER": str(requests_marker),
                     "FAKE_JSONSCHEMA": "1",
                     "FAKE_PIP_AUDIT": "1" if pip_audit_available else "0",
+                    "FAKE_REQUESTS": "1" if requests_available else "0",
                     "FAKE_INSTALL_STICKS": "1" if install_sticks else "0",
                     "FAKE_PIP_RETURN_CODE": str(pip_return_code),
+                    "FAKE_IN_VENV": "1" if in_virtualenv else "0",
+                    "FAKE_REQUIRE_PRODUCT_PATH": "1" if require_product_path else "0",
                 }
             )
             proc = subprocess.run(
@@ -152,6 +177,45 @@ class InstallerRuntimeDependencyTests(unittest.TestCase):
             pip_installs,
             [["-m", "pip", "install", "--quiet", "--user", "pip-audit>=2.7"]],
         )
+        self.assertTrue(any(call and call[0].endswith("first_blood.py") for call in calls))
+
+    def test_missing_requests_is_installed_with_the_selected_interpreter(self) -> None:
+        proc, calls = self._run_installer(
+            pip_audit_available=True,
+            requests_available=False,
+        )
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        pip_installs = [call for call in calls if call[:3] == ["-m", "pip", "install"]]
+        self.assertEqual(
+            pip_installs,
+            [["-m", "pip", "install", "--quiet", "--user", "requests>=2.31"]],
+        )
+        self.assertTrue(any(call and call[0].endswith("first_blood.py") for call in calls))
+
+    def test_virtualenv_install_does_not_use_rejected_user_site_flag(self) -> None:
+        proc, calls = self._run_installer(
+            pip_audit_available=True,
+            requests_available=False,
+            in_virtualenv=True,
+        )
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        pip_installs = [call for call in calls if call[:3] == ["-m", "pip", "install"]]
+        self.assertEqual(
+            pip_installs,
+            [["-m", "pip", "install", "--quiet", "requests>=2.31"]],
+        )
+        self.assertNotIn("--user", pip_installs[0])
+        self.assertTrue(any(call and call[0].endswith("first_blood.py") for call in calls))
+
+    def test_first_blood_can_import_modules_from_the_product_root(self) -> None:
+        proc, calls = self._run_installer(
+            pip_audit_available=True,
+            require_product_path=True,
+        )
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertTrue(any(call and call[0].endswith("first_blood.py") for call in calls))
 
     def test_zero_exit_install_that_does_not_make_scanner_importable_stops(self) -> None:

@@ -211,6 +211,9 @@ class VerifyClaudeGeneratedTruthTests(unittest.TestCase):
         self.assertEqual(warnings[0]["label"], "generated_truth.root")
 
     def test_missing_policy_fails(self) -> None:
+        # Plan M3.1 / audit finding S1: a verifier that cannot read its own
+        # policy made NO measurement. It reports ERROR ("could not run"), not a
+        # synthetic FAIL that reads to every consumer as a measured verdict.
         runtime = self._build_runtime()
 
         results = truth.run_checks(
@@ -218,7 +221,7 @@ class VerifyClaudeGeneratedTruthTests(unittest.TestCase):
             runtime_root_dir=runtime,
         )
 
-        failures = self._rows(results, "FAIL")
+        failures = self._rows(results, "ERROR")
         self.assertEqual(len(failures), 1)
         self.assertEqual(failures[0]["label"], "claude_anti_drift_policy.json")
         self.assertEqual(failures[0]["detail"], "missing")

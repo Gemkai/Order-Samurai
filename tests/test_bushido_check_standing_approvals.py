@@ -75,7 +75,7 @@ def test_revoke_standing_cli_removes_the_grant(tmp_repo, capsys):
     assert rc == 0
     assert out == {"revoked": True, "queue_id": qid}
 
-    rc2 = bushido_check.main(["--list-standing"])
+    bushido_check.main(["--list-standing"])
     listed = json.loads(capsys.readouterr().out)
     assert listed["standing_approvals"] == []
 
@@ -108,6 +108,6 @@ def test_approve_always_on_hitl_tier_item_grants_nothing(tmp_repo, capsys):
     assert rc == 0
     assert out["reviewed"] is True  # the one-off approve still lands
 
-    rc2 = bushido_check.main(["--list-standing"])
+    bushido_check.main(["--list-standing"])
     listed = json.loads(capsys.readouterr().out)
     assert listed["standing_approvals"] == []

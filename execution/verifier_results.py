@@ -20,8 +20,15 @@ does not exist.
 """
 from __future__ import annotations
 
-#: The three statuses a verifier row may carry, in report order.
-STATUSES = ("OK", "WARN", "FAIL")
+#: The statuses a verifier row may carry, in report order.
+#:
+#: ERROR is not a louder FAIL. FAIL says "I ran, and the thing I check is wrong";
+#: ERROR says "I could not run, so I am making no claim either way". Before it
+#: existed, a verifier that could not read its own policy emitted a synthetic FAIL
+#: (audit 2026-09-01, finding S1), which reads to every consumer as a measured
+#: verdict — the same confusion between silence and health that runs through this
+#: whole plan, one layer down.
+STATUSES = ("OK", "WARN", "FAIL", "ERROR")
 
 
 def make_result(status: str, label: str, detail: str, *,
@@ -36,7 +43,13 @@ def make_result(status: str, label: str, detail: str, *,
 
 
 def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
-    """(counts, exit_code). Exit is 1 iff any row FAILed.
+    """(counts, exit_code). 0 = clean, 1 = something FAILed, 2 = something could not run.
+
+    FAIL outranks ERROR deliberately. A run that both found a real defect and failed
+    to execute one check still has a defect to report, and a caller that gates on
+    "exit == 1" must keep seeing it; the ERROR is visible in the counts and the rows.
+    Only a run with NO failures, where a check could not execute, exits 2 — the case
+    that used to be indistinguishable from a clean run.
 
     Unknown statuses are counted under their own key rather than dropped: a
     typo'd status silently vanishing from the totals is how a check stops
@@ -46,7 +59,9 @@ def summarize(results: list[dict[str, str]]) -> tuple[dict[str, int], int]:
     for result in results:
         status = result["status"]
         counts[status] = counts.get(status, 0) + 1
-    return counts, 1 if counts["FAIL"] else 0
+    if counts["FAIL"]:
+        return counts, 1
+    return counts, 2 if counts["ERROR"] else 0
 
 
 def render(results: list[dict[str, str]], *, label_key: str = "label") -> list[str]:

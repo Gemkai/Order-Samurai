@@ -166,7 +166,7 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
 
     policy_payload, policy_error = _load_json(ROOT_HYGIENE_POLICY_PATH)
     if policy_error:
-        results.append(_make_result("FAIL", "root_hygiene_policy.json", policy_error))
+        results.append(_make_result("ERROR", "root_hygiene_policy.json", policy_error))
         return results
 
     failures = validate_root_hygiene_policy(payload=policy_payload or {}, repo_root=repo_root)

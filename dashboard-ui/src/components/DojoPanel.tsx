@@ -62,7 +62,7 @@ export function DojoPanel({ pillar, dojoProps, inline = false, isDemo = false }:
         <button
           onClick={(e) => { e.stopPropagation(); if (connected) toggle(slug) }}
           disabled={!connected}
-          title={connected ? (on ? 'Click to disable ronin mode' : 'Click to enable ronin mode') : isDemo ? 'Static demo — no backend required' : 'API offline — start npm run dev in Governance/api/'}
+          title={connected ? (on ? 'Click to disable ronin mode' : 'Click to enable sandboxed ronin mode') : isDemo ? 'Static demo — no backend required' : 'API offline — start npm run dev in api/'}
           style={{
             background: on ? 'rgba(239,68,68,0.14)' : 'rgba(255,255,255,0.05)',
             border: `1px solid ${on ? 'var(--sword)' : 'rgba(255,255,255,0.12)'}`,
@@ -74,7 +74,7 @@ export function DojoPanel({ pillar, dojoProps, inline = false, isDemo = false }:
           }}
         >
           <span className="mono" style={{ fontSize: 'var(--text-caption)', letterSpacing: 1, fontWeight: on ? 700 : 400 }}>
-            {on ? '◉ RONIN ARMED' : '○ DORMANT'}
+            {on ? '◉ RONIN (SANDBOXED)' : '○ DORMANT'}
           </span>
         </button>
 
@@ -84,12 +84,12 @@ export function DojoPanel({ pillar, dojoProps, inline = false, isDemo = false }:
           disabled={isCycleBlocked}
           title={
             !connected
-              ? isDemo ? 'Static demo — no backend required' : 'API offline — start npm run dev in Governance/api/'
+              ? isDemo ? 'Static demo — no backend required' : 'API offline — start npm run dev in api/'
               : isRunning
-              ? '⚡ Cycle in progress…'
+              ? '⚡ Reconciliation in progress…'
               : anyRunning
               ? 'Another pillar is running — click to queue (will auto-run when done)'
-              : 'Launch dojo cycle for this pillar'
+              : 'Launch deterministic reconciliation pass for this pillar'
           }
           style={{
             background: isRunning ? 'rgba(34,197,94,0.12)' : anyRunning && !isRunning ? 'rgba(251,191,36,0.08)' : 'rgba(255,255,255,0.04)',
@@ -102,7 +102,7 @@ export function DojoPanel({ pillar, dojoProps, inline = false, isDemo = false }:
           }}
         >
           <span className="mono" style={{ fontSize: 'var(--text-caption)', letterSpacing: 1 }}>
-            {isRunning ? '⚡ RUNNING…' : status === 'done' ? '✓ DONE' : status === 'error' ? '✗ ERROR' : '⚡ MEDITATION CYCLE'}
+            {isRunning ? '⚡ RECONCILING…' : status === 'done' ? '✓ RECONCILED' : status === 'error' ? '✗ ERROR' : '⚡ RECONCILE & AUDIT'}
           </span>
         </button>
 

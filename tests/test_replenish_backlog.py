@@ -129,3 +129,55 @@ def test_proposed_ids_still_advance_the_counter(tmp_path, monkeypatch):
     items = mod.build_items(candidates, proposed_items=[{"id": "AUTO-007"}], auto_approve=False)
 
     assert [i["id"] for i in items] == ["AUTO-008"]
+
+
+# ── F7: WIP cap enforced at the generator ───────────────────────────────────
+
+def test_pending_count_counts_only_unblessed_proposed_items():
+    items = [
+        {"status": "proposed", "approved": False},   # awaiting a decision
+        {"status": "proposed", "approved": True},     # blessed, awaiting `ronin promote`
+        {"status": "approved_for_work", "approved": True},  # already promoted
+    ]
+    mod = _load_module()
+    assert mod.pending_count(items) == 1
+
+
+def test_seeded_over_cap_backlog_logs_throttle_skip_and_appends_nothing(
+    tmp_path, monkeypatch, capsys
+):
+    """Seed PROPOSED_BACKLOG.json above --cap (a tmp_path fixture, never the real
+    repo state) and confirm main() logs a throttle-skip and does not append a new
+    candidate instead of silently proposing more on top of an already-overfull
+    backlog."""
+    mod = _load_module()
+
+    metrics = tmp_path / "METRICS.md"
+    metrics.write_text(_METRICS_MD, encoding="utf-8")
+    monkeypatch.setattr(mod, "METRICS_MD", metrics)
+
+    meditation_state = tmp_path / "MEDITATION_STATE.json"
+    meditation_state.write_text(json.dumps({"backlog": []}), encoding="utf-8")
+    monkeypatch.setattr(mod, "MEDITATION_STATE", meditation_state)
+
+    proposed_backlog = tmp_path / "PROPOSED_BACKLOG.json"
+    seeded_items = [
+        {"id": f"AUTO-{i:03d}", "title": f"Pre-existing pending item {i}",
+         "status": "proposed", "approved": False}
+        for i in range(1, mod.DEFAULT_PENDING_CAP + 3)   # comfortably over the cap
+    ]
+    proposed_backlog.write_text(
+        json.dumps({"generated_at": "", "items": seeded_items}), encoding="utf-8")
+    monkeypatch.setattr(mod, "PROPOSED_BACKLOG", proposed_backlog)
+    monkeypatch.setattr(mod, "BACKLOG_LOCK",
+                         proposed_backlog.with_name(proposed_backlog.name + ".lock"))
+
+    monkeypatch.setattr("sys.argv", ["replenish_backlog.py"])
+
+    mod.main()
+
+    out = capsys.readouterr().out
+    assert "THROTTLE-SKIP" in out
+
+    on_disk = json.loads(proposed_backlog.read_text())["items"]
+    assert on_disk == seeded_items, "no new candidate should have been appended"

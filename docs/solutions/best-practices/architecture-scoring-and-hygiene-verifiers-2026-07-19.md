@@ -17,6 +17,11 @@ related_components:
   - "config/agentica_root_hygiene_policy.json"
   - "state/failed_remediation_*.patch artifacts"
 tags: [architecture-score, root-hygiene, remediation, order-samurai]
+covered_by:
+  - kind: verifier
+    id: verify_agentica_root_hygiene
+  - kind: doctor_family
+    id: claude-architecture
 ---
 
 # Three 2026-07 mechanisms, one doc

@@ -11,6 +11,8 @@ applies_when:
   - Wiring keyboard shortcuts that map to a fixed set of named items
   - Reading and writing JSON state files from within a React/Ink component
 tags: [tui, ink, ronin, dojo, keyboard-shortcuts, dojo-state, react-hooks, auto-remediation]
+disposition: out-of-scope
+layer: interactive-tui-design
 ---
 
 # Order Samurai TUI: Per-Pillar Ronin Mode Toggle Pattern

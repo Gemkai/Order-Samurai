@@ -87,3 +87,30 @@ def test_broken_verifier_does_not_crash_scorer(monkeypatch):
     # every category's verifier "ran" (error returns results) → all blocking → score 0
     assert r["score"] == 0
     assert set(r["blocking_categories"]) == {"a", "b", "c", "d"}
+
+
+def test_missing_required_artifact_blocks_the_category_despite_a_clean_verifier(monkeypatch, tmp_path):
+    """A category can declare requiredArtifacts (e.g. documentation_parity's report
+    file) alongside requiredVerifiers, but its verifier may not itself check for
+    that artifact's presence. compute_score already computes missing_artifacts for
+    display -- it must also gate scoring, or a declared-required artifact can
+    vanish with zero score impact while the same report simultaneously lists it
+    as missing."""
+    scorecard = {
+        "scoring": {"targetScore": 100, "mergeFloor": 70, "releaseFloor": 85,
+                    "enforcementMode": "advisory-until-verifiers-exist"},
+        "categories": [
+            {"id": "e", "label": "E", "weight": 20,
+             "requiredArtifacts": ["MISSING.md"],
+             "requiredVerifiers": ["execution/verify_e.py"]},
+        ],
+    }
+    # Verifier itself is clean (no FAIL/WARN) -- only the artifact is missing.
+    monkeypatch.setattr(S, "_run_verifier", lambda v, repo_root: ("ran", []))
+    r = S.compute_score(scorecard, repo_root=tmp_path)  # tmp_path has no MISSING.md
+    cat = r["categories"][0]
+    assert cat["missing_artifacts"] == ["MISSING.md"]
+    assert cat["status"] == "blocking"
+    assert cat["earned"] == 0
+    assert r["score"] == 0
+    assert "e" in r["blocking_categories"]

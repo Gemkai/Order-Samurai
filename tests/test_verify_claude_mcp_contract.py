@@ -135,6 +135,53 @@ class VerifyClaudeMcpContractTests(unittest.TestCase):
         self.assertEqual(gating["status"], "OK")
         self.assertIn("postgres", gating["detail"])
 
+    def test_required_activation_env_returns_the_referenced_variable_not_the_key(self) -> None:
+        """required_activation_env's own contract is "the declared activation
+        condition the server must have provided to run" -- that's the NAME
+        INSIDE the ${...} placeholder, which launch_mcp_server.py's
+        expand_arg_template actually looks up in os.environ. The env dict's
+        own key is irrelevant to activation; a server can name its env entry
+        anything while pointing at a differently-named variable, e.g.
+        {"STRIPE_TOKEN": "${STRIPE_API_KEY}"} activates on STRIPE_API_KEY,
+        not STRIPE_TOKEN."""
+        required = vmc.required_activation_env({"env": {"STRIPE_TOKEN": "${STRIPE_API_KEY}"}})
+
+        self.assertEqual(required, ["STRIPE_API_KEY"])
+
+    def test_disabled_server_with_mismatched_env_key_is_still_correctly_gated(self) -> None:
+        """Same scenario as test_disabled_server_with_unset_activation_env_is_reported_ok
+        but with a mismatched env key/variable pair: the KEY (STRIPE_TOKEN) is
+        set (a decoy), the referenced VARIABLE (STRIPE_API_KEY) is genuinely
+        unset. The old key-based check saw the set decoy and concluded the
+        server's activation env was present, silently dropping a genuinely-
+        gated server from the "correctly gated" detail."""
+        self._write_scripts()
+        self._write_mcp(
+            {
+                "mcp-deep-think": _launcher_server("mcp-deep-think"),
+                "stripe": _launcher_server(
+                    "stripe",
+                    disabled=True,
+                    env={"STRIPE_TOKEN": "${STRIPE_API_KEY}"},
+                ),
+            }
+        )
+        # The decoy key is set; the actually-referenced variable is not.
+        os.environ["STRIPE_TOKEN"] = "decoy-value-irrelevant-to-activation"
+        os.environ.pop("STRIPE_API_KEY", None)
+        self.addCleanup(os.environ.pop, "STRIPE_TOKEN", None)
+
+        results = vmc.run_checks(runtime_root_dir=self.sandbox)
+
+        gating = self._by_label(results)["claude-mcp-contract.activation-gating"]
+        self.assertEqual(gating["status"], "OK")
+        self.assertIn(
+            "stripe", gating["detail"],
+            "stripe is genuinely gated by its unset STRIPE_API_KEY activation "
+            "variable and must be reported as correctly gated, regardless of "
+            "the unrelated STRIPE_TOKEN key being set",
+        )
+
     def test_enabled_server_not_launcher_backed_warns(self) -> None:
         self._write_scripts()
         broken = {
@@ -201,6 +248,20 @@ class VerifyClaudeMcpContractTests(unittest.TestCase):
         row = self._by_label(results)["claude-mcp-contract.activation-gating"]
         self.assertEqual(row["status"], "OK")
         self.assertIn("honor-system", row["detail"])
+
+    def test_empty_enabled_servers_list_counts_as_real_metadata(self) -> None:
+        """server_is_enabled() treats `enabledServers: []` as real metadata — an
+        empty allow-list disables every server, via its `isinstance(enabled_set,
+        list)` check (a list, even empty, wins). has_activation_metadata() instead
+        used `mcp_payload.get("enabledServers") or mcp_payload.get("enabled")`,
+        where `[] or ...` short-circuits PAST the empty list — so it disagreed,
+        reporting "no machine-readable metadata exists" for the exact payload
+        server_is_enabled just used to disable everything. That mismatch let
+        _check_activation_gating emit a misleading honor-system OK row even
+        though a real (if empty) enabled-set was present and doing real gating."""
+        payload = {"enabledServers": [], "mcpServers": {"foo": {}}}
+        self.assertFalse(vmc.server_is_enabled("foo", {}, payload))
+        self.assertTrue(vmc.has_activation_metadata(payload, payload["mcpServers"]))
 
     def test_summarize_sets_nonzero_exit_for_failures(self) -> None:
         counts, exit_code = vmc.summarize(

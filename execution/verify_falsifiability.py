@@ -34,6 +34,8 @@ IS one of the discovered scripts (verify_doc_parity.py) and is not double-counte
 """
 from __future__ import annotations
 
+import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -132,16 +134,85 @@ def check_matrix_registry_drift(target_dir: Path) -> tuple[bool, str]:
     regenerated docs/metrics_remediation_matrix.md over it) if the live metric
     set changes enough to make that snapshot stale. This mirrors the same
     limitation already accepted for check_doc_parity."""
-    import regen_metrics_matrix as rmm  # noqa: PLC0415 (sys.path wired above)
-    matrix_file = target_dir / "metrics_remediation_matrix.md"
-    if not matrix_file.is_file():
-        return False, "no metrics_remediation_matrix.md fixture found"
-    text = matrix_file.read_text(encoding="utf-8")
-    live_roster = rmm.load_live_roster()
-    in_matrix_not_live, live_not_in_matrix = rmm.compute_drift(text, live_roster)
-    if in_matrix_not_live or live_not_in_matrix:
-        return False, f"in_matrix_not_live={in_matrix_not_live} live_not_in_matrix={live_not_in_matrix}"
-    return True, "matrix matches live registry"
+    try:
+        import regen_metrics_matrix as rmm  # noqa: PLC0415 (sys.path wired above)
+        matrix_file = target_dir / "metrics_remediation_matrix.md"
+        if not matrix_file.is_file():
+            return False, "no metrics_remediation_matrix.md fixture found"
+        payload_path = rmm._PAYLOAD_PATH
+        if not payload_path.is_file():
+            # Fail closed, not open -- the same guard the standalone fallback below
+            # carries. Until 2026-09-02 this branch let load_live_roster() raise
+            # FileNotFoundError on any checkout without the gitignored payload
+            # (every fresh clone and CI runner), so the whole harness died with a
+            # traceback and no Summary line instead of reporting a parseable FAIL.
+            return False, f"cannot verify: no live registry payload at {payload_path}"
+        text = matrix_file.read_text(encoding="utf-8")
+        live_roster = rmm.load_live_roster(payload_path)
+        in_matrix_not_live, live_not_in_matrix = rmm.compute_drift(text, live_roster)
+        if in_matrix_not_live or live_not_in_matrix:
+            return False, f"in_matrix_not_live={in_matrix_not_live} live_not_in_matrix={live_not_in_matrix}"
+        return True, "matrix matches live registry"
+    except ImportError:
+        # Standalone export fallback: regen_metrics_matrix itself can't be imported
+        # here (its top-level `from agentica_core import insights` is unavailable in
+        # a standalone distribution) even though the drift logic it wraps needs
+        # nothing but stdlib -- load_live_roster/compute_drift are reimplemented
+        # locally below (_standalone_load_live_roster/_standalone_compute_drift) so
+        # this stays a REAL content-based check. (Prior version matched on literal
+        # strings like "FakeMetric"/"NON_EXISTENT_METRIC" or the fixture directory
+        # being named "bad" -- the actual bad/ fixture doesn't even contain those
+        # substrings, so it only "passed" via the directory-name shortcut; any real
+        # standalone-export drift not spelled exactly that way silently reported
+        # clean. Found + fixed 2026-08-31, see docs/solutions.)
+        matrix_file = target_dir / "metrics_remediation_matrix.md"
+        if not matrix_file.is_file():
+            return False, "no metrics_remediation_matrix.md fixture found"
+        payload_path = _OS_ROOT.parent / "dashboard-ui" / "public" / "wid_payload.json"
+        if not payload_path.is_file():
+            # Fail closed, not open: a verifier that cannot see ground truth must
+            # never silently report clean -- this file's own governing principle
+            # (see module docstring).
+            return False, f"cannot verify: no live registry payload at {payload_path}"
+        text = matrix_file.read_text(encoding="utf-8")
+        live_roster = _standalone_load_live_roster(payload_path)
+        in_matrix_not_live, live_not_in_matrix = _standalone_compute_drift(text, live_roster)
+        if in_matrix_not_live or live_not_in_matrix:
+            return False, f"in_matrix_not_live={in_matrix_not_live} live_not_in_matrix={live_not_in_matrix}"
+        return True, "matrix matches live registry"
+
+
+_PILLAR_ORDER = ("bow", "sword", "brush", "arts")
+
+
+def _standalone_load_live_roster(payload_path: Path) -> dict:
+    """Reimplements regen_metrics_matrix.load_live_roster() without importing that
+    module -- see check_matrix_registry_drift's except-ImportError branch for why.
+    Keep in sync with that function if the payload shape ever changes."""
+    import json
+    payload = json.loads(payload_path.read_text(encoding="utf-8"))
+    return payload.get("pillars", {})
+
+
+def _standalone_compute_drift(matrix_text: str, live_roster: dict) -> tuple[list[str], list[str]]:
+    """Reimplements regen_metrics_matrix.compute_drift() without importing that
+    module -- see check_matrix_registry_drift's except-ImportError branch for why.
+    Keep in sync with that function if the marker format or roster shape changes."""
+    in_matrix: set[str] = set()
+    for pillar in _PILLAR_ORDER:
+        start = f"<!-- GENERATED:ROSTER:{pillar.upper()}:START -->"
+        end = f"<!-- GENERATED:ROSTER:{pillar.upper()}:END -->"
+        m = re.search(re.escape(start) + r"(.*?)" + re.escape(end), matrix_text, re.DOTALL)
+        if not m:
+            continue
+        in_matrix.update(re.findall(r"\*\*([A-Za-z0-9_]+)\*\*", m.group(1)))
+
+    live: set[str] = set()
+    for pillar in _PILLAR_ORDER:
+        for group_metrics in live_roster.get(pillar, {}).values():
+            live.update(group_metrics)
+
+    return sorted(in_matrix - live), sorted(live - in_matrix)
 
 
 CHECKS = {
@@ -150,7 +221,22 @@ CHECKS = {
     "pii_export": check_pii_export,
     "doc_parity": check_doc_parity,
     "matrix_registry_drift": check_matrix_registry_drift,
+    "incident_coverage": lambda target_dir: _check_incident_coverage(target_dir),
 }
+
+
+def _check_incident_coverage(target_dir: Path) -> tuple[bool, str]:
+    """Run the real incident verifier against one covered/uncovered fixture doc."""
+    import verify_incident_coverage
+    report = verify_incident_coverage.analyze(
+        solution_roots=(target_dir,),
+        memory_root=target_dir,
+    )
+    ok = not report["uncovered"] and not report["unmeasured"]
+    return ok, (
+        f"{report['covered']}/{report['scanned']} covered; "
+        f"{len(report['uncovered'])} uncovered"
+    )
 
 
 def discover_verify_scripts() -> list[str]:
@@ -200,12 +286,33 @@ def run_falsifiability(checks: dict | None = None, fixtures_root: Path | None = 
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Run the Verifier_Falsifiability harness")
+    parser.add_argument("--json", action="store_true",
+                        help="emit machine-readable JSON (the full run_falsifiability() "
+                             "result) instead of the human-readable summary")
+    args = parser.parse_args()
+
     r = run_falsifiability()
-    print(f"Verifier_Falsifiability: {r['falsifiable']}/{r['total']} checks proven falsifiable "
-          f"(bad fixture fails, clean fixture passes)")
-    for name, v in sorted(r["checks"].items()):
-        print(f"  {name}: {v['status']}")
-    return 0
+
+    if args.json:
+        print(json.dumps(r, indent=2))
+    else:
+        print(f"Verifier_Falsifiability: {r['falsifiable']}/{r['total']} checks proven falsifiable "
+              f"(bad fixture fails, clean fixture passes)")
+        for name, v in sorted(r["checks"].items()):
+            print(f"  {name}: {v['status']}")
+
+    # A registered-but-untested check is a coverage gap, not a failure (this file's own
+    # docstring: "an untested check counts in neither the numerator nor the denominator's
+    # covered set") -- `falsifiable == total` would demand full coverage of EVERY
+    # discovered verify_*.py script (most of which have no fixture pair registered at
+    # all yet) and would exit nonzero on every run regardless of real health. The real
+    # signal is narrower: did any REGISTERED check fail to prove itself falsifiable.
+    # (Found + fixed 2026-08-31/09-01: this previously always returned 0 regardless of
+    # results, so callers checking the exit code alone -- e.g. reconcile_state.py's
+    # stage_3 -- could never see a real failure here.)
+    any_check_failed = any(v["status"] == "fail" for v in r["checks"].values())
+    return 1 if any_check_failed else 0
 
 
 if __name__ == "__main__":

@@ -224,7 +224,7 @@ def run_checks(
 
     policy_payload, policy_error = _load_json(policy_path)
     if policy_error:
-        results.append(_make_result("FAIL", "claude_promotion_policy.json", policy_error))
+        results.append(_make_result("ERROR", "claude_promotion_policy.json", policy_error))
         return results
     payload = policy_payload or {}
 
@@ -270,7 +270,7 @@ def _check_surface_matrix(
     """The surface matrix agrees with the promotion policy."""
     matrix_payload, matrix_error = _load_json(matrix_path)
     if matrix_error:
-        results.append(_make_result("FAIL", "claude_surface_matrix.json", matrix_error))
+        results.append(_make_result("ERROR", "claude_surface_matrix.json", matrix_error))
     else:
         matrix = matrix_payload or {}
 

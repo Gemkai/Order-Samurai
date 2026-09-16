@@ -16,7 +16,12 @@ from agentica_core.llm.gateway import (
     ROUTED_MODELS,
     call_routed_llm,
 )
-from agentica_core.llm.local_guards import LOCAL_TIMEOUT_SEC
+# Re-exported for callers that introspect model_router.LOCAL_TIMEOUT_SEC directly
+# (test_model_router.py) rather than through this facade's compatibility names --
+# never used by name within this file, which is the whole point of a facade.
+# Mistakenly removed as "unused" by the 2026-08-20 lint-tranche F401 auto-fix and
+# restored the same day once the kernel suite caught it.
+from agentica_core.llm.local_guards import LOCAL_TIMEOUT_SEC  # noqa: F401
 
 __router_facade__ = True
 

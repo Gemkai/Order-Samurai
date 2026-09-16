@@ -80,6 +80,9 @@ def _call_model(snippets_text: str) -> dict | None:
         task="classification",
         max_tokens=2048,
         temperature=0.0,
+        # Scans only execution/, scouts/, agentica_core/ under REPO_ROOT (this
+        # scout's own parents[1]) -- always genuinely about Order Samurai.
+        project="Order Samurai",
     )
     if not raw:
         return None

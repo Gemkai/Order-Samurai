@@ -119,6 +119,23 @@ def collect_server_disable_state(
     malformed: list[str] = []
     metadata_present = False
 
+    # Allow-list convention (verify_claude_mcp_contract.server_is_enabled /
+    # has_activation_metadata): a top-level "enabledServers" list -- or "enabled"
+    # when it's a list -- names every ACTIVE server; every declared server it
+    # omits is implicitly disabled, even with no per-server disabled/enabled
+    # flag of its own. This is real, mechanically-checkable gating metadata and
+    # takes precedence over per-server flags, mirroring server_is_enabled's own
+    # precedence. An empty list is still a real (if empty) allow-list -- it
+    # disables every declared server, same as has_activation_metadata treats it.
+    enabled_set = mcp_payload.get("enabledServers")
+    if not isinstance(enabled_set, list):
+        enabled_set = mcp_payload.get("enabled")
+    if isinstance(enabled_set, list):
+        enabled_names = {str(n) for n in enabled_set}
+        disabled = declared - enabled_names
+        unknown_disabled = sorted(enabled_names - declared)
+        return declared, disabled, True, malformed, unknown_disabled
+
     for name, cfg in servers.items():
         if not isinstance(cfg, dict):
             continue
@@ -214,7 +231,7 @@ def _check_anti_drift_policy(
     policy_payload, policy_error = _load_json(policy_path)
     if policy_error:
         results.append(
-            _make_result("FAIL", "claude_anti_drift_policy.json", policy_error)
+            _make_result("ERROR", "claude_anti_drift_policy.json", policy_error)
         )
         return results, False, False
     payload = policy_payload or {}
@@ -374,7 +391,18 @@ def _check_canonical_doctor_and_shim(matrix_path: Path, runtime: Path, runtime_p
         if canonical is not None and compat is not None:
             canonical_owner = str(canonical.get("owner") or "").strip()
             compat_owner = str(compat.get("owner") or "").strip()
-            if canonical_owner and compat_owner and canonical_owner != compat_owner:
+            if not canonical_owner or not compat_owner:
+                results.append(
+                    _make_result(
+                        "WARN",
+                        "doctor.canonical_vs_compat",
+                        f"canonical doctor {canonical.get('path')!r} (owner "
+                        f"{canonical_owner!r}) or compat shim {compat.get('path')!r} "
+                        f"(owner {compat_owner!r}) is missing an owner; cannot verify "
+                        "they share one",
+                    )
+                )
+            elif canonical_owner != compat_owner:
                 results.append(
                     _make_result(
                         "WARN",

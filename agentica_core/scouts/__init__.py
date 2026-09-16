@@ -59,6 +59,40 @@ def _dependency_scanner_skipped(dep: dict, scanner: str) -> bool:
     return isinstance(health, dict) and scanner not in health
 
 
+# Accepted-pinned allowlist for Deprecated_Deps (2026-08-25, goal
+# deprecated-deps-cve-subset-disposition option b). The 2026-07-19 HITL decision
+# found the raw pip_outdated count dominated by the deliberately-pinned ML stack,
+# leaving the metric a permanent WARN nobody could act on. Grandfathered packages
+# are excluded, so the count measures UNINTENDED drift only. CVE exposure is
+# unaffected (Open_CVEs counts audit findings regardless). Module-level constant
+# so hermetic tests can point it at a fixture instead of live policy.
+_DEPRECATED_DEPS_ALLOWLIST_PATH = (
+    Path(__file__).resolve().parents[2] / "config" / "deprecated_deps_allowlist.json"
+)
+
+
+def _normalize_pkg_name(name: object) -> str:
+    """PEP 503 normalization: pip treats foo_bar/Foo-Bar/foo.bar/foo-bar as one
+    distribution. Dots matter in practice — boolean.py is installed on this host,
+    and a maintainer writing the PyPI-canonical 'boolean-py' would otherwise add
+    a silent no-op allowlist entry (pre-push review, 2026-08-25)."""
+    return re.sub(r"[-_.]+", "-", str(name).strip().lower())
+
+
+def _deprecated_deps_allowlist() -> set[str]:
+    """Missing/unreadable allowlist -> empty set: the metric falls back to the FULL
+    outdated count. Failing toward alarming, never toward silence — a lost policy
+    file must not quietly zero a graded security-pillar metric."""
+    try:
+        doc = json.loads(_DEPRECATED_DEPS_ALLOWLIST_PATH.read_text(encoding="utf-8"))
+        pkgs = doc.get("packages") if isinstance(doc, dict) else None
+        if isinstance(pkgs, list):
+            return {_normalize_pkg_name(p) for p in pkgs if str(p).strip()}
+    except (OSError, ValueError):
+        pass
+    return set()
+
+
 def _pip_cve_count(rows: object) -> int:
     if not isinstance(rows, list):
         return 0
@@ -136,7 +170,16 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
         if _dependency_scanner_ok(dep, "pip"):
             outdated = dep.get("pip_outdated")
             if isinstance(outdated, list):
-                out["deprecated_deps"] = len(outdated)
+                # Unintended drift only: subtract the accepted-pinned allowlist
+                # (see _DEPRECATED_DEPS_ALLOWLIST_PATH above). Non-dict rows keep
+                # counting — legacy fixtures represent one outdated package as a
+                # scalar, and an unparseable row must not vanish from the count.
+                allow = _deprecated_deps_allowlist()
+                out["deprecated_deps"] = sum(
+                    1 for p in outdated
+                    if not (isinstance(p, dict)
+                            and _normalize_pkg_name(p.get("name")) in allow)
+                )
 
     # canary_failures RETIRED 2026-07-11 (C/D/F plan step 5): behavioral_canary.py
     # was never scheduled on this host, so canary_status.json is permanently absent —
@@ -180,6 +223,30 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
                 1 for x in f
                 if isinstance(x, dict) and x.get("category") == "launchd_failing"
             )
+
+    # Static_Wiring_Orphans (2026-09-01): find_orphans.py's static producer/consumer
+    # dataflow audit (skills/find-orphan-mechanisms, scheduled weekly). Distinct from
+    # mechanism_orphans above: that one is mechanism_audit's own runtime orphan-script
+    # check; this is the wiring-graph audit — a script that writes a file nothing
+    # reads, or reads a file nothing writes. Until this block, that output had no
+    # scorecard consumer at all. Counts only "real" orphans (excludes doc-referenced
+    # producers and config/allowlist-pattern consumer reads, which the script itself
+    # already classifies as likely-OK). Absent file (audit never run on this host)
+    # is left unset, not a fabricated 0 -- and so is a present-but-malformed `counts`
+    # dict (renamed keys, or `{}`): both keys must actually be present, not just
+    # defaulted to 0 by `.get`, or an empty/renamed shape would silently report a
+    # false all-clear instead of leaving the signal absent (fixed 2026-09-02, review).
+    fo = _read_json(data / "orphan_mechanisms.json")
+    if isinstance(fo, dict):
+        c = fo.get("counts")
+        if (isinstance(c, dict) and "producer_orphans" in c
+                and "consumer_orphans_dead_end" in c):
+            try:
+                out["static_wiring_orphans"] = (
+                    int(c["producer_orphans"]) + int(c["consumer_orphans_dead_end"])
+                )
+            except (TypeError, ValueError):
+                pass
 
     dp = _read_json(data / "doc_parity.json")
     if isinstance(dp, dict):
@@ -333,6 +400,18 @@ _SCORECARD_KW = {
     "archive_isolation": ["archive", "boundary"],
     "lifecycle_governance": ["promotion", "lifecycle"],
     "documentation_parity": ["doc", "parity"],
+    # Live claude_architecture_scorecard.json category ids (added 2026-08-24): the map
+    # above only covered a stale 8-id schema, leaving these 7 -- 76 of 100 weight
+    # points -- with no keyword entry, so any real FAIL under them was silently
+    # ignored and the category always scored as passing. Keywords are copied
+    # verbatim from each id's own execution/verify_claude_*.py _make_result(...) labels.
+    "generated_runtime_truth": ["generated_truth"],
+    "hook_control_plane": ["hook-contract"],
+    "mcp_launcher_governance": ["mcp-contract"],
+    "runtime_portability": ["runtime_portability"],
+    "runtime_coupling_boundaries": ["runtime_coupling"],
+    "doctor_truthfulness": ["doctor"],
+    "anti_sprawl": ["surface-governance", "root_hygiene", "sprawl"],
 }
 
 

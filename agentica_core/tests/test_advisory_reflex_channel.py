@@ -45,6 +45,12 @@ def test_config_premise_still_holds():
     """
     for mk in ("Mechanism_Orphans", "Retrieval_Relevance"):
         assert insights.METRIC_CONFIG.get(mk, {}).get("auto_remediable") is False
+    # Same premise, other direction: test_remediable_metric_stays_on_the_dispatch_channel
+    # below needs a metric that's genuinely still remediable. Open_CVEs was that example
+    # until the F4 ticket (remediation-loops, 2026-08-24) demoted it (0/7 lifetime
+    # improved) -- this guard would have caught that break at its source instead of via
+    # a routing-assertion failure with no explanation.
+    assert insights.METRIC_CONFIG.get("Secrets_Detected", {}).get("auto_remediable") is not False
 
 
 def test_live_stall_input_produces_advisory_reflexes_not_silence():
@@ -91,15 +97,20 @@ def test_advisory_entries_stay_marked_non_remediable():
 
 
 def test_remediable_metric_stays_on_the_dispatch_channel():
-    """Guards the other direction: routing must not drain the dispatch channel."""
-    pillars = _pillars(sword=("Vulnerability", "Open_CVEs",
-                              {"val": "6", "is_simulated": False, "history": [],
-                               "mitigation_command": "/codebase-cleanup-deps-audit"}))
-    category_scores = _scores(sword=[{"name": "Open_CVEs", "val": "6", "grade": "F"}])
+    """Guards the other direction: routing must not drain the dispatch channel.
+
+    Secrets_Detected, not Open_CVEs: F4 (remediation-loops, 2026-08-24) demoted
+    Open_CVEs to auto_remediable=False, so it's no longer a valid "still
+    remediable" example -- see the premise guard above.
+    """
+    pillars = _pillars(sword=("Vulnerability", "Secrets_Detected",
+                              {"val": "0", "is_simulated": False, "history": [],
+                               "mitigation_command": "/security-audit"}))
+    category_scores = _scores(sword=[{"name": "Secrets_Detected", "val": "0", "grade": "F"}])
 
     dispatch, advisory = _build(pillars, category_scores)
 
-    assert [r["id"] for r in dispatch if r["source"] == "metric"] == ["metric:sword:Open_CVEs"]
+    assert [r["id"] for r in dispatch if r["source"] == "metric"] == ["metric:sword:Secrets_Detected"]
     assert advisory == []
 
 

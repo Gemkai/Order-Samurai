@@ -222,6 +222,9 @@ class VerifyClaudeDoctorTruthfulnessTests(unittest.TestCase):
         self.assertEqual(entrypoint_rows[0]["status"], "OK")
 
     def test_missing_policy_returns_single_failure(self) -> None:
+        # Plan M3.1 / audit finding S1: a verifier that cannot read its own
+        # policy made NO measurement. It reports ERROR ("could not run"), not a
+        # synthetic FAIL that reads to every consumer as a measured verdict.
         _policy_path, matrix_path = self._write_configs(
             make_anti_drift_policy(), make_matrix()
         )
@@ -234,7 +237,7 @@ class VerifyClaudeDoctorTruthfulnessTests(unittest.TestCase):
         )
 
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["status"], "FAIL")
+        self.assertEqual(results[0]["status"], "ERROR")
         self.assertEqual(results[0]["detail"], "missing")
 
     def test_mcp_disables_undeclared_server_fails(self) -> None:
@@ -271,6 +274,24 @@ class VerifyClaudeDoctorTruthfulnessTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["status"], "WARN")
 
+    def test_compat_shim_missing_owner_warns_instead_of_false_ok(self) -> None:
+        """An empty/unset owner on either surface must not be treated as
+        'nothing to compare' -- it must WARN, not silently claim they share
+        an owner they were never shown to share."""
+        policy_path, matrix_path = self._write_configs(
+            make_anti_drift_policy(),
+            make_matrix(compat_owner=""),
+        )
+        runtime = self._make_runtime()
+
+        results = run_checks(
+            policy_path=policy_path, matrix_path=matrix_path, runtime_root_dir=runtime
+        )
+
+        rows = [row for row in results if row["label"] == "doctor.canonical_vs_compat"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["status"], "WARN")
+
     # -- pure-function unit checks ----------------------------------------
     def test_collect_server_disable_state_counts_per_server_flags(self) -> None:
         declared, disabled, present, malformed, unknown = collect_server_disable_state(
@@ -289,6 +310,45 @@ class VerifyClaudeDoctorTruthfulnessTests(unittest.TestCase):
         )
 
         self.assertFalse(present)
+
+    def test_collect_server_disable_state_honors_enabled_servers_allowlist(self) -> None:
+        """A top-level `enabledServers` allow-list (the same convention
+        verify_claude_mcp_contract.server_is_enabled/has_activation_metadata
+        already treat as real gating metadata) implicitly disables every
+        declared server it omits -- postgres/zapier here carry no per-server
+        `disabled` flag at all, yet are not active because they're absent
+        from the allow-list naming only mcp-deep-think."""
+        declared, disabled, present, malformed, unknown = collect_server_disable_state(
+            mcp_payload={
+                "enabledServers": ["mcp-deep-think"],
+                "mcpServers": {
+                    "mcp-deep-think": {"command": "python"},
+                    "postgres": {"command": "python"},
+                    "zapier": {"command": "python"},
+                },
+            }
+        )
+
+        self.assertTrue(present, "an enabledServers list is real gating metadata")
+        self.assertEqual(declared, {"mcp-deep-think", "postgres", "zapier"})
+        self.assertEqual(disabled, {"postgres", "zapier"})
+        self.assertEqual(malformed, [])
+        self.assertEqual(unknown, [])
+
+    def test_collect_server_disable_state_flags_enabled_servers_naming_a_ghost(self) -> None:
+        """An enabledServers entry naming a server absent from mcpServers is
+        exactly as incoherent as the existing top-level `disabled` list case
+        (test_mcp_disables_undeclared_server_fails) and must surface the same
+        way: as an unknown/undeclared reference, not silently accepted."""
+        _declared, _disabled, present, _malformed, unknown = collect_server_disable_state(
+            mcp_payload={
+                "enabledServers": ["ghost-server"],
+                "mcpServers": {"alpha": {"command": "python"}},
+            }
+        )
+
+        self.assertTrue(present)
+        self.assertIn("ghost-server", unknown)
 
     def test_find_doctor_surfaces_identifies_canonical_and_compat(self) -> None:
         surfaces = find_doctor_surfaces(matrix_payload=make_matrix())

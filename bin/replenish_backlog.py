@@ -284,10 +284,36 @@ def build_items(candidates: list, proposed_items: list, auto_approve: bool,
             "effort": 2,
             "status": "proposed",
             "approved": auto_approve,
+            # created_at (2026-08-25): the backlog audit found 92/122 items carried no
+            # timestamp anywhere, so staleness and burn-rate were uncomputable by
+            # construction. New items only — historical items stay as they are.
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         new_items.append(item)
 
     return new_items
+
+
+# WIP cap (F7, remediation-loops map, 2026-08-23). F6 ratified "cap generators at
+# observed drain" but gave replenish_backlog no explicit number -- unlike soji_consume
+# and connection_seeds, PROPOSED_BACKLOG.json's runtime state is gitignored
+# (state/) and not present in a fresh checkout, so there is no real current count to
+# read here the way there is for the other two. Per the ticket's fallback instruction,
+# use a small, clearly-documented conservative default: 5 items awaiting a bless
+# decision (status "proposed", not yet approved) -- roughly one run's worth
+# (build_items already caps a single run at 5 new items). F6's owner should replace
+# this with an observed-drain number after 2 weeks of post-fix data, same as the
+# other two generators.
+DEFAULT_PENDING_CAP = 5
+
+
+def pending_count(items: list) -> int:
+    """Items in PROPOSED_BACKLOG.json still awaiting a human bless decision.
+
+    Mirrors soji_consume's "needs a human" bucket and connection_seeds' "awaiting
+    bless" backlog: proposed-but-not-yet-approved is the queue a human has to drain.
+    """
+    return sum(1 for i in items if i.get("status") == "proposed" and not i.get("approved"))
 
 
 def main():
@@ -303,6 +329,14 @@ def main():
         "--dry-run",
         action="store_true",
         help="Print proposed items without writing to disk.",
+    )
+    parser.add_argument(
+        "--cap",
+        type=int,
+        default=DEFAULT_PENDING_CAP,
+        help="throttle when this many proposed-but-unblessed items are already "
+             "sitting in PROPOSED_BACKLOG.json (default %d; see DEFAULT_PENDING_CAP "
+             "comment for why)" % DEFAULT_PENDING_CAP,
     )
     args = parser.parse_args()
 
@@ -323,6 +357,14 @@ def main():
     with backlog_lock():
         proposed = load_proposed()
         existing_proposed = proposed.get("items", [])
+
+        pending = pending_count(existing_proposed)
+        if pending >= args.cap:
+            print("replenish_backlog: THROTTLE-SKIP — %d item(s) already awaiting a bless "
+                  "decision (cap %d); not proposing more until the backlog drains"
+                  % (pending, args.cap))
+            print("  next: review pending items via `bin/ronin propose`, then re-run")
+            return
 
         candidates = parse_candidates(existing_titles)
         new_items = build_items(candidates, existing_proposed, args.auto_approve)

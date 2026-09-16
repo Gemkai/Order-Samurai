@@ -37,12 +37,12 @@ RONIN = BIN / "ronin"
 DAEMON = BIN / "ronin-daemon.sh"
 
 # The status a promoted item carries. This string is the contract between
-# `ronin promote` and the /goal sweep's Phase 1 item 3 ("items whose status marks
+# `ronin promote` and the /nightjob sweep's Phase 1 item 3 ("items whose status marks
 # them approved/triaged for work") — changing it here without changing the sweep
-# silently re-orphans the queue.
+# silently re-orphans the queue. (The sweep skill was named /goal until 2026-09-07.)
 PROMOTED_STATUS = "approved_for_work"
 
-# What the sweep opens, verbatim from ~/.claude/skills/goal/SKILL.md Phase 1.3.
+# What the sweep opens, verbatim from ~/.claude/skills/nightjob/SKILL.md Phase 1.3.
 SWEEP_SOURCE_RELATIVE = "state/PROPOSED_BACKLOG.json"
 
 _SEED_STATE = {
@@ -247,20 +247,33 @@ def test_promote_body_still_targets_the_sweep_source() -> None:
     assert "$PROMOTED_STATUS" in body, body
     assert f'PROMOTED_STATUS="{PROMOTED_STATUS}"' in RONIN.read_text(encoding="utf-8"), (
         f"bin/ronin no longer defines PROMOTED_STATUS as {PROMOTED_STATUS!r} — that "
-        "string is the contract with the /goal sweep."
+        "string is the contract with the /nightjob sweep."
     )
 
 
 def test_sweep_source_path_matches_the_skill_contract() -> None:
-    """The /goal skill hardcodes the absolute path it sweeps. If that path stops
+    """The /nightjob skill hardcodes the absolute path it sweeps. If that path stops
     naming this file, promotion is orphaned again — and the failure would be
     silent, so pin it here."""
-    skill = Path.home() / ".claude" / "skills" / "goal" / "SKILL.md"
+    skills_dir = Path.home() / ".claude" / "skills"
+    if not skills_dir.is_dir():
+        pytest.skip(f"{skills_dir} not present (public/flat tree)")
+    skill = skills_dir / "nightjob" / "SKILL.md"
+    # Renamed from `goal` on 2026-09-07. Do NOT soften this to a skip: the whole
+    # point of the test is that an orphaned queue fails loudly, and the previous
+    # version skipped whenever the skill file was missing — so the rename itself
+    # would have silently disabled it rather than failing. If the skills tree is
+    # present, the sweep skill must be findable under one of these names.
     if not skill.exists():
-        pytest.skip(f"{skill} not present (public/flat tree)")
+        legacy = skills_dir / "goal" / "SKILL.md"
+        assert legacy.exists(), (
+            f"neither {skill} nor {legacy} exists, but {skills_dir} does — the "
+            "nightly sweep skill was renamed or removed without updating this pin."
+        )
+        skill = legacy
     text = skill.read_text(encoding="utf-8")
     assert SWEEP_SOURCE_RELATIVE in text, (
-        f"the /goal sweep no longer names {SWEEP_SOURCE_RELATIVE}; "
+        f"the /nightjob sweep no longer names {SWEEP_SOURCE_RELATIVE}; "
         "ronin promote's destination must follow it."
     )
 

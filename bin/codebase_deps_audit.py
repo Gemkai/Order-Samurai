@@ -41,6 +41,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable
@@ -346,6 +347,7 @@ def build_audit(
     licence_flags: list[dict],
     generated_at: str,
     npm_audits: list[dict] | None = None,
+    npm_ok: bool | None = None,
 ) -> dict:
     """Assemble the canonical audit dict from already-parsed findings.
 
@@ -380,8 +382,18 @@ def build_audit(
     # registry invokes this script with no --npm. A clean count must never imply
     # coverage that did not happen. (2026-08-16 audit; --npm stays opt-in on purpose,
     # since `npm audit` transmits the lockfiles' dependency graph to the npm registry.)
-    ecosystems_scanned = ["pip"] + (["npm"] if npm_audits else [])
-    ecosystems_unscanned = [] if npm_audits else ["npm"]
+    #
+    # `npm_audits` alone can't tell a full scan from a PARTIAL one: scan_npm_projects()
+    # still returns the successful subset's audits even when other projects failed, so
+    # a truthy `npm_audits` used to mean "npm fully scanned" even with 2 of 3 projects
+    # erroring — reporting `complete: True` while their CVEs were never counted.
+    # `npm_ok is False` (an explicit failure from run_audit) overrides that; `npm_ok`
+    # left at its default (None, e.g. a caller assembling npm_audits directly without
+    # a scanner-health verdict) is treated as complete, preserving prior behavior.
+    npm_attempted = bool(npm_audits)
+    npm_complete = npm_attempted and npm_ok is not False
+    ecosystems_scanned = ["pip"] + (["npm"] if npm_attempted else [])
+    ecosystems_unscanned = [] if npm_complete else ["npm"]
     return {
         "generated_at": generated_at,
         "pip_outdated": pip_outdated,
@@ -397,8 +409,12 @@ def build_audit(
                 "pip only — npm was NOT scanned; `counts.cves` covers Python "
                 "dependencies alone. Re-run with --npm to include the Node "
                 "projects (this transmits their dependency graph to the npm registry)."
-                if ecosystems_unscanned else
+                if not npm_attempted else
                 "pip and npm both scanned; `counts.cves` spans both ecosystems."
+                if npm_complete else
+                "pip and npm PARTIALLY scanned — one or more npm projects failed "
+                "and are excluded from `counts.cves`; see scanner_errors.npm for "
+                "which projects failed, then re-run with --npm to retry."
             ),
         },
         "counts": {
@@ -416,43 +432,72 @@ def build_audit(
 # Real scanners
 # ---------------------------------------------------------------------------
 
+# remediation-loops A9 (2026-08-24): both scanners hit the network per package/advisory-DB
+# lookup (pip against the index, pip-audit against PyPI's OSV advisory feed), so a lone
+# transient failure is a real, observed shape — 2026-08-17's "SCANNER FAILURE" reproduced
+# cleanly on manual re-run one week later with zero code changes, consistent with a one-off
+# blip rather than a persistent defect. Because these jobs run WEEKLY, one unretried blip
+# costs a full week of stale Open_CVEs/Deprecated_Deps (rendered as "—", not a number, in
+# the dashboard) with nothing downstream noticing. One bounded retry with a short backoff
+# absorbs that class of flakiness without masking a persistently broken scanner — it still
+# reports failure (never invents a result) if both attempts come back empty/nonzero.
+_SCAN_RETRY_ATTEMPTS = 2
+_SCAN_RETRY_BACKOFF_S = 5
+
+
 def _real_pip_outdated() -> str | None:
     """pip's outdated JSON, or None when pip itself failed — a dead pip would
     otherwise parse as "0 outdated" indefinitely with no failure marker."""
-    try:
-        proc = subprocess.run(
-            [sys.executable, "-m", "pip", "list", "--outdated", "--format", "json"],
-            capture_output=True,
-            text=True,
-            timeout=SCAN_TIMEOUT_S,
-        )
-    except (OSError, subprocess.SubprocessError):
+    for attempt in range(1, _SCAN_RETRY_ATTEMPTS + 1):
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-m", "pip", "list", "--outdated", "--format", "json"],
+                capture_output=True,
+                text=True,
+                timeout=SCAN_TIMEOUT_S,
+            )
+        except (OSError, subprocess.SubprocessError):
+            if attempt < _SCAN_RETRY_ATTEMPTS:
+                time.sleep(_SCAN_RETRY_BACKOFF_S)
+                continue
+            return None
+        if proc.returncode == 0:
+            return proc.stdout
+        if attempt < _SCAN_RETRY_ATTEMPTS:
+            time.sleep(_SCAN_RETRY_BACKOFF_S)
+            continue
         return None
-    if proc.returncode != 0:
-        return None
-    return proc.stdout
+    return None
 
 
 def _real_pip_audit() -> str | None:
     """Run pip-audit as a module. Returns its JSON stdout, or None when the
-    scanner is dead (absent module, crash with no output).
+    scanner is dead (absent module, crash with no output) after exhausting retries.
 
     pip-audit exits non-zero when it finds vulnerabilities (that's success, not
     failure) — so a nonzero exit WITH stdout is a real result; nonzero with
     EMPTY stdout means the scanner never produced a verdict.
     """
-    try:
-        proc = subprocess.run(
-            [sys.executable, "-m", "pip_audit", "--format", "json"],
-            capture_output=True,
-            text=True,
-            timeout=SCAN_TIMEOUT_S,
-        )
-    except (OSError, subprocess.SubprocessError):
+    for attempt in range(1, _SCAN_RETRY_ATTEMPTS + 1):
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-m", "pip_audit", "--format", "json"],
+                capture_output=True,
+                text=True,
+                timeout=SCAN_TIMEOUT_S,
+            )
+        except (OSError, subprocess.SubprocessError):
+            if attempt < _SCAN_RETRY_ATTEMPTS:
+                time.sleep(_SCAN_RETRY_BACKOFF_S)
+                continue
+            return None
+        if proc.stdout:
+            return proc.stdout
+        if attempt < _SCAN_RETRY_ATTEMPTS:
+            time.sleep(_SCAN_RETRY_BACKOFF_S)
+            continue
         return None
-    if not proc.stdout:
-        return None
-    return proc.stdout
+    return None
 
 
 def _installed_licences() -> list[tuple[str, str, str | None]]:
@@ -630,6 +675,7 @@ def run_audit(
         pip_cves=pip_cves,
         licence_flags=licence_flags,
         npm_audits=npm_audits,
+        npm_ok=npm_ok,
         generated_at=now_fn(),
     )
     # Scanner health: lets consumers of dependency_audit.json distinguish a

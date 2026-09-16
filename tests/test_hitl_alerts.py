@@ -4,7 +4,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -44,8 +44,27 @@ def isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Pat
     monkeypatch.setattr(hitl_alerts, "PATCH_DIR", tmp_path)
     monkeypatch.setattr(hitl_alerts, "BACKLOG_PATH", tmp_path / "PROPOSED_BACKLOG.json")
     monkeypatch.setattr(hitl_alerts, "FLEET_PROBE_PATH", tmp_path / "fleet_probe.json")
+    monkeypatch.setattr(hitl_alerts, "DOCTOR_STATE_PATH", tmp_path / "doctor_last.json")
     monkeypatch.setattr(hitl_alerts, "_now", lambda: FIXED_NOW)
+    # Ambient default: doctor ran this morning and found nothing. Without a planted
+    # file the real repo's state/doctor_last.json leaked into every test here, and an
+    # absent one is deliberately NOT silence (it reports "doctor has never run"), so
+    # either would make these queue-focused tests assert against doctor's mood.
+    _plant_doctor(tmp_path)
     return queue, state
+
+
+def _plant_doctor(tmp_path: Path, *, fails: list[dict] | None = None,
+                  generated_at: datetime | None = None,
+                  counts: dict | None = None) -> Path:
+    path = tmp_path / "doctor_last.json"
+    path.write_text(json.dumps({
+        "generated_at": (generated_at or FIXED_NOW).isoformat(),
+        "exit_code": 1 if fails else 0,
+        "counts": counts or {"OK": 30, "WARN": 2, "FAIL": len(fails or [])},
+        "fails": fails or [],
+    }), encoding="utf-8")
+    return path
 
 
 def _pending() -> dict:
@@ -131,31 +150,39 @@ def test_notify_zero_exit_without_dispatch_ack_is_not_recorded(
     assert json.loads(state.read_text()) == {}
 
 
-def test_notify_queue_read_failure_returns_nonzero_without_dispatch(
+def test_notify_queue_read_failure_returns_nonzero_without_an_approval_banner(
     isolated, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Narrowed 2026-09-02. This used to assert that an unreadable queue dispatched
+    NOTHING. That was too strong once doctor became an independent alarm: a corrupt
+    approval queue was switching off the doctor banner as well, which is one file
+    silencing the mechanism M1 exists to build. What must still hold is that no
+    APPROVAL banner is sent — zero pending is an artefact of the failed read, not an
+    observation — and that the run still exits non-zero."""
     queue, _ = isolated
     queue.write_text("not-json", encoding="utf-8")
+    calls = _ack_recorder(monkeypatch)
 
-    def unexpected(*args, **kwargs):
-        raise AssertionError("unreadable queue must not dispatch")
-
-    monkeypatch.setattr(hitl_alerts.subprocess, "run", unexpected)
     assert hitl_alerts.do_notify() == 1
+    assert not any("approval(s) waiting" in a for c in calls for a in c)
 
 
-def test_email_queue_read_failure_returns_nonzero_without_transport(
+def test_email_queue_read_failure_returns_nonzero_and_reports_the_queue(
     isolated, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Narrowed for the same reason. The digest now goes out and SAYS the queue could
+    not be read, rather than not arriving at all: a daily report that silently stops
+    is indistinguishable from a healthy quiet day."""
     queue, _ = isolated
     queue.write_text("not-json", encoding="utf-8")
     monkeypatch.setenv("HITL_DIGEST_TO", "owner@example.test")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    sent: list[tuple] = []
+    monkeypatch.setattr(hitl_alerts, "_send_mail_app",
+                        lambda subject, body, to: sent.append((subject, body)) or True)
 
-    def unexpected(*args, **kwargs):
-        raise AssertionError("unreadable queue must not send email")
-
-    monkeypatch.setattr(hitl_alerts, "_send_mail_app", unexpected)
     assert hitl_alerts.do_email(force=False) == 1
+    assert "QUEUE UNREADABLE" in sent[0][1]
 
 
 def test_email_transport_failure_does_not_advance_delivery_date(
@@ -971,3 +998,345 @@ class TestResendMailFallback:
         monkeypatch.setenv("HITL_MAIL_FALLBACK", "false")
         assert hitl_alerts.do_email(force=True) == 1
         assert calls == {"resend": 1, "mail": 0}
+
+
+# ── doctor health surfacing (execution/doctor.py --write-state, 2026-09-02) ──────
+#
+# Audit finding B2: doctor reported FAIL=1 from 2026-08-23 and nothing read it.
+# These tests pin the contract that closes it — every FAIL reaches the banner and
+# the digest, and every state in which doctor CANNOT be trusted (missing, stale,
+# unreadable) produces its own line instead of silence.
+
+def _doctor_fail(label: str = "claude_architecture.runtime_coupling_boundaries",
+                 detail: str = "measured category zeroed (-10)") -> dict:
+    return {"family": "claude-architecture", "label": label, "detail": detail}
+
+
+def test_injected_doctor_fail_reaches_the_notify_banner(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, state = isolated
+    queue.write_text(json.dumps({"items": []}))
+    _plant_doctor(tmp_path, fails=[_doctor_fail()])
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+
+    doctor_calls = [c for c in calls if any("doctor reports" in a for a in c)]
+    assert len(doctor_calls) == 1
+    assert any("runtime_coupling_boundaries" in a for a in doctor_calls[0])
+    saved = json.loads(state.read_text())
+    assert "runtime_coupling_boundaries" in saved["last_doctor_signature"]
+
+
+def test_removing_the_doctor_fail_leaves_the_banner_clean(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mirror of the test above: a doctor with nothing failing must not banner,
+    and must clear its stored signature so a recurrence reads as a fresh incident."""
+    queue, state = isolated
+    queue.write_text(json.dumps({"items": []}))
+    _plant_doctor(tmp_path)  # no fails
+    state.write_text(json.dumps({"last_doctor_signature": "DOCTOR FAIL: old — stale",
+                                 "last_doctor_banner_at": FIXED_NOW.isoformat()}))
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+
+    assert not any("doctor reports" in a for c in calls for a in c)
+    assert json.loads(state.read_text())["last_doctor_signature"] == ""
+
+
+def test_a_stale_doctor_result_warns_rather_than_reading_as_healthy(
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A dead scheduler serving a last-known-clean file is the exact shape of B2.
+    Staleness must be reported on its own, not inferred from an absent FAIL list."""
+    monkeypatch.setattr(hitl_alerts, "_now", lambda: FIXED_NOW)
+    doctor = {
+        "counts": {"OK": 30, "WARN": 2, "FAIL": 0}, "fails": [],
+        "generated_at": (FIXED_NOW - timedelta(hours=50)).isoformat(),
+    }
+    lines = hitl_alerts.doctor_alert_lines(doctor)
+    assert len(lines) == 1
+    assert "has not run since" in lines[0]
+    assert "50h ago" in lines[0]
+
+
+def test_a_missing_doctor_result_is_reported_not_silently_skipped() -> None:
+    lines = hitl_alerts.doctor_alert_lines({"missing": True})
+    assert len(lines) == 1
+    assert "has never written" in lines[0]
+
+
+def test_an_unreadable_doctor_result_is_reported(tmp_path: Path,
+                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(hitl_alerts, "DOCTOR_STATE_PATH", tmp_path / "doctor_last.json")
+    (tmp_path / "doctor_last.json").write_text("{not json", encoding="utf-8")
+    lines = hitl_alerts.doctor_alert_lines(hitl_alerts.load_doctor_last())
+    assert len(lines) == 1
+    assert "unreadable" in lines[0]
+
+
+def test_a_fresh_clean_doctor_result_produces_no_lines(tmp_path: Path,
+                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    """The only silent case. If this ever stops being the only one, the banner
+    becomes noise and operators learn to ignore it."""
+    monkeypatch.setattr(hitl_alerts, "DOCTOR_STATE_PATH", tmp_path / "doctor_last.json")
+    monkeypatch.setattr(hitl_alerts, "_now", lambda: FIXED_NOW)
+    _plant_doctor(tmp_path)
+    assert hitl_alerts.doctor_alert_lines(hitl_alerts.load_doctor_last()) == []
+
+
+def test_injected_doctor_fail_reaches_the_digest_body(tmp_path: Path,
+                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(hitl_alerts, "DOCTOR_STATE_PATH", tmp_path / "doctor_last.json")
+    monkeypatch.setattr(hitl_alerts, "_now", lambda: FIXED_NOW)
+    _plant_doctor(tmp_path, fails=[_doctor_fail()])
+    body = hitl_alerts._digest_body([], [], [], None, None, hitl_alerts.load_doctor_last())
+    assert "DOCTOR:" in body
+    assert "runtime_coupling_boundaries" in body
+
+
+def test_removing_the_doctor_fail_leaves_the_digest_clean(tmp_path: Path,
+                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(hitl_alerts, "DOCTOR_STATE_PATH", tmp_path / "doctor_last.json")
+    monkeypatch.setattr(hitl_alerts, "_now", lambda: FIXED_NOW)
+    _plant_doctor(tmp_path)
+    body = hitl_alerts._digest_body([], [], [], None, None, hitl_alerts.load_doctor_last())
+    assert "no failing checks" in body
+    assert "DOCTOR FAIL" not in body
+
+
+def test_a_doctor_problem_alone_is_enough_to_send_the_digest() -> None:
+    """The "nothing pending -> no email" rule would otherwise swallow a doctor FAIL
+    on every day the approval queue happens to be clear."""
+    decision = hitl_alerts.decide_email(
+        force=False, today="2026-08-02", last_email_date=None,
+        pending=[], expired=[], patches=[],
+        doctor_problems=["DOCTOR FAIL: something — broke"],
+    )
+    assert decision.send
+    assert "doctor: 1 problem(s)" in decision.subject
+
+
+def test_a_clean_doctor_does_not_by_itself_trigger_a_digest() -> None:
+    decision = hitl_alerts.decide_email(
+        force=False, today="2026-08-02", last_email_date=None,
+        pending=[], expired=[], patches=[], doctor_problems=[],
+    )
+    assert not decision.send
+
+
+def test_the_doctor_alarm_kill_switch_disables_the_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(hitl_alerts, "DOCTOR_STATE_PATH", tmp_path / "doctor_last.json")
+    monkeypatch.setenv("HITL_DOCTOR_ALARM", "false")
+    assert hitl_alerts.load_doctor_last() is None
+    assert hitl_alerts.doctor_alert_lines(None) == []
+
+
+def test_a_stale_doctor_does_not_re_banner_on_every_poll(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The notifier polls every 30 minutes. Building the dedup signature from the
+    rendered lines put the rounded age ("50h ago") inside it, so the signature changed
+    hourly, the 24h re-remind gate never engaged, and one dead scheduler produced a HIGH
+    banner roughly every hour indefinitely. Measured before the fix: 8 banners in 14
+    polls."""
+    queue, state = isolated
+    queue.write_text(json.dumps({"items": []}))
+    _plant_doctor(tmp_path, generated_at=FIXED_NOW - timedelta(hours=40))
+    calls = _ack_recorder(monkeypatch)
+
+    for tick in range(48):                      # 24 hours of 30-minute polls
+        monkeypatch.setattr(hitl_alerts, "_now",
+                            lambda t=tick: FIXED_NOW + timedelta(minutes=30 * t))
+        hitl_alerts.do_notify()
+
+    doctor_banners = [c for c in calls if any("doctor reports" in a for a in c)]
+    assert len(doctor_banners) <= 2, f"{len(doctor_banners)} banners for one stale file"
+    assert any("has not run since" in a for a in doctor_banners[0])
+
+
+def test_the_digest_body_actually_carries_the_doctor_section(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end through do_email, not _digest_body directly. Without this, dropping
+    the doctor argument from the _digest_body call inside do_email leaves every test
+    green while the digest decides to send BECAUSE of doctor and never mentions it."""
+    queue, state = isolated
+    queue.write_text(json.dumps({"items": []}))
+    _plant_doctor(tmp_path, fails=[_doctor_fail()])
+    monkeypatch.setenv("HITL_DIGEST_TO", "owner@example.test")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    sent: list[tuple] = []
+    monkeypatch.setattr(hitl_alerts, "_send_mail_app",
+                        lambda subject, body, to: sent.append((subject, body, to)) or True)
+
+    assert hitl_alerts.do_email(force=False) == 0
+
+    subject, body, _ = sent[0]
+    assert "doctor: 1 problem(s)" in subject
+    assert "DOCTOR:" in body
+    assert "runtime_coupling_boundaries" in body
+
+
+# ── Codex checker findings, 2026-09-02 ──────────────────────────────────────────
+
+def test_an_unreadable_queue_does_not_silence_the_doctor_banner(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """do_notify used to return on a QueueReadError before any doctor reader ran, so
+    one unrelated corrupt file switched off the whole "the error signal reaches a
+    human" mechanism."""
+    queue, _ = isolated                               # the fixture leaves it absent
+    assert not queue.exists()                         # -> QueueReadError
+    _plant_doctor(tmp_path, fails=[_doctor_fail()])
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 1                # degraded read still non-zero
+    doctor_calls = [c for c in calls if any("doctor reports" in a for a in c)]
+    assert len(doctor_calls) == 1
+    assert any("runtime_coupling_boundaries" in a for a in doctor_calls[0])
+
+
+def test_an_unreadable_queue_does_not_silence_the_digest(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    queue, _ = isolated                               # the fixture leaves it absent
+    assert not queue.exists()                         # -> QueueReadError
+    _plant_doctor(tmp_path, fails=[_doctor_fail()])
+    monkeypatch.setenv("HITL_DIGEST_TO", "owner@example.test")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    sent: list[tuple] = []
+    monkeypatch.setattr(hitl_alerts, "_send_mail_app",
+                        lambda subject, body, to: sent.append((subject, body)) or True)
+
+    assert hitl_alerts.do_email(force=False) == 1
+    subject, body = sent[0]
+    assert "runtime_coupling_boundaries" in body
+    assert "QUEUE UNREADABLE" in body
+    # The reassuring "No approvals pending" must never read as a clean queue when the
+    # queue was never read at all.
+    assert body.index("QUEUE UNREADABLE") < body.index("No approvals pending")
+
+
+def test_a_queue_read_failure_still_suppresses_the_approval_banner(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Doctor gets through; the approval banner must not, because zero pending is an
+    artefact of the failed read rather than an observation."""
+    queue, _ = isolated                               # the fixture leaves it absent
+    assert not queue.exists()                         # -> QueueReadError
+    _plant_doctor(tmp_path)                            # doctor clean
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 1
+    assert not any("approval(s) waiting" in a for c in calls for a in c)
+
+
+def test_the_banner_body_names_every_failing_check(tmp_path: Path) -> None:
+    """The body was lines[0][:200] plus "(+N more)", so with two failing checks the
+    second one's label never reached the human — it appeared only in stdout."""
+    body = hitl_alerts._banner_body([
+        "DOCTOR FAIL: first.check — detail one",
+        "DOCTOR FAIL: second.check — detail two",
+    ])
+    assert "first.check" in body
+    assert "second.check" in body
+    assert "not shown" not in body
+
+
+def test_the_banner_body_says_how_many_it_could_not_fit(tmp_path: Path) -> None:
+    """Truncation is inevitable at some width; silently dropping the remainder is not."""
+    lines = [f"DOCTOR FAIL: check.{i} — {'x' * 60}" for i in range(12)]
+    body = hitl_alerts._banner_body(lines)
+    assert len(body) < 600
+    assert "not shown" in body
+    assert "check.0" in body
+
+
+def test_a_malformed_fails_row_becomes_a_warn_not_a_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`fails: [null]` satisfied the container check and then raised AttributeError
+    inside doctor_alert_lines, taking down both alert modes — the opposite of the
+    "malformed becomes a WARN" promise. Reported as unreadable rather than dropped:
+    a row we cannot parse may be the FAIL that mattered."""
+    monkeypatch.setattr(hitl_alerts, "DOCTOR_STATE_PATH", tmp_path / "doctor_last.json")
+    (tmp_path / "doctor_last.json").write_text(json.dumps({
+        "generated_at": FIXED_NOW.isoformat(),
+        "counts": {"OK": 1, "WARN": 0, "FAIL": 1}, "fails": [None]}), encoding="utf-8")
+
+    lines = hitl_alerts.doctor_alert_lines(hitl_alerts.load_doctor_last())
+    assert len(lines) == 1
+    assert "unreadable" in lines[0]
+
+
+def test_a_tz_naive_generated_at_does_not_crash_the_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every caller compares against _now(), which is aware, so a naive value raised
+    straight out of whichever reader touched it."""
+    monkeypatch.setattr(hitl_alerts, "DOCTOR_STATE_PATH", tmp_path / "doctor_last.json")
+    monkeypatch.setattr(hitl_alerts, "_now", lambda: FIXED_NOW)
+    (tmp_path / "doctor_last.json").write_text(json.dumps({
+        "generated_at": (FIXED_NOW - timedelta(hours=50)).replace(tzinfo=None).isoformat(),
+        "counts": {"OK": 1, "WARN": 0, "FAIL": 0}, "fails": []}), encoding="utf-8")
+
+    lines = hitl_alerts.doctor_alert_lines(hitl_alerts.load_doctor_last())
+    assert len(lines) == 1
+    assert "has not run since" in lines[0]
+
+
+def test_the_dispatched_banner_carries_every_failing_check(
+    isolated, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end through do_notify, not _banner_body directly. Testing the helper
+    alone left the wiring unguarded: reverting the call site back to lines[0][:200]
+    kept every test green while the second failing check stopped reaching the human."""
+    queue, _ = isolated
+    queue.write_text(json.dumps({"items": []}))
+    _plant_doctor(tmp_path, fails=[
+        _doctor_fail("first.check", "detail one"),
+        _doctor_fail("second.check", "detail two"),
+    ])
+    calls = _ack_recorder(monkeypatch)
+
+    assert hitl_alerts.do_notify() == 0
+    doctor_calls = [c for c in calls if any("doctor reports" in a for a in c)]
+    assert len(doctor_calls) == 1
+    payload = " ".join(doctor_calls[0])
+    assert "first.check" in payload
+    assert "second.check" in payload
+
+
+# ── Governance dir by layout marker (export gate, 2026-09-06) ─────────────────
+# OPERATOR_REGISTRY_PATH / FLEET_PROBE_PATH used a fixed `_ROOT.parent`; in the
+# flattened public export that is a directory outside the distribution.
+
+def test_governance_dir_is_the_parent_in_a_nested_checkout(tmp_path):
+    gov = tmp_path / "Governance"
+    (gov / "agentica_core").mkdir(parents=True)
+    pack = gov / "Order Samurai"
+    pack.mkdir()
+    assert hitl_alerts._governance_dir(pack) == gov
+
+
+def test_governance_dir_is_the_pack_itself_in_a_flat_export(tmp_path):
+    pack = tmp_path / "public-export"
+    (pack / "agentica_core").mkdir(parents=True)
+    assert hitl_alerts._governance_dir(pack) == pack
+
+
+def test_a_governance_parent_without_agentica_core_is_not_the_marker(tmp_path):
+    pack = tmp_path / "Governance" / "Order Samurai"
+    pack.mkdir(parents=True)
+    assert hitl_alerts._governance_dir(pack) == pack
+
+
+def test_registry_path_sits_beside_agentica_core():
+    """Live layout or export, the registry is read from the directory holding agentica_core."""
+    assert (hitl_alerts.OPERATOR_REGISTRY_PATH.parent.parent / "agentica_core").is_dir()

@@ -109,14 +109,20 @@ def _seed_breach(tmp_path, monkeypatch):
     read of the real ~/.claude/nudges.json), and the reflex-engine "stuck"
     lookup is redirected off the real state/reflex_engine_state.json so the
     result cannot vary with this repo's live runtime state.
+
+    Fixture metric is Wiki_Health_Score/wiki, not Slop_Density/humanizer: the
+    F4 ticket (remediation-loops program, 2026-08-24) demoted Slop_Density to
+    auto_remediable=False (0/6 lifetime improved), so it now routes to the
+    advisory channel and can no longer stand in for "a remediable metric" in
+    this dispatch-path test. Wiki_Health_Score is still auto_remediable.
     """
     monkeypatch.setattr(
         reflexes, "_REFLEX_ENGINE_STATE", tmp_path / "state" / "reflex_engine_state.json"
     )
     pillars = {
-        "arts": {"quality": {"Slop_Density": {"val": 42, "mitigation_command": "/humanizer"}}}
+        "arts": {"quality": {"Wiki_Health_Score": {"val": 42, "mitigation_command": "/wiki"}}}
     }
-    category_scores = {"arts": {"flags": [{"name": "Slop_Density", "grade": "F"}]}}
+    category_scores = {"arts": {"flags": [{"name": "Wiki_Health_Score", "grade": "F"}]}}
     dispatch, advisory = reflexes.build_reflexes(
         pillars,
         category_scores,
@@ -150,10 +156,10 @@ def test_sensei_fire_path_breach_to_pending_patch(tmp_path, monkeypatch):
     patch through the real audit gates into a real pending-patch queue entry,
     with data (reflex id/command) threaded through at every step."""
     reflex = _seed_breach(tmp_path, monkeypatch)
-    assert reflex["id"] == "metric:arts:Slop_Density"
+    assert reflex["id"] == "metric:arts:Wiki_Health_Score"
     assert reflex["tier"] == "CRITICAL"
     assert reflex["status"] == "active"
-    assert reflex["command"] == "/humanizer"
+    assert reflex["command"] == "/wiki"
 
     patch = _stub_skill_spawn(reflex)
 
@@ -166,7 +172,7 @@ def test_sensei_fire_path_breach_to_pending_patch(tmp_path, monkeypatch):
     # reflex-engine.ts's _enqueuePendingPatchHitl() builds for a validated
     # propose-only patch (source="reflex_patch", not "reflex").
     work_item = WorkItem(
-        skill="humanizer",
+        skill="wiki",
         source="reflex_patch",
         command=reflex["command"],
         blast_radius=BlastRadius.REPO,
@@ -184,10 +190,10 @@ def test_sensei_fire_path_breach_to_pending_patch(tmp_path, monkeypatch):
     item = items[0]
     assert item["status"] == "pending"
     assert item["source"] == "reflex_patch"
-    assert item["metric_id"] == "metric:arts:Slop_Density"
+    assert item["metric_id"] == "metric:arts:Wiki_Health_Score"
     assert item["pillar"] == "arts"
-    assert item["command"] == "/humanizer"
-    assert item["skill"] == "humanizer"
+    assert item["command"] == "/wiki"
+    assert item["skill"] == "wiki"
 
 
 def test_sensei_fire_path_audit_blocks_self_modifying_patch(tmp_path):

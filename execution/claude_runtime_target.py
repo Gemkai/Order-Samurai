@@ -77,6 +77,31 @@ def is_standalone_distribution() -> bool:
     return agentica_repo_root() is None
 
 
+def governance_root(start: Path | None = None) -> Path:
+    """The directory that holds ``agentica_core/`` and ``config/`` for this pack.
+
+    ``<repo>/Governance`` inside the Agentica repo; the pack root itself in the
+    public export, where ``bin/extract_public.py`` flattens the pack and lays the
+    allow-listed Governance files (``agentica_core/``, ``schema/``,
+    ``bin/sensei_writeback.py``, ``tools/operator_registry_check.py``) beside it.
+
+    Anything that reaches a Governance-level file through a fixed hop
+    (``_ROOT.parent / "config"``, ``parents[3] / "Governance" / "tools"``)
+    resolves OUTSIDE the export -- the exact defect class the export gate exists
+    for. 2026-09-06: hitl_alerts' operator registry and scheduled_run_outcomes'
+    registry loader both did, 21 exported-suite failures between them, and the
+    gate had never once been green. Resolve through this instead.
+
+    ``start`` exists for the same reason it does on ``agentica_repo_root``: the
+    layout logic is testable against synthetic trees.
+    """
+    repo = agentica_repo_root(start)
+    if repo is not None:
+        return repo / "Governance"
+    origin = (start or Path(__file__)).resolve()
+    return origin.parents[1]
+
+
 def runtime_root() -> Path:
     """The live Claude home. CLAUDE_RUNTIME_ROOT overrides for tests/sandboxes
     (and would-be other hosts); default is this machine's ~/.claude."""
@@ -90,35 +115,66 @@ BASELINE_PROFILE = "baseline"
 FULL_PROFILE = "full"
 _PROFILES = (BASELINE_PROFILE, FULL_PROFILE)
 
+#: Markers of a MATURE control plane at a Claude home -- the same opinionated
+#: layout the requiredDirectories/requiredFiles lists assert. Mirrors the repo
+#: surface's own layout-derived tier (commit 7d35e936: standalone vs nested
+#: Agentica checkout), applied here to ~/.claude's own contents instead --
+#: "nested in an Agentica checkout" says nothing about the OPERATOR's Claude
+#: home, so that signal can't be reused; the home's own directory listing can.
+_MATURE_CLAUDE_HOME_MARKERS: tuple[str, ...] = (
+    "hooks",
+    "orchestration",
+    "safety",
+    "skills-lock.json",
+    "subagent-lock.json",
+)
 
-def audit_profile(default: str = BASELINE_PROFILE) -> str:
+
+def claude_home_has_mature_layout(home: Path | None = None) -> bool:
+    """True when `home` (default: `runtime_root()`) shows this control plane's
+    opinionated layout -- every marker in `_MATURE_CLAUDE_HOME_MARKERS` present.
+
+    Read-only existence check, no side effects. Used only to pick the honest
+    default for `audit_profile()`; ORDER_SAMURAI_AUDIT_PROFILE still overrides
+    it explicitly either way.
+    """
+    base = home if home is not None else runtime_root()
+    return all((base / marker).exists() for marker in _MATURE_CLAUDE_HOME_MARKERS)
+
+
+def audit_profile(default: str | None = None) -> str:
     """Which tier of requirements to assert. ORDER_SAMURAI_AUDIT_PROFILE selects.
 
     `default` is what an UNSET variable means, and exists because the honest
-    default differs per surface. For ~/.claude it is "baseline": whether this repo
-    is a nested checkout says nothing about whether the operator's Claude home has
-    this layout, so a caller must not infer one from the other. A verifier whose
-    target IS this pack can infer it (see verify_root_hygiene), so it passes
-    "full". Keeping one env-parsing implementation keeps the dial's spelling and
-    its typo-rejection identical on every surface.
+    default differs per surface. A verifier whose target IS this pack can infer
+    its tier from "am I a nested Agentica checkout" (see verify_root_hygiene) and
+    passes an explicit `default`. For ~/.claude, nothing here says whether the
+    OPERATOR's Claude home has the opinionated layout -- being nested in Agentica
+    doesn't imply it -- so when `default` is left unset (None) it is derived
+    instead from `claude_home_has_mature_layout()`: "full" only when ~/.claude
+    itself already shows the mature markers, "baseline" otherwise. Keeping one
+    env-parsing implementation keeps the dial's spelling and its typo-rejection
+    identical on every surface.
 
-    Defaults to "baseline" ON PURPOSE. The requiredDirectories/requiredFiles
-    lists describe a MATURE control plane (hooks/, orchestration/, safety/,
-    skills-lock.json, subagent-lock.json, ...). Measured 2026-07-31: asserting
-    them against a clean Claude Code install produces 22 FAILs, all of which are
-    "required thing missing" and none of which is a defect -- the policy was a
-    portrait of the machine it was written on. A first run that is 22/22 wrong is
-    how an auditor loses its user, so the shipped default asserts only universal
-    invariants and the opinionated tier is opt-in.
+    The requiredDirectories/requiredFiles lists describe a MATURE control plane
+    (hooks/, orchestration/, safety/, skills-lock.json, subagent-lock.json, ...).
+    Measured 2026-07-31: asserting them against a clean Claude Code install
+    produces 22 FAILs, all of which are "required thing missing" and none of
+    which is a defect -- the policy was a portrait of the machine it was written
+    on. A first run that is 22/22 wrong is how an auditor loses its user, so an
+    immature ~/.claude still gets the conservative "baseline" default -- only a
+    ~/.claude that already has the layout gets "full" without an explicit env var.
 
-    Set ORDER_SAMURAI_AUDIT_PROFILE=full on a host that genuinely has this layout
-    (this repo's own machine does) to keep the strict audit. Verifiers print the
-    active profile so a weakened run is never silent.
+    Set ORDER_SAMURAI_AUDIT_PROFILE=full (or =baseline) to override the derived
+    default explicitly on any host. Verifiers print the active profile so a
+    weakened -- or silently un-strengthened -- run is never silent.
 
     An unrecognised value raises rather than silently downgrading: a typo'd
     profile that quietly became "baseline" would disable the strict tier without
     anyone noticing, which is the failure mode this whole contract guards.
     """
+    if default is None:
+        default = FULL_PROFILE if claude_home_has_mature_layout() else BASELINE_PROFILE
     if default not in _PROFILES:
         raise ValueError(f"default={default!r} is not one of {_PROFILES}")
     raw = (os.environ.get("ORDER_SAMURAI_AUDIT_PROFILE") or default).strip().lower()

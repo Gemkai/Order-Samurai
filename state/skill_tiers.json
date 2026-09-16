@@ -26,7 +26,7 @@
     "sensei-cycle":                 {"blast_radius": "repo",     "reversible": true,  "approval_tier": "queue"},
     "ronin-pillar":                 {"blast_radius": "repo",     "reversible": true,  "approval_tier": "auto"},
     "behavioral-canary":            {"blast_radius": "system",   "reversible": true,  "approval_tier": "queue"},
-    "mcp-setup":                    {"blast_radius": "system",   "reversible": true,  "approval_tier": "queue"},
+    "mcp-setup":                    {"blast_radius": "system",   "reversible": true,  "approval_tier": "queue", "decision_category": "security"},
     "self-heal":                    {"blast_radius": "system",   "reversible": true,  "approval_tier": "queue"},
     "skill-consolidator":           {"blast_radius": "system",   "reversible": true,  "approval_tier": "queue"},
     "skill-creator":                {"blast_radius": "system",   "reversible": true,  "approval_tier": "queue"},

@@ -107,3 +107,29 @@ def test_mixed_naive_and_aware_timestamps_do_not_mask_fresh_records(tmp_path):
     r = _one(_run_claude_telemetry_checks(source=src, now=_NOW))
     assert r["status"] == "OK", r["detail"]
     assert "2.0h" in r["detail"]  # the naive record is the newest and graded as UTC
+
+
+# ── absent runtime home: unmeasured, not FAIL (export gate, 2026-09-06) ─────────
+# HOME is redirected so the adapter's own "~/.claude" expansion and
+# claude_runtime_target.runtime_root() agree on presence/absence.
+
+def test_absent_runtime_home_is_unmeasured_not_fail(tmp_path, monkeypatch):
+    """No ~/.claude at all (a CI runner; a fresh clone on a host that never ran
+    Claude Code): the platform adapter refuses to resolve, and that is "nothing to
+    measure" -- WARN, not the dead-emitter FAIL."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("CLAUDE_RUNTIME_ROOT", raising=False)
+    r = _one(_run_claude_telemetry_checks(now=_NOW))
+    assert r["status"] == "WARN"
+    assert "cannot be measured" in r["detail"]
+
+
+def test_existing_runtime_home_with_no_telemetry_file_still_fails(tmp_path, monkeypatch):
+    """The carve-out is for an ABSENT home only; an existing one with no file is
+    the emitter that never landed a record."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("CLAUDE_RUNTIME_ROOT", raising=False)
+    (tmp_path / ".claude").mkdir()
+    r = _one(_run_claude_telemetry_checks(now=_NOW))
+    assert r["status"] == "FAIL"
+    assert "never landed a record" in r["detail"]

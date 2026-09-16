@@ -10,6 +10,8 @@ touching git state. This pins that guard so it can't silently regress.
 """
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
 import os
 import stat
 import subprocess
@@ -32,6 +34,11 @@ MERGE_MARKERS = [
 def _init_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
+    (repo / "state").mkdir()
+    (repo / "state" / "budget_ledger.json").write_text(json.dumps({
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "spent_usd": 0, "daily_limit_usd": 5,
+    }))
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
     subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)

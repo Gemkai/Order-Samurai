@@ -23,6 +23,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from execution.claude_runtime_target import runtime_root
 from execution.verifier_results import make_result as _make_result  # noqa: F401
 from execution.verifier_results import summarize  # noqa: F401  (re-exported for doctor/CLI)
 
@@ -86,6 +87,18 @@ def run_checks(path: Path | None = None,
                now: datetime | None = None) -> list[dict[str, str]]:
     target = path or _default_telemetry_path()
     now = now or datetime.now(timezone.utc)
+
+    if path is None and not runtime_root().exists():
+        # No Claude runtime home on this machine at all (a CI runner; a fresh clone
+        # on a host that has never run Claude Code). There is no emitter here to be
+        # dead, so "stream missing" is not the outage signature this gate exists
+        # for -- it is nothing to measure. WARN: never FAIL, never a synthetic OK,
+        # the same row verify_claude_root_hygiene emits for an absent runtime root.
+        # An EXISTING ~/.claude with no stream still FAILs below -- that is the
+        # 15-day-silent emitter. An injected `path` keeps exact semantics.
+        return [_make_result("WARN", _LABEL,
+                             f"no Claude runtime home at {runtime_root()}; telemetry "
+                             f"freshness cannot be measured on this machine")]
 
     if not target.exists():
         return [_make_result("FAIL", _LABEL,

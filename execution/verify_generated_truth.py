@@ -117,7 +117,7 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
     # 1. Policy must load. Missing policy => FAIL (never silently OK).
     policy_payload, policy_error = _load_json(ANTI_DRIFT_POLICY_PATH)
     if policy_error:
-        results.append(_make_result("FAIL", "anti_drift_policy.json", policy_error))
+        results.append(_make_result("ERROR", "anti_drift_policy.json", policy_error))
         return results
 
     # 2. The truth-separation rule must be declared.
@@ -153,7 +153,7 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
     # 4. The scorecard truth_separation category must exist and name this verifier.
     scorecard_payload, scorecard_error = _load_json(ARCHITECTURE_SCORECARD_PATH)
     if scorecard_error:
-        results.append(_make_result("FAIL", "architecture_scorecard.json", scorecard_error))
+        results.append(_make_result("ERROR", "architecture_scorecard.json", scorecard_error))
     else:
         category = find_truth_category(payload=scorecard_payload or {})
         if category is None:

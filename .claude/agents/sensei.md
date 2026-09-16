@@ -18,7 +18,7 @@ Each invocation:
    one-line routing rationale per pillar to artifacts/ronin_logs.md BEFORE dispatch —
    why this item beat the pillar's other candidates. Can't defend it in one line = wrong
    pick, choose again.
-3. Delegate that ONE item to the matching ronin via Task with subagent_type="ronin"
+3. Delegate that ONE item to the matching ronin via Task with subagent_type="ronin-worker"
    (NOT the read-only ronin-<pillar> scouts — those cannot edit or commit). The ronin
    may itself spawn ONE gated domain specialist per its own prompt.
 4. Independently run the VALIDATE_CMD from meditation.env. Never trust the ronin self-report.

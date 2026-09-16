@@ -28,6 +28,7 @@ Stdlib only; no external dependencies.
 from __future__ import annotations
 
 import functools
+import errno
 import inspect
 import json
 import math
@@ -45,6 +46,7 @@ from pathlib import Path
 from typing import Any
 
 from .atomic import file_write_lock
+from .hitl_proposal import proposal_hash
 
 
 # ── Public enums ──────────────────────────────────────────────────────────────
@@ -132,7 +134,13 @@ class WorkItem:
     stuck: bool = False
     context: str = ""
     pillar_ronin_mode: str | None = None
+    decision_category: str = "routine"  # trusted internal callers; unknown skills need review
     approval_tier: str | None = None   # explicit skill_tiers.json override; see compute_tier
+    # Coverage review R4.2 (2026-09-02): an escalation may carry its own deadline and the
+    # action silence selects. Both are persisted verbatim on the queue row; the sweep that
+    # honours them lives with the enqueuer (hitl_alerts.py for fleet items), not here.
+    expires_at: str | None = None      # ISO-8601; after this a pending item is "unanswered"
+    on_expire: str | None = None       # e.g. "disable_launchd_job" — what silence means
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -147,19 +155,7 @@ def _parse_tier(value: Any) -> Tier | None:
 
 
 def compute_tier(work_item: WorkItem, ronin_mode: bool = False) -> Tier:
-    """Pure 2-axis matrix, with an explicit per-skill override. No I/O.
-
-    Hard limits encoded into blast_radius/reversible take precedence over both
-    ronin_mode and the override: an IRREVERSIBLE op never collapses to AUTO.
-
-    `work_item.approval_tier` (from skill_tiers.json) is an ALLOWLIST: it names
-    the tier for one tabled skill explicitly instead of deriving it from the
-    2-axis matrix. It is honored only *after* the two hard-stop guards below, so
-    it can never buy an irreversible or system-irreversible op an auto-fire; and
-    `decide()` re-checks runtime hard limits (budget) before ever calling here.
-    Untabled skills carry no override and keep the matrix default (QUEUE) — the
-    override widens nothing on its own, it only records a deliberate exception.
-    """
+    """Apply hard stops and owner decisions before routine Ronin autonomy."""
     blast = work_item.blast_radius
     reversible = bool(work_item.reversible)
 
@@ -172,15 +168,14 @@ def compute_tier(work_item: WorkItem, ronin_mode: bool = False) -> Tier:
         return Tier.HARD_STOP
 
     override = _parse_tier(work_item.approval_tier)
-    if override is not None:
-        tier = override
-    elif reversible:
-        tier = Tier.AUTO if blast == BlastRadius.CONFINED else Tier.QUEUE
-    else:
-        # Irreversible + confined (e.g. delete a state file in the queue) → HITL
-        tier = Tier.HITL
+    if override == Tier.HARD_STOP:
+        return Tier.HARD_STOP
+    if work_item.decision_category != "routine" or not reversible:
+        return Tier.HITL
 
-    if ronin_mode and tier in (Tier.QUEUE, Tier.HITL):
+    tier = override or (Tier.AUTO if blast == BlastRadius.CONFINED else Tier.QUEUE)
+
+    if ronin_mode and tier == Tier.QUEUE:
         return Tier.AUTO
 
     return tier
@@ -188,40 +183,24 @@ def compute_tier(work_item: WorkItem, ronin_mode: bool = False) -> Tier:
 
 # ── Hard limits (runtime state — budget, etc.) ────────────────────────────────
 
-def _over_daily_budget(repo_root: Path) -> bool:
-    """Read state/budget_ledger.json, failing closed on invalid control data.
-
-    A missing file is a legitimate first-run state and uses the historical default
-    (not over budget). Once the file exists, unreadable/malformed/non-finite values
-    cannot disable the hard limit: they conservatively report over budget until an
-    operator repairs the ledger. A valid different date still means a fresh day.
-    """
-    ledger_path = Path(repo_root) / "state" / "budget_ledger.json"
+def _over_daily_budget(repo_root: Path, *, ledger_path: Path | None = None) -> bool:
+    """Block spending unless a complete current-UTC-day ledger proves headroom."""
+    ledger_path = ledger_path or Path(repo_root) / "state" / "budget_ledger.json"
     try:
         d = json.loads(ledger_path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return False
-    except Exception:
-        return True
-
-    try:
         if not isinstance(d, dict):
             return True
-        raw_date = d.get("date")
-        if not isinstance(raw_date, str):
+        ledger_date = datetime.strptime(d["date"], "%Y-%m-%d").date()
+        if ledger_date != datetime.now(timezone.utc).date():
             return True
-        ledger_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
-        today = datetime.now(timezone.utc).date()
-        if ledger_date != today:
-            return False
-        spent = float(d.get("spent_usd", 0) or 0)
-        # `or` must not collapse an explicit 0 (a budget freeze) into the default.
-        raw_limit = d.get("daily_limit_usd")
-        limit = 5.0 if raw_limit in (None, "") else float(raw_limit)
+        raw_spent, raw_limit = d["spent_usd"], d["daily_limit_usd"]
+        if raw_spent is None or raw_limit is None or isinstance(raw_spent, bool) or isinstance(raw_limit, bool):
+            return True
+        spent, limit = float(raw_spent), float(raw_limit)
         if not math.isfinite(spent) or not math.isfinite(limit) or spent < 0 or limit < 0:
             return True
         return spent >= limit
-    except Exception:
+    except (OSError, ValueError, TypeError, KeyError):
         return True
 
 
@@ -266,9 +245,8 @@ def skill_to_work_item(
 ) -> WorkItem:
     """Build a WorkItem for `skill_name`, looking up tier metadata.
 
-    Unknown skill → blast_radius=REPO, reversible=True, no override → QUEUE
-    (safe). A tabled skill's `approval_tier` rides along as an explicit
-    override; see compute_tier for the bound on what it can do.
+    Unknown skills and unclassified system actions need owner review.
+    The table may narrow a skill further with a category or explicit tier.
     """
     metadata = load_skill_metadata(Path(repo_root))
     meta = metadata.get(skill_name, {})
@@ -282,6 +260,11 @@ def skill_to_work_item(
 
     command = kwargs.pop("command", f"/{skill_name}")
     kwargs.setdefault("approval_tier", meta.get("approval_tier"))
+    category = meta.get("decision_category",
+                        "routine" if meta and blast != BlastRadius.SYSTEM else "unknown")
+    requested_category = kwargs.pop("decision_category", category)
+    # Runtime context may narrow authority, never downgrade an owner category.
+    kwargs["decision_category"] = requested_category if category == "routine" else category
     return WorkItem(
         skill=skill_name,
         source=source,
@@ -565,6 +548,18 @@ def _load_queue(repo_root: Path) -> dict:
         }
 
 
+def _matches_proposal(item: dict, work_item: WorkItem) -> bool:
+    """Reuse authority only for the same action and impact within its queue key."""
+    return (
+        item.get("command", "") == work_item.command
+        and item.get("blast_radius") == work_item.blast_radius
+        and item.get("reversible") == work_item.reversible
+        and item.get("decision_category", "routine") == work_item.decision_category
+        and item.get("context", "") == work_item.context
+        and (compute_tier(work_item) != Tier.HITL or item.get("tier_assigned") == "hitl")
+    )
+
+
 @_under_queue_lock
 def enqueue_hitl(work_item: WorkItem, tier: Tier, repo_root: Path) -> str:
     """Insert into hitl_queue.json. Idempotent on _approval_key under "pending".
@@ -573,15 +568,27 @@ def enqueue_hitl(work_item: WorkItem, tier: Tier, repo_root: Path) -> str:
     """
     queue_path = Path(repo_root) / "state" / "hitl_queue.json"
     data = _load_queue(repo_root)
-    items = data["items"]
+    items = data.get("items")
+    if not isinstance(items, list):
+        # `_load_queue`'s `setdefault("items", [])` is a no-op when the key
+        # already exists with a non-list value (e.g. hand-edited/corrupted
+        # JSON) -- guard here the same way every sibling queue mutator does
+        # (mark_complete, reconcile_stale_executing/approved, _consume_approval),
+        # so a malformed field degrades to a fresh queue instead of crashing
+        # the one function whose job is to record the escalation.
+        items = []
+        data["items"] = items
     target_key = _approval_key(work_item)
 
     for item in items:
-        if item.get("status") == "pending" and _item_key(item) == target_key:
+        if (isinstance(item, dict) and item.get("status") == "pending"
+                and _item_key(item) == target_key and _matches_proposal(item, work_item)):
             return item["id"]  # idempotent
 
     now = datetime.now(timezone.utc).isoformat()
     new_id = f"hitl-{uuid.uuid4().hex[:8]}"
+    if work_item.decision_category != "routine":
+        tier = Tier.HITL
     tier_val = tier.value if isinstance(tier, Tier) else str(tier)
     blast_val = (
         work_item.blast_radius.value
@@ -602,6 +609,7 @@ def enqueue_hitl(work_item: WorkItem, tier: Tier, repo_root: Path) -> str:
         "completed_at": None,
         "skill": work_item.skill,
         "command": work_item.command,
+        "decision_category": work_item.decision_category,
         "metric_id": work_item.metric_id,
         "pillar": work_item.pillar,
         "blast_radius": blast_val,
@@ -611,9 +619,59 @@ def enqueue_hitl(work_item: WorkItem, tier: Tier, repo_root: Path) -> str:
         "context": work_item.context,
         "backlog_id": work_item.backlog_id,
     })
+    # Only items that declare a deadline carry the two R4.2 keys — every other row
+    # keeps its historical shape byte-for-byte.
+    if work_item.expires_at is not None:
+        items[-1]["expires_at"] = work_item.expires_at
+    if work_item.on_expire is not None:
+        items[-1]["on_expire"] = work_item.on_expire
     data["updated_at"] = now
     _atomic_write_json(queue_path, data)
     return new_id
+
+
+def raise_hitl(
+    *,
+    skill: str,
+    source: str,
+    command: str,
+    backlog_id: str,
+    context: str,
+    blast_radius: BlastRadius,
+    reversible: bool,
+    repo_root: Path,
+    pillar: str | None = None,
+    metric_id: str | None = None,
+) -> str:
+    """Build a WorkItem and enqueue it for human review. Shared plumbing:
+    dispatcher.py, merge_lane.py, and publish.py each independently hand-rolled
+    this exact "build a WorkItem, call enqueue_hitl" pairing before this function
+    replaced all three copies -- the idempotency contract below is now enforced
+    in exactly one place instead of three.
+
+    backlog_id MUST discriminate per escalated item: enqueue_hitl is idempotent
+    on the R4 approval key (source, skill, pillar, metric_id, backlog_id). A
+    constant/shared backlog_id means a SECOND escalation for a DIFFERENT item
+    silently reports "notified" while enqueuing nothing -- this exact defect
+    shape bit every caller before consolidation (see e.g. dispatcher.py's git
+    history and regression tests). Pass a value that uniquely identifies what
+    you're escalating (a task id, branch name, piece slug, ...), never a
+    constant.
+
+    Unlike the three copies this replaces, this function does NOT catch its own
+    exceptions. Every caller already wraps its own escalation in a best-effort
+    try/except -- an escalation failure must never mask the refusal it's
+    escalating -- and that's also where each caller's own WARN message and
+    "never raise" contract lives; duplicating that here would just be a fourth
+    copy of the part that already varies per caller (source, source module's
+    print prefix).
+    """
+    item = WorkItem(
+        skill=skill, source=source, command=command,
+        blast_radius=blast_radius, reversible=reversible, pillar=pillar,
+        metric_id=metric_id, backlog_id=backlog_id, context=context,
+    )
+    return enqueue_hitl(item, Tier.HITL, repo_root)
 
 
 @_under_queue_lock
@@ -642,7 +700,12 @@ def _consume_approval(work_item: WorkItem, repo_root: Path) -> str | None:
             continue
         if item.get("status") != "approved":
             continue
-        if _item_key(item) != target_key:
+        if _item_key(item) != target_key or not _matches_proposal(item, work_item):
+            continue
+        approved_hash = item.get("approved_proposal_hash")
+        if approved_hash is not None and approved_hash != proposal_hash(item):
+            continue
+        if work_item.decision_category != "routine" and approved_hash is None:
             continue
         item["status"] = "executing"
         item["executing_at"] = now
@@ -940,20 +1003,24 @@ def _push_timeout_s() -> float:
     return timeout if 0 < timeout <= 60 else _PUSH_DEFAULT_TIMEOUT_S
 
 
-def _post_manual_run(command: str, endpoint: str, timeout_s: float) -> tuple[str, str]:
-    """POST `command` to the manual-run route. Never raises. Returns (outcome, detail).
+def _post_manual_run(
+    reflex_id: str, command: str, endpoint: str, timeout_s: float,
+) -> tuple[str, str]:
+    """POST one exact reflex identity and command. Never raises.
+
+    Returns (outcome, detail).
 
     The three outcomes exist to keep the approval at-most-once:
       "started"       — 2xx. The engine accepted the run; the claim settles.
-      "refused"       — the run provably did NOT start (4xx from the route, or the
-                        endpoint was unreachable/misconfigured, i.e. nothing was
-                        ever delivered). Safe to hand the approval back to the
-                        pull path.
-      "indeterminate" — the request MAY have been delivered (socket timeout, 5xx).
-                        Reverting here could double-fire, so the item stays on the
-                        execution lease and `reconcile_stale_executing` owns it.
+      "refused"       — the run provably did NOT start (4xx from the route, an
+                        invalid endpoint, or a pre-connect refusal). Safe to hand
+                        the approval back to the pull path.
+      "indeterminate" — the request MAY have been delivered (socket timeout,
+                        connection reset/broken pipe, 5xx). Reverting here could
+                        double-fire, so the item stays on the execution lease and
+                        `reconcile_stale_executing` owns it.
     """
-    body = json.dumps({"command": command}).encode("utf-8")
+    body = json.dumps({"reflexId": reflex_id, "command": command}).encode("utf-8")
     request = urllib.request.Request(
         endpoint, data=body, method="POST",
         headers={"Content-Type": "application/json"},
@@ -973,7 +1040,16 @@ def _post_manual_run(command: str, endpoint: str, timeout_s: float) -> tuple[str
     except urllib.error.URLError as exc:
         if isinstance(exc.reason, (TimeoutError, socket.timeout)):
             return ("indeterminate", f"timeout after {timeout_s}s")
-        return ("refused", f"unreachable: {exc.reason}")
+        reason = exc.reason
+        preconnect_errnos = {errno.ECONNREFUSED, errno.ENETUNREACH, errno.EHOSTUNREACH}
+        preconnect_messages = {"connection refused", "network is unreachable", "no route to host"}
+        if (
+            isinstance(reason, ConnectionRefusedError)
+            or (isinstance(reason, OSError) and reason.errno in preconnect_errnos)
+            or str(reason).strip().lower() in preconnect_messages
+        ):
+            return ("refused", f"unreachable: {reason}")
+        return ("indeterminate", f"transport uncertain: {reason}")
     except (TimeoutError, socket.timeout):
         return ("indeterminate", f"timeout after {timeout_s}s")
     except Exception as exc:  # noqa: BLE001
@@ -1050,18 +1126,47 @@ def _release_push_claim(queue_id: str, repo_root: Path, claimed_at: str, detail:
     return False
 
 
-_REVIEW_ACTIONS = {"approve", "approve_always", "reject", "expire"}
+_REVIEW_ACTIONS = {"approve", "approve_always", "reject", "expire", "retire"}
+
+#: Statuses each action may act on. `retire` is the one decision a human can write on an
+#: item that has ALREADY expired: expiry is a state, not an end (coverage review R4.1,
+#: 2026-09-02) — twelve reflex items expired unreviewed between 06-21 and 07-28 and then
+#: vanished from every surface, so "nobody decided" was indistinguishable from "decided".
+#: An expired item now stays in the digest until it is retired (or, while still pending,
+#: approved/rejected); `retired` is terminal and never re-decidable.
+_REVIEWABLE_FROM: dict[str, frozenset[str]] = {
+    "approve": frozenset({"pending"}),
+    "approve_always": frozenset({"pending"}),
+    "reject": frozenset({"pending"}),
+    "expire": frozenset({"pending"}),
+    "retire": frozenset({"pending", "expired"}),
+}
 
 
-def review_hitl(queue_id: str, repo_root: Path, action: str, reason: str = "") -> bool:
-    """Transition a `pending` HITL item to `approved`, `rejected`, or `expired`.
+def review_hitl(queue_id: str, repo_root: Path, action: str, reason: str = "",
+                expected_proposal_hash: str | None = None) -> bool:
+    """Transition a HITL item: `pending` -> `approved`/`rejected`/`expired`/`retired`,
+    or `expired` -> `retired`.
+
+    `expected_proposal_hash`, when given, must match `proposal_hash(item)` (the
+    stable execution fields the human actually saw) or the call is refused as a
+    no-op (returns False) instead of acting. Guards a caller that read a stale
+    item snapshot before deciding — e.g. a UI holding a queue row that the
+    engine has since replaced with a different proposal at the same id — from
+    approving/rejecting a proposal the human never actually reviewed.
 
     The state-transition writer the queue never had (audit finding: `pending`
     could only ever be entered, never left, other than via `_consume_approval`
-    finding a pre-existing `approved` row — which nothing wrote). Only acts on
-    items still `pending`; an already-approved/executing/done/rejected/expired
-    item is untouched (returns False) so this cannot silently re-decide a
-    settled item. Every call is audit-logged to autonomic_events.jsonl.
+    finding a pre-existing `approved` row — which nothing wrote). Acts only on
+    the statuses `_REVIEWABLE_FROM` allows for the action; an already-approved/
+    executing/done/rejected/retired item is untouched (returns False) so this
+    cannot silently re-decide a settled item. Every call is audit-logged to
+    autonomic_events.jsonl and chained into the review ledger.
+
+    `action="retire"` is the human's "seen, no action" verdict. It is the only
+    action valid on an `expired` item, which is what keeps "expired without
+    decision" a visible, finite state in the digest (R4.1) rather than a
+    silent terminal one.
 
     `action="approve_always"` (ADOPT-003) does everything `"approve"` does —
     same push-on-approve behavior below — AND additionally records a standing
@@ -1097,9 +1202,11 @@ def review_hitl(queue_id: str, repo_root: Path, action: str, reason: str = "") -
     repo_root = Path(repo_root)
     grant_standing = action == "approve_always"
     push = action in ("approve", "approve_always") and _push_on_approve_enabled()
-    reviewed, claim, approved_snapshot = _review_hitl_locked(queue_id, repo_root, action, reason, push)
+    reviewed, claim, approved_snapshot = _review_hitl_locked(
+        queue_id, repo_root, action, reason, push, expected_proposal_hash)
 
-    if grant_standing and reviewed and approved_snapshot is not None:
+    if (grant_standing and reviewed and approved_snapshot is not None
+            and approved_snapshot.get("decision_category", "routine") == "routine"):
         grant_standing_approval(
             _item_key(approved_snapshot), repo_root,
             source_queue_id=queue_id,
@@ -1114,7 +1221,9 @@ def review_hitl(queue_id: str, repo_root: Path, action: str, reason: str = "") -
     if endpoint is None:
         outcome, detail = ("refused", "BUSHIDO_PUSH_API_BASE is not an http loopback URL")
     else:
-        outcome, detail = _post_manual_run(claim["command"], endpoint, _push_timeout_s())
+        outcome, detail = _post_manual_run(
+            claim["reflex_id"], claim["command"], endpoint, _push_timeout_s(),
+        )
 
     _emit_queue_event("hitl_push", claim["item"], repo_root, outcome=outcome, detail=detail)
     if outcome == "started":
@@ -1136,6 +1245,7 @@ def review_hitl(queue_id: str, repo_root: Path, action: str, reason: str = "") -
 @_under_queue_lock
 def _review_hitl_locked(
     queue_id: str, repo_root: Path, action: str, reason: str, push: bool,
+    expected_proposal_hash: str | None = None,
 ) -> tuple[bool, dict | None, dict | None]:
     """The locked half of `review_hitl`: decide the item and, when pushing, claim it.
 
@@ -1164,20 +1274,45 @@ def _review_hitl_locked(
     for item in items:
         if not isinstance(item, dict):
             continue
-        if item.get("id") != queue_id or item.get("status") != "pending":
+        if item.get("id") != queue_id:
             continue
-        if action in ("approve", "approve_always"):
+        if item.get("status") not in _REVIEWABLE_FROM[action]:
+            continue
+        if expected_proposal_hash is not None and proposal_hash(item) != expected_proposal_hash:
+            return (False, None, None)
+        if action == "retire":
+            item["status"] = "retired"
+            item["retired_at"] = now
+            item["retired_reason"] = reason
+        elif action in ("approve", "approve_always"):
             item["status"] = "approved"
             item["approved_at"] = now
+            item["approved_proposal_hash"] = proposal_hash(item)
             approved_snapshot = dict(item)
             command = item.get("command")
+            reflex_id = item.get("metric_id")
             # Only claim what the manual-run route would actually accept — a
-            # missing/non-/skill command would just round-trip to a 400 and back.
-            if push and isinstance(command, str) and command.strip().startswith("/"):
+            # missing/non-/skill command or non-reflex item would just round-trip
+            # to a 400 and back. metric_id is the exact ReflexEntry.id supplied
+            # by the TS engine when it routes a reflex into Bushido.
+            if (
+                push
+                and item.get("decision_category", "routine") == "routine"
+                and item.get("source") == "reflex"
+                and isinstance(reflex_id, str)
+                and reflex_id.strip()
+                and isinstance(command, str)
+                and command.strip().startswith("/")
+            ):
                 item["status"] = "executing"
                 item["executing_at"] = now
                 item["push_claimed_at"] = now
-                claim = {"claimed_at": now, "command": command.strip(), "item": dict(item)}
+                claim = {
+                    "claimed_at": now,
+                    "reflex_id": reflex_id.strip(),
+                    "command": command.strip(),
+                    "item": dict(item),
+                }
         elif action == "reject":
             item["status"] = "rejected"
             item["rejected_at"] = now
@@ -1187,10 +1322,103 @@ def _review_hitl_locked(
             item["expired_at"] = now
             item["expired_reason"] = reason
         data["updated_at"] = now
+        # Tamper-evident record BEFORE the state write, and fail-closed: a resolution we
+        # cannot chain is a resolution that does not happen. The old order wrote state
+        # first and audited after through a best-effort emitter that swallowed every
+        # exception, so a failed audit — or a crash between the two — left a settled item
+        # with no record of who settled it. Approve is the direction that grants authority,
+        # which is exactly the half that had no tamper-evidence.
+        if not _chain_review(item, action, reason, repo_root):
+            return (False, None, None)
         _atomic_write_json(queue_path, data)
+        # Telemetry, deliberately still after and still best-effort: this stream feeds
+        # metrics, not attestation, and it is shared with five other writers (see
+        # _emit_review). The integrity record is the chained one above.
         _emit_review(item, action, reason, repo_root)
         return (True, claim, approved_snapshot)
     return (False, None, None)
+
+
+# ── Chained review ledger ─────────────────────────────────────────────────────
+#
+# The HITL lifecycle used to straddle two stores with asymmetric integrity: raises landed
+# in the factory's hash-chained ledger, resolutions landed only in autonomic_events.jsonl —
+# a plain append with no seq/prev/entry hash, shared with five independent writers and read
+# by four consumers, so chaining that file in place was not available without breaking all
+# of them. Resolutions get their OWN chained log instead, next to the queue it resolves.
+#
+# The ledger MODULE ships with this checkout (fixed dependency); the ledger DATA follows
+# `repo_root`, so a hermetic test repo chains into its own file and never touches the live
+# log. Same importlib-by-path load as Governance/bin/merge_lane.py: a module named plain
+# `ledger` is one generic name away from a silent collision.
+# The chain format is a sibling module, not a file path (2026-09-02, plan M2.2,
+# decision D2). This used to load Execution/factory/ledger.py by explicit path
+# — `parents[2] / "Execution" / "factory" / "ledger.py"` — which resolves only inside
+# an Agentica-shaped tree. The public export ships bushido_engine but not Execution/,
+# so EVERY exported approve/reject/expire hit the except branch below and refused with
+# "review ledger append failed": 52 failing tests that nobody saw for eight weeks
+# because the export gate was not in CI (audit 2026-09-01, finding B3(a)).
+#
+# A normal import cannot be absent in the way a path can. agentica_core.chain_ledger
+# carries the chain format and only the chain format; the factory's event vocabulary
+# stays in Execution/factory/ledger.py, which now delegates here for its chaining so
+# there is one implementation and the two logs cannot drift into mutual
+# unverifiability.
+from agentica_core import chain_ledger
+
+
+def review_ledger_path(repo_root: Path) -> Path:
+    """The chained log of HITL resolutions for the queue under *repo_root*."""
+    return Path(repo_root) / "state" / "review_ledger.jsonl"
+
+
+def _chain_review(item: dict, action: str, reason: str, repo_root: Path) -> bool:
+    """Append one tamper-evident row for this resolution. False = do not proceed.
+
+    Unlike `_emit_review` this is NOT best-effort: it is the attestation that a human (or
+    an agent acting for one) settled this item, so a write it cannot chain must stop the
+    resolution rather than let state move unrecorded. Callers already handle a False
+    return — it is the same "not reviewed" signal an unknown or already-settled id gives.
+    """
+    try:
+        record = {
+            "event": "hitl_review",
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "action": action,
+            "queue_id": item.get("id"),
+            "new_status": item.get("status"),
+            "skill": item.get("skill"),
+            "source": item.get("source"),
+            "pillar": item.get("pillar"),
+            "metric_id": item.get("metric_id"),
+            "backlog_id": item.get("backlog_id"),
+            "blast_radius": item.get("blast_radius"),
+            "reversible": item.get("reversible"),
+            "reason": reason or None,
+        }
+        log_path = review_ledger_path(repo_root)
+        # Explicit head cache: append() defaults it to the FACTORY ledger's cache, so
+        # omitting it would let every review overwrite the head of a different log (and,
+        # under a tmp repo, write outside it). The chain itself never trusts the cache —
+        # append() re-reads the log's last row under the lock — but the artifact is shared.
+        #
+        # Explicit SHORT lock_timeout: this call runs INSIDE the HITL queue lock
+        # (_review_hitl_locked holds it via @_under_queue_lock), so append()'s own
+        # 30s default would let a stale review_ledger.jsonl.lock (900s reclaim window)
+        # starve the entire queue subsystem for up to 30s per blocked review. Every other
+        # queue caller only tolerates 10s on that lock; match it here.
+        chain_ledger.append(
+            record, log_path=log_path,
+            head_cache_path=log_path.with_name(".review_ledger_head.json"),
+            lock_timeout=10.0,
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001 — any failure here must fail closed
+        sys.stderr.write(
+            f"bushido_engine: refusing to {action} {item.get('id')} — "
+            f"review ledger append failed ({type(exc).__name__}: {exc})\n"
+        )
+        return False
 
 
 def _emit_review(item: dict, action: str, reason: str, repo_root: Path) -> None:
@@ -1308,7 +1536,7 @@ def decide(
     reconcile_stale_approved(repo_root)
 
     # Step 1: hard limits (R2: always first, even before approval consume)
-    if _is_hard_limit(work_item, repo_root):
+    if _is_hard_limit(work_item, repo_root) or compute_tier(work_item) == Tier.HARD_STOP:
         _emit_decision(work_item, Tier.HARD_STOP, repo_root)
         return (Tier.HARD_STOP, None)
 
@@ -1340,7 +1568,9 @@ def decide(
         _emit_decision(work_item, tier, repo_root, queue_id=queue_id)
         return (tier, queue_id)
 
-    # AUTO (plain) — intentionally not logged (high-frequency noise)
+    if ronin and compute_tier(work_item, ronin_mode=False) == Tier.QUEUE:
+        _emit_decision(work_item, Tier.AUTO, repo_root)
+
     return (Tier.AUTO, None)
 
 
@@ -1351,6 +1581,7 @@ __all__ = [
     "compute_tier",
     "decide",
     "enqueue_hitl",
+    "raise_hitl",
     "mark_complete",
     "reconcile_stale_approved",
     "reconcile_stale_executing",

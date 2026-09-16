@@ -1,134 +1,88 @@
-# Order Samurai ⚔️
+# Order Samurai
 
-> **The Local-First Governance & Security Layer for Autonomous Coding Agent Fleets**
+A deterministic governance and security layer for repositories worked on by autonomous coding
+agents. Policy lives in `config/` as executable JSON contracts; one verifier in `execution/`
+enforces each contract; `order-samurai audit` runs the repository-policy set as a CI gate and
+`execution/doctor.py` runs the workstation-health set.
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1%2C000%2B%20passed-brightgreen.svg)](tests/)
-[![Security Posture](https://img.shields.io/badge/posture-fail--closed-red.svg)](SECURITY.md)
+`PROJECT.md` and `RONIN_SPEC.md` describe what the system is for and how it is meant to behave.
+This file describes how to run it.
 
-**Order Samurai** turns unmonitored agent execution into a secure, auditable, and business-meaningful engine. It wraps agent runtimes (such as Claude Code) with real-time security hooks, secret scrubbing, prompt injection defense, and provenance-transparent business metrics — entirely local by default, with **no telemetry sent to Order Samurai** (optional third-party AI review only when you explicitly configure a cloud provider with your own credentials).
+## Requires a checkout
 
----
-
-## 🚀 Quickstart (1-Command Install)
-
-Install in **under 60 seconds** on macOS / Linux:
-
-```bash
-curl -fsSL https://www.ordersamurai.ai/install.sh | bash
-```
-
-Or clone and run locally:
+**`audit` needs the `config/` contracts, and `pip install` does not ship them.** Installing the
+package gives you the verifiers but not the policy they enforce, so run the audit from a checkout:
 
 ```bash
-git clone https://github.com/Gemkai/order-samurai.git
-cd order-samurai
-./bin/samurai install
+cd <order-samurai-checkout>
+python3 -m execution.cli audit
 ```
 
-Verify your installation with the diagnostic doctor:
+Run from an install instead and the command exits 2 and tells you this, rather than reporting a
+verdict on its own site-packages directory. That refusal is deliberate. Shipping `config/` as
+package data would clear the error and make the path-authority check report a clean bill of health
+across "the Governance code surface" while actually scanning site-packages — a false pass from a
+security tool, which is worse than no answer. Packaging the contracts is only safe together with
+target resolution (auditing the repository the operator means), never before it.
 
-```bash
-samurai doctor
-```
+`order-samurai --help` and `order-samurai version` work from an install.
 
----
+## Commands
 
-## 🛡️ Why Order Samurai?
+| Command | What it does |
+|---|---|
+| `python3 -m execution.cli audit` | Repository-policy verifiers. Exit 1 on any FAIL, 2 if it cannot run |
+| `python3 -m execution.cli audit --format json` | Same, machine-readable |
+| `python3 -m execution.cli audit --warn-as-error` | Stricter gate: WARN also exits non-zero |
+| `python3 execution/doctor.py` | Workstation health — daemons, telemetry, local LLM, exec-chain |
+| `python3 execution/score_architecture.py` | Architecture score |
+| `python3 -m pytest tests/ -q -m "not live_machine"` | The portable test suite |
 
-When autonomous coding agents run in your developer environment, they read files, invoke bash commands, make API calls, and modify source code. Order Samurai provides:
+`audit` deliberately excludes runtime-health checks (telemetry freshness, local-LLM liveness, daemon
+state, live-source payloads). Those describe a live workstation and would fail in a clean CI
+checkout for reasons that say nothing about the code under review. They are `doctor`'s job.
 
-1. **14-Chain ATT&CK Security Interception**: Intercepts indirect prompt injections (Chain 13), credential exfiltration, internal IP exposure, and database URI leaks (Chain 14).
-2. **Zero Cloud Telemetry (Local-First)**: Your prompts, source code, and telemetry stay on your machine (`~/.samurai/`). Vendor sees zero code.
-3. **4 Business Pillar Metrics**:
-   - 🗡️ **SWORD**: *Kill Chains Disrupted* (Resilience count of blocked attack vectors)
-   - 🏹 **BOW**: *Agent Time Saved* (Wall-clock operations efficiency)
-   - 🎨 **BRUSH**: *Actual Cost Savings* (Token spend & model routing efficiency)
-   - 🎭 **ARTS**: *Human Time Saved* (Documentation parity & code alignment)
-4. **Honesty Invariant**: Every metric explicitly displays whether it is **MEASURED** (from real system execution) or **SIMULATED** (calibration benchmark placeholder). We never sell fake precision.
-5. **Fail-Closed Security Posture**: Security gates fail closed loud (`BUSHIDO_FAIL_OPEN=false`), protecting your repository against silent bypasses.
+Tests marked `live_machine` assert against local services and real launchd state; the profile above
+excludes them. Run them only on a host that has those services.
 
----
+## Audit profiles
 
-## 💻 CLI Tools & Utilities
+Root hygiene asserts a different tier depending on which tree it is looking at, because some
+requirements are universal and others are this project's own conventions:
 
-Order Samurai ships with a zero-residue management tool:
+| Tier | Applies to | Requires |
+|---|---|---|
+| `full` | A nested Agentica checkout — the development repo | `backlog/`, `config/`, `execution/`, `reports/`, `tests/`, `PROJECT.md`, `RONIN_SPEC.md` |
+| `baseline` | A standalone distribution | `config/`, `execution/` — without these there is no policy to enforce and nothing to enforce it |
 
-```bash
-# Check environment health, hook registration, and path integrity
-samurai doctor
+The tier is **derived from the layout**, so the development repo gets the strict tier without anyone
+setting anything. Override with `ORDER_SAMURAI_AUDIT_PROFILE=full|baseline`. Every verifier prints
+its active profile, so a run at the lenient tier is never mistaken for a strict one.
 
-# Install & register settings into ~/.claude/hooks/settings.json (with automatic backup)
-samurai install
+## Layout
 
-# Safely uninstall hooks, restore prior settings, and optional zero-residue cleanup
-samurai uninstall
-```
+| Path | Contents |
+|---|---|
+| `config/` | Executable policy contracts. `X.json` governs the repository; `claude_X.json` governs a `~/.claude` runtime — separate surfaces, not duplicates |
+| `execution/` | One `verify_*.py` per contract; `doctor.py` aggregates them |
+| `bin/` | Operational scripts (triage, audits, scrubbing, installer) |
+| `schema/` | JSON Schemas for the agent-output contracts |
+| `state/` | Machine-written runtime truth. Read freely; never hand-edit an event log |
+| `tests/` | The suite |
 
----
+## Exit codes
 
-## 📊 Web Dashboard & Landing Page
+`0` clean · `1` findings · `2` the command could not run (usage error, or policy contracts absent).
+A gate that cannot distinguish "clean" from "could not check" is not a gate, so these never collapse.
 
-Order Samurai features a real-time web dashboard built with React + Vite:
+## Recent Major Advancements
 
-```bash
-# Launch local dashboard server
-cd dashboard-ui
-npm install
-npm run dev
-```
+- **Retirement of Manual Meditation Control**: Faults no longer pause the engine for manual operator clicking. The engine uses **Autonomous Ronin Repairs** running in disposable, isolated Git worktrees with regression checks.
+- **Touch ID Biometric Mutation Security**: Operator policy adjustments and mutations require physical Darwin LocalAuthentication biometric attestation.
+- **Fail-Closed Bushido Security**: `BUSHIDO_FAIL_OPEN=false`, `REFLEX_REQUIRE_GRANT=true` enforced deterministically.
+- **9 Live Knowledge Retrieval Measurements**: Real-time tracking of embedding cache hit rates, p50/p95 latency, collection search failures, and prompt cache reuse across Claude and Codex.
 
-Visit `http://localhost:5173` to view real-time metrics, radar charts, active reflexes, and the interactive product landing page.
+## Commercial Tiering (Strictly 2 Tiers — Zero Subscriptions)
 
----
-
-## 🏗️ Architecture Overview
-
-```
- ┌──────────────────────────────────────────────────────────┐
- │                  Developer Workstation                   │
- │                                                          │
- │   ┌──────────────┐         ┌─────────────────────────┐   │
- │   │ Claude Code  │ ──Pre──>│  prompt_injection_guard │   │
- │   │  (or Agent)  │ <─Post─ │ secret_scrubber_realtime│   │
- │   └──────┬───────┘         └────────────┬────────────┘   │
- │          │                              │                │
- │          ▼                              ▼                │
- │   ┌──────────────────────────────────────────────────┐   │
- │   │          ~/.samurai / Atomic State Logs         │   │
- │   │ (kill_chain_events.jsonl | DOJO_STATE.json)      │   │
- │   └────────────────────────┬─────────────────────────┘   │
- │                            │                             │
- │                            ▼                             │
- │   ┌──────────────────────────────────────────────────┐   │
- │   │             agentica_core.aggregate              │   │
- │   │    (SWORD | BOW | BRUSH | ARTS Reducer Engine)   │   │
- │   └────────────────────────┬─────────────────────────┘   │
- │                            │                             │
- │                            ▼                             │
- │   ┌──────────────────────────────────────────────────┐   │
- │   │           Dashboard UI / Honesty Table           │   │
- │   └──────────────────────────────────────────────────┘   │
- └──────────────────────────────────────────────────────────┘
-```
-
----
-
-## 📄 Documentation & Resources
-
-- 📖 [Honesty Table & Metric Provenance](docs/HONESTY_TABLE.md)
-- 🛡️ [Security Policy](SECURITY.md)
-- 📜 [Terms of Service](TERMS.md)
-- 🔒 [Privacy Policy (Zero Telemetry)](PRIVACY.md)
-- ⚖️ [End User License Agreement (EULA)](EULA.md)
-- **Onboarding Guide**: [`docs/ONBOARDING.md`](docs/ONBOARDING.md) — Free + Pro activation walkthrough.
-- 🤝 [Contributing Guidelines](CONTRIBUTING.md)
-- 📝 [Changelog](CHANGELOG.md)
-
----
-
-## ⚖️ License & Commercial Pro Tier
-
-* **Open Source Core**: Licensed under the [Apache License 2.0](LICENSE). Free forever for four-pillar scoring and fail-closed CLI security hooks.
-* **Order Samurai Pro ($199 Lifetime License)**: Includes Nightly Dojo automated regression runs, autonomous reflex remediation, and offline perpetual key activation. Backed by a **14-day 100% money-back guarantee**. See [TERMS.md](TERMS.md) and [EULA.md](EULA.md).
-
+1. **Free Core ($0 Forever)**: 100% fail-closed ATT&CK kill-chain interception, in-memory secret scrubbing (<2ms), 4-pillar diagnostics, 7-day log history, and **manual staged `.patch` generation**.
+2. **Pro Lifetime ($199 One-Time / Perpetual)**: **Autonomous Ronin auto-apply** in isolated Git worktrees, Touch ID biometric operator authentication, Sensei multi-model rival verification, 9-point deep knowledge telemetry & prompt-cache tracking, 90-day archive, and cryptographic SHA-256 hash-chain ledger.

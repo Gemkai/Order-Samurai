@@ -125,6 +125,9 @@ def propose_chain_via_lm(taxonomy: dict, cluster_events: list[dict]) -> dict | N
         max_tokens=1000,
         temperature=0.0,
         local_only=True,
+        # Alert clusters are always this machine's own Order Samurai security
+        # telemetry (state/kill_chain_*.jsonl under REPO_ROOT = parents[1]).
+        project="Order Samurai",
     )
     if not raw:
         return None

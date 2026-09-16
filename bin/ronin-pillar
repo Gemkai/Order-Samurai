@@ -8,8 +8,16 @@ case "$PILLAR" in bow|sword|brush|arts) ;; *) echo "Unknown pillar: $PILLAR" >&2
 
 REPO_DIR="${REPO_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$REPO_DIR"
+STATE_DIR="${MEDITATION_STATE_DIR:-$PWD/state}"
+if [ -e "$STATE_DIR/MEDITATION_STOP" ] || [ -L "$STATE_DIR/MEDITATION_STOP" ]; then
+  echo "Legacy meditation paused (MEDITATION_STOP)." >&2
+  exit 2
+fi
+PREFLIGHT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/meditation_preflight.py"
 
 [ -f meditation.env ] && set -a && . ./meditation.env && set +a
+STATE_DIR="${MEDITATION_STATE_DIR:-$PWD/state}"
+python3 "$PREFLIGHT" --state-dir "$STATE_DIR"
 
 PROMPT_FILE="prompts/meditation_cycle.md"
 [ -f "$PROMPT_FILE" ] || { echo "Missing $PROMPT_FILE" >&2; exit 1; }

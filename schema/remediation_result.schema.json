@@ -35,6 +35,20 @@
       "type": "string",
       "minLength": 1
     },
+    "sensei_cycle_id": {
+      "description": "Sensei cycle whose live CONFIRMED verdict authorized this repair episode. Omitted for ordinary reflex runs.",
+      "type": "string",
+      "minLength": 1
+    },
+    "verification_status": {
+      "description": "Result of rerunning the original wid_payload reflex-presence check after the worker settled. Worker completion alone cannot produce passed; unreadable evidence is unavailable.",
+      "type": "string",
+      "enum": ["passed", "failed", "unavailable", "not_run"]
+    },
+    "completed_without_asking": {
+      "description": "Observed fact for this repair episode: neither a Bushido approval nor the explicit approval window was consumed. This is not a counterfactual time-saved claim.",
+      "type": "boolean"
+    },
     "improved": {
       "description": "True = the reflex resolved (metric moved past threshold). OMITTED on manual rows by contract — an explicit false there would wrongly lengthen the autonomous channel's cooldowns.",
       "type": "boolean"

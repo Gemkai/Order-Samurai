@@ -46,18 +46,18 @@ def test_low_risk_skills_are_not_sensitive(skill):
     assert _is_sensitive_skill(skill, _REPO) is False
 
 
-# ── Unknown skills fail open (return False) ───────────────────────────────────
+# ── Unknown skills fail closed (return True) ───────────────────────────────────
 
-def test_unknown_skill_is_not_sensitive():
-    assert _is_sensitive_skill("totally-made-up-skill", _REPO) is False
-
-
-def test_empty_skill_is_not_sensitive():
-    assert _is_sensitive_skill("", _REPO) is False
+def test_unknown_skill_is_sensitive():
+    assert _is_sensitive_skill("totally-made-up-skill", _REPO) is True
 
 
-# ── Unreadable table fails open (return False, do not manufacture a hard-stop) ─
+def test_empty_skill_is_sensitive():
+    assert _is_sensitive_skill("", _REPO) is True
 
-def test_missing_table_is_not_sensitive(tmp_path):
-    # repo_root with no state/skill_tiers.json -> read error -> False.
-    assert _is_sensitive_skill("skill-creator", tmp_path) is False
+
+# ── Unreadable table fails closed ─
+
+def test_missing_table_is_sensitive(tmp_path):
+    # A missing table cannot establish permission to execute.
+    assert _is_sensitive_skill("skill-creator", tmp_path) is True

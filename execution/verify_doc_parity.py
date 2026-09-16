@@ -74,7 +74,7 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
     #    against any declared contract -> FAIL (never silently OK).
     policy_payload, policy_error = _load_json(ANTI_DRIFT_POLICY_PATH)
     if policy_error:
-        results.append(_make_result("FAIL", "anti_drift_policy.json", policy_error))
+        results.append(_make_result("ERROR", "anti_drift_policy.json", policy_error))
         return results
 
     # 2. The documentation-parity rule must be declared in the policy.
@@ -110,7 +110,21 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
         )
 
     # 4. Every doc the rule declares as a required artifact must actually exist.
+    from execution.claude_runtime_target import is_standalone_distribution  # noqa: PLC0415
     declared_docs = list(doc_rule.get("expectedArtifacts") or [])
+    if is_standalone_distribution():
+        # Internal planning docs are unconditionally withdrawn in a standalone
+        # export -- bin/extract_public.py's own "Section 2, never ship" list
+        # excludes PROJECT.md and RONIN_SPEC.md by name, deterministically, not
+        # as a maybe. The public-facing stand-in is the real requirement here,
+        # not a filtered subset of the original list: an earlier version did
+        # `declared_docs = [d for d in declared_docs if (repo_root/d).is_file()]`,
+        # which self-filters down to whichever entries already exist -- making
+        # the "missing required docs" check below tautologically unfailable for
+        # every survivor, since the filter already guaranteed each one's
+        # existence. Found in review 2026-08-31.
+        declared_docs = ["README.md", "AGENTS.md"]
+
     if not declared_docs:
         results.append(
             _make_result(
@@ -172,30 +186,43 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
     # 6. Parity: PROJECT.md must still carry the documented "Docs Move With Runtime"
     #    contract that mirrors the policy principle. If the docs dropped it, the prose
     #    no longer matches the live contract -> WARN.
-    project_text = doc_texts.get("PROJECT.md")
-    if project_text is None:
-        # PROJECT.md was not among declared docs; read it directly so the check still runs.
-        project_text = (
-            project_doc_path.read_text(encoding="utf-8", errors="ignore")
-            if project_doc_path.is_file()
-            else ""
-        )
-    if DOCS_MOVE_PRINCIPLE_MARKER not in project_text:
-        results.append(
-            _make_result(
-                "WARN",
-                "doc-parity.principle",
-                f"PROJECT.md no longer documents the {DOCS_MOVE_PRINCIPLE_MARKER!r} contract",
-            )
-        )
-    else:
+    #    Standalone exports withdraw PROJECT.md deterministically (same "never ship"
+    #    list as step 4's declared_docs substitution above) -- its absence there is
+    #    by design, not drift, so the principle check does not apply.
+    if is_standalone_distribution():
         results.append(
             _make_result(
                 "OK",
                 "doc-parity.principle",
-                f"PROJECT.md documents the {DOCS_MOVE_PRINCIPLE_MARKER!r} contract",
+                "PROJECT.md is withdrawn by design in a standalone export -- "
+                "principle check not applicable",
             )
         )
+    else:
+        project_text = doc_texts.get("PROJECT.md")
+        if project_text is None:
+            # PROJECT.md was not among declared docs; read it directly so the check still runs.
+            project_text = (
+                project_doc_path.read_text(encoding="utf-8", errors="ignore")
+                if project_doc_path.is_file()
+                else ""
+            )
+        if DOCS_MOVE_PRINCIPLE_MARKER not in project_text:
+            results.append(
+                _make_result(
+                    "WARN",
+                    "doc-parity.principle",
+                    f"PROJECT.md no longer documents the {DOCS_MOVE_PRINCIPLE_MARKER!r} contract",
+                )
+            )
+        else:
+            results.append(
+                _make_result(
+                    "OK",
+                    "doc-parity.principle",
+                    f"PROJECT.md documents the {DOCS_MOVE_PRINCIPLE_MARKER!r} contract",
+                )
+            )
 
     return results
 

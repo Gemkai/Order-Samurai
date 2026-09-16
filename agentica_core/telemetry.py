@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
+
+from .model_tiers import model_tier
 
 SCHEMA_VERSION = "agentica.1"
 
@@ -112,7 +115,16 @@ def normalize_entry(entry: dict[str, Any], platform: str | None = None) -> dict[
     if platform is not None:
         out.setdefault("platform", platform)
     if out.get("model_tier") is not None:
-        out["model_tier"] = str(out["model_tier"])
+        tier = str(out["model_tier"])
+        # Only repair a genuinely missing tier from the model name. CLOUD is a
+        # deliberate, meaningful declaration (gateway.py: LOCAL vs CLOUD routing) --
+        # re-deriving it here would silently overwrite that with the finer-grained
+        # capability bucket model_tier() infers from the model name (e.g. "sonnet"
+        # -> STANDARD), corrupting the raw record every write goes through. That
+        # finer breakdown belongs at the read/aggregation layer (see
+        # aggregate.py's _tier_mix_records, which already calls model_tier() for
+        # exactly this) -- not baked into the stored telemetry itself.
+        out["model_tier"] = model_tier(out.get("model"), tier) if tier.upper() == "UNKNOWN" else tier
     return out
 
 
@@ -166,10 +178,15 @@ def parse_ts(ts: Any) -> datetime | None:
         return None
 
 
-def iso_week(ts: Any) -> str | None:
-    """ISO year-week label ('%G-W%V', e.g. '2026-W22') for a timestamp, or None."""
+@lru_cache(maxsize=32768)
+def _iso_week_text(ts: str) -> str | None:
     dt = parse_ts(ts)
     return dt.strftime("%G-W%V") if dt else None
+
+
+def iso_week(ts: Any) -> str | None:
+    """ISO year-week label ('%G-W%V', e.g. '2026-W22') for a timestamp, or None."""
+    return _iso_week_text(str(ts))
 
 
 def default_telemetry_path() -> Path:

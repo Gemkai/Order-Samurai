@@ -32,6 +32,14 @@ LITERAL_HOME_COMMAND = (
     'python -u "/Users/someone/.claude/hooks/foo.py"'
 )
 
+# A project-scoped hook using Claude Code's own $CLAUDE_PROJECT_DIR convention.
+# This token happens to CONTAIN the literal substring ".claude/", but it is
+# anchored at the project root, not the runtime home -- it must not be re-homed
+# onto the runtime root the way LITERAL_HOME_COMMAND's home-anchored path is.
+PROJECT_SCOPED_COMMAND = (
+    'python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/check_style.py"'
+)
+
 
 def _settings_with_command(command: str) -> dict:
     return {
@@ -86,10 +94,29 @@ class VerifyClaudeHookContractTests(unittest.TestCase):
 
         self.assertEqual(refs, {"hooks/foo.py"})
 
+    def test_extract_hook_script_ref_does_not_rehome_project_scoped_claude_path(self) -> None:
+        """$CLAUDE_PROJECT_DIR/.claude/hooks/check_style.py is anchored at the
+        PROJECT root, not the runtime home -- unlike LITERAL_HOME_COMMAND's
+        genuinely home-anchored path, this must not be mapped onto the
+        runtime root at all (no ref extracted), since this verifier cannot
+        see the project directory the token actually resolves against."""
+        refs = vhc.extract_hook_script_refs(PROJECT_SCOPED_COMMAND)
+
+        self.assertEqual(refs, set())
+
     def test_missing_hook_scripts_flags_absent_reference(self) -> None:
         missing = vhc.missing_hook_scripts([PORTABLE_COMMAND], self.sandbox)
 
         self.assertEqual(missing, ["scripts/hook_dispatch.py"])
+
+    def test_missing_hook_scripts_does_not_false_flag_project_scoped_claude_path(self) -> None:
+        """The project-scoped hook script genuinely exists (at the project
+        root, not under this sandbox runtime root) -- it must not be
+        reported missing just because the runtime root doesn't happen to
+        have a hooks/check_style.py of its own."""
+        missing = vhc.missing_hook_scripts([PROJECT_SCOPED_COMMAND], self.sandbox)
+
+        self.assertEqual(missing, [])
 
     def test_missing_hook_scripts_passes_when_file_present(self) -> None:
         self._write("scripts/hook_dispatch.py", "# dispatch\n")

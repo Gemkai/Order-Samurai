@@ -92,6 +92,21 @@ def estimate_cost(model: str, tokens_in: int, tokens_out: int, cache_read: int) 
     )
 
 
+def _project_from_dir(dirname: str) -> str:
+    """Recover the real project name from a Claude Code transcript directory name.
+
+    Claude Code encodes a session's cwd as "-Users-<username>-<...path...>"
+    (every "/" replaced by "-"). Taking only the LAST "-"-separated fragment
+    collapses any repo whose own name contains a hyphen (AgenticaOS-bot,
+    Order-Samurai, ...) to just its final word. Strip the known
+    "-Users-<username>-" prefix (3 leading segments) and keep the rest intact
+    instead of re-splitting it."""
+    parts = dirname.split("-")
+    if len(parts) > 3 and parts[1] == "Users":
+        return "-".join(parts[3:]) or "unknown"
+    return dirname.rsplit("-", 1)[-1] or "unknown"
+
+
 def parse_transcript(path: Path) -> dict | None:
     """Read one Claude Code session transcript (JSONL) and return a canonical-record-shaped
     dict, or None if the file has no assistant turns (a stub, not a session). A malformed
@@ -127,7 +142,7 @@ def parse_transcript(path: Path) -> dict | None:
     if turns == 0:
         return None
     cost = estimate_cost(model, tokens_in, tokens_out, cache_read)
-    project = path.parent.name.rsplit("-", 1)[-1] or "unknown"
+    project = _project_from_dir(path.parent.name)
     return build_record(
         "claude",
         task_name="session",

@@ -250,6 +250,9 @@ class VerifyClaudeRuntimeCouplingTests(unittest.TestCase):
         self.assertIn("scripts/reaper.py", failures[0]["detail"])
 
     def test_unreadable_policy_reports_fail(self) -> None:
+        # Plan M3.1 / audit finding S1: a verifier that cannot read its own
+        # policy made NO measurement. It reports ERROR ("could not run"), not a
+        # synthetic FAIL that reads to every consumer as a measured verdict.
         runtime = self._build_runtime({})
 
         results = coupling.run_checks(
@@ -258,7 +261,7 @@ class VerifyClaudeRuntimeCouplingTests(unittest.TestCase):
             root=runtime,
         )
 
-        failures = self._rows(results, "FAIL")
+        failures = self._rows(results, "ERROR")
         self.assertEqual(len(failures), 1)
         self.assertEqual(failures[0]["label"], "claude_root_hygiene_policy.json")
         self.assertEqual(failures[0]["detail"], "missing")

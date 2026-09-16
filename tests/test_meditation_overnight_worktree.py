@@ -6,6 +6,8 @@ leave the main tree — including a live session's uncommitted work — complete
 """
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
 import os
 import stat
 import subprocess
@@ -20,6 +22,11 @@ pytestmark = pytest.mark.skipif(not SCRIPT.exists(), reason="meditation_overnigh
 def _init_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
+    (repo / "state").mkdir()
+    (repo / "state" / "budget_ledger.json").write_text(json.dumps({
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "spent_usd": 0, "daily_limit_usd": 5,
+    }))
     for args in (["init", "-q"], ["config", "user.email", "t@t.com"], ["config", "user.name", "T"]):
         subprocess.run(["git", *args], cwd=repo, check=True)
     (repo / "prompts").mkdir()

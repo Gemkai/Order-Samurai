@@ -35,6 +35,7 @@ from execution.verifier_results import summarize  # noqa: F401  (re-exported for
 from execution.claude_runtime_target import (
     BACKLOG_PATH,
     BASELINE_PROFILE,
+    INTERNAL_ONLY_ARTIFACTS,
     REPORT_PATH,
     audit_profile,
     is_standalone_distribution,
@@ -161,15 +162,17 @@ def run_checks(runtime_root_dir: Path | None = None) -> list[dict[str, str]]:
 
     # Enforcement-pack docs live in THIS repo and must not vanish — except in a
     # standalone distribution, where the exporter deliberately never ships the
-    # internal hardening report. Absent-by-design is not the same finding as
-    # absent-by-rot, so it does not get the same status.
+    # internal hardening report (INTERNAL_ONLY_ARTIFACTS). The backlog is
+    # deliberately NOT in that set (claude_runtime_target's own comment: "it
+    # ships, so its absence is rot in both layouts"), so only the report gets
+    # the "absent by design" exemption; a missing backlog is always a FAIL.
     standalone = is_standalone_distribution()
     for path in (REPORT_PATH, BACKLOG_PATH):
         rel = path.resolve().relative_to(ROOT_DIR.resolve()).as_posix()
         label = f"doc_parity.repo.{rel}"
         if path.is_file():
             results.append(_make_result("OK", label, f"enforcement-pack doc present: {rel}"))
-        elif standalone:
+        elif standalone and rel in INTERNAL_ONLY_ARTIFACTS:
             results.append(
                 _make_result("OK", label, f"not shipped in a standalone distribution: {rel}")
             )

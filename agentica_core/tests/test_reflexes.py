@@ -1,6 +1,35 @@
 from agentica_core import reflexes
 
 
+def test_worst_project_skips_meta_bucket():
+    # Regression: build_project_scores' `_meta` catch-all (unmatched telemetry tags,
+    # e.g. Antigravity's fleet-wide "HUD"/"HUB" self-reporting -- 03f6f873, 2026-08-18)
+    # carries has_data=True and real scores like any project, so an unfiltered scan
+    # could name it "the worst project" -- but it is not a repo any remediation can
+    # run against. `is_meta` must be excluded regardless of how low its score is.
+    by_project = {
+        "RepoA": {"has_data": True, "scores": {"sword": 80.0}},
+        "RepoB": {"has_data": True, "scores": {"sword": 65.0}},
+        "_meta": {"has_data": True, "is_meta": True, "scores": {"sword": 12.0}},
+    }
+    assert reflexes._worst_project(by_project, "sword") == "RepoB"
+
+
+def test_worst_project_falls_through_to_none_when_only_meta_has_data():
+    # If `_meta` is the only bucket with data, there is no real worst project --
+    # callers fall back to "this repo" (reflexes.py's _metric_reflexes), not `_meta`.
+    by_project = {
+        "RepoA": {"has_data": False, "scores": {}},
+        "_meta": {"has_data": True, "is_meta": True, "scores": {"sword": 12.0}},
+    }
+    assert reflexes._worst_project(by_project, "sword") is None
+
+
+def test_worst_project_handles_empty_and_missing_by_project():
+    assert reflexes._worst_project({}, "sword") is None
+    assert reflexes._worst_project(None, "sword") is None
+
+
 def test_sigma_tier_fires_on_anomaly():
     # lower-is-better metric spikes far above a flat history -> CRITICAL
     env = {"val": "50", "history": [10, 12, 9, 11, 50], "is_simulated": False}
@@ -23,6 +52,12 @@ def test_sigma_tier_flat_history_no_fire():
 
 
 def test_build_reflexes_metric_fallback_and_target():
+    """Field-assembly test (tier/target/message/trigger), not a routing test --
+    doesn't matter which channel the entry lands on, so it checks both. Open_CVEs
+    is now advisory-routed (F4, remediation-loops program, 2026-08-24, demoted to
+    auto_remediable=False) rather than dispatched, but its fallback/target
+    assembly is unaffected -- that logic runs before the dispatch/advisory split.
+    """
     pillars = {
         "sword": {"Vulnerability": {"Open_CVEs": {"val": "6", "is_simulated": False,
                                                   "history": [], "mitigation_command": "/codebase-cleanup-deps-audit"}}},
@@ -31,10 +66,10 @@ def test_build_reflexes_metric_fallback_and_target():
     category_scores = {"sword": {"flags": [{"name": "Open_CVEs", "val": "6", "grade": "F"}]},
                        "bow": {"flags": []}, "brush": {"flags": []}, "arts": {"flags": []}}
     by_project = {"RepoA": {"has_data": True, "scores": {"sword": 30, "bow": 100, "brush": 100, "arts": 100}}}
-    out, _advisory = reflexes.build_reflexes(pillars, category_scores, by_project,
-                                             nudges_path=reflexes.Path("does-not-exist"),
-                                             state_path=reflexes.Path("nope"))
-    metric = [r for r in out if r["source"] == "metric"]
+    out, advisory = reflexes.build_reflexes(pillars, category_scores, by_project,
+                                            nudges_path=reflexes.Path("does-not-exist"),
+                                            state_path=reflexes.Path("nope"))
+    metric = [r for r in out + advisory if r["source"] == "metric"]
     assert len(metric) == 1
     r = metric[0]
     assert r["tier"] == "CRITICAL"

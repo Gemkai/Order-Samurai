@@ -47,7 +47,7 @@ def test_register_hooks_writes_commands_the_real_hook_contract_can_find(tmp_path
     backups_dir = tmp_path / "backups"
     backups_dir.mkdir()
 
-    samurai_cli._register_claude_hooks(
+    samurai_cli._register_hooks_in_file(
         settings_path, "/path/to/guard.py", "/path/to/scrubber.py", backups_dir, "test_settings"
     )
 
@@ -64,10 +64,10 @@ def test_register_hooks_is_idempotent_on_reinstall(tmp_path):
     backups_dir = tmp_path / "backups"
     backups_dir.mkdir()
 
-    samurai_cli._register_claude_hooks(
+    samurai_cli._register_hooks_in_file(
         settings_path, "/path/to/guard.py", "/path/to/scrubber.py", backups_dir, "test_settings"
     )
-    samurai_cli._register_claude_hooks(
+    samurai_cli._register_hooks_in_file(
         settings_path, "/path/to/guard.py", "/path/to/scrubber.py", backups_dir, "test_settings"
     )
 

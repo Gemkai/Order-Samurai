@@ -120,8 +120,14 @@ def extract_signals(session: dict) -> tuple[int, int, int]:
     """
     # session_tracker.py (the live producer of the default snapshot) writes
     # "turns"; older snapshots used "turn_count" — read both, like
-    # proactive_monitor.py does.
-    turns = int(session.get("turns", 0) or session.get("turn_count", 0) or 0)
+    # proactive_monitor.py does. `or`-chaining the two (as this used to) treats
+    # an explicit turns=0 the same as the key being absent, since `0 or X`
+    # evaluates to X — silently substituting a possibly-stale turn_count for a
+    # real, trivial 0-turn session. Fall back only when "turns" is truly absent.
+    turns_raw = session.get("turns")
+    if turns_raw is None:
+        turns_raw = session.get("turn_count")
+    turns = int(turns_raw) if turns_raw is not None else 0
     # session_tracker.py writes stop_reasons as a list; older snapshots used a dict.
     stop_reasons = session.get("stop_reasons") or []
     if isinstance(stop_reasons, dict):

@@ -383,7 +383,21 @@ def _real_apply(name: str) -> bool:
             timeout=60,
         )
 
-        # 5. If audit fails (exit code != 0), roll back to prev_ver
+        # 5. If audit fails (exit code != 0), roll back to prev_ver -- but only
+        # when it's a real verdict. pip-audit exits non-zero BOTH when it finds
+        # vulnerabilities and when the scan itself fails to complete (e.g. a
+        # network/API error reaching the OSV/PyPI vulnerability data source);
+        # a real verdict always writes its findings to stdout (the same signal
+        # codebase_deps_audit._real_pip_audit documents and checks). Empty
+        # stdout means the scanner never produced one -- fail open exactly
+        # like the auditor-unavailable case above instead of rolling back a
+        # good upgrade because of a transient scan failure.
+        if audit_proc.returncode != 0 and not audit_proc.stdout.strip():
+            print(f"pip-safe-upgrade: Warning: pip-audit failed to complete for {name}=={new_ver} "
+                  f"(exit {audit_proc.returncode}, no verdict) — not rolling back. {audit_proc.stderr.strip()}",
+                  file=sys.stderr)
+            return True
+
         if audit_proc.returncode != 0:
             print(f"pip-safe-upgrade: SECURITY AUDIT FAILED for {name}=={new_ver}. Vulnerabilities found.", file=sys.stderr)
             try:

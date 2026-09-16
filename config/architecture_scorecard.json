@@ -118,7 +118,8 @@
         "reports/2026-04-12-antigravity-anti-drift-anti-sprawl-report.md"
       ],
       "requiredVerifiers": [
-        "execution/verify_doc_parity.py"
+        "execution/verify_doc_parity.py",
+        "execution/verify_incident_coverage.py"
       ]
     }
   ],

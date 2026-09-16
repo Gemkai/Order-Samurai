@@ -62,10 +62,16 @@ def _find_env(pillars: dict, pk: str, name: str) -> dict:
 
 
 def _worst_project(by_project: dict, pk: str) -> str | None:
-    """Project with the lowest score in this pillar — where running the skill helps most."""
+    """Project with the lowest score in this pillar — where running the skill helps most.
+
+    Skips ``_meta`` (build_project_scores' unmatched-telemetry-tag bucket, e.g.
+    Antigravity's fleet-wide "HUD"/"HUB" self-reporting): it carries real scores and
+    ``has_data: True`` like any project, but it is not a repo a remediation can run
+    against. Filtered on the explicit ``is_meta`` flag rather than the "_meta" name, so
+    a future rename of the bucket can't silently reopen this (2026-08-19)."""
     best, best_score = None, None
     for name, info in (by_project or {}).items():
-        if not info.get("has_data"):
+        if not info.get("has_data") or info.get("is_meta"):
             continue
         s = info.get("scores", {}).get(pk)
         if s is None:

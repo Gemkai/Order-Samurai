@@ -1,7 +1,15 @@
 """Context_Cliff_Events (AUTO-011) — absolute >140k-token context-pressure count from transcripts."""
 import json
 
+import pytest
+
 import agentica_core.aggregate as agg
+
+
+@pytest.fixture(autouse=True)
+def _fresh_context_cliff_memo(monkeypatch):
+    monkeypatch.setattr(agg, "_CONTEXT_CLIFF_MEMO", None)
+    monkeypatch.setattr(agg, "_CONTEXT_CLIFF_TTL_S", 60.0)
 
 
 def _session(pd, name, ctx_totals):
@@ -44,6 +52,41 @@ def test_none_when_no_usage_data(tmp_path, monkeypatch):
     pd = _projects(tmp_path, monkeypatch)
     (pd / "d.jsonl").write_text(json.dumps({"type": "user", "message": {"content": "hi"}}), encoding="utf-8")
     assert agg.r_context_cliff_events([]) is None  # no usage-bearing assistant msgs -> gap, not 0
+
+
+def test_unchanged_transcripts_reuse_the_memo(tmp_path, monkeypatch):
+    pd = _projects(tmp_path, monkeypatch)
+    _session(pd, "a.jsonl", [100_000])
+
+    assert agg.r_context_cliff_events([]) == 0.0
+    memo = agg._CONTEXT_CLIFF_MEMO
+    assert agg.r_context_cliff_events([]) == 0.0
+
+    assert agg._CONTEXT_CLIFF_MEMO is memo
+
+
+def test_transcript_change_invalidates_the_memo(tmp_path, monkeypatch):
+    pd = _projects(tmp_path, monkeypatch)
+    _session(pd, "a.jsonl", [100_000])
+    assert agg.r_context_cliff_events([]) == 0.0
+    memo = agg._CONTEXT_CLIFF_MEMO
+
+    _session(pd, "a.jsonl", [100_000, 200_000])
+
+    assert agg.r_context_cliff_events([]) == 100.0
+    assert agg._CONTEXT_CLIFF_MEMO is not memo
+
+
+def test_context_cliff_memo_expires(tmp_path, monkeypatch):
+    pd = _projects(tmp_path, monkeypatch)
+    _session(pd, "a.jsonl", [100_000])
+    assert agg.r_context_cliff_events([]) == 0.0
+    memo = agg._CONTEXT_CLIFF_MEMO
+
+    monkeypatch.setattr(agg, "_CONTEXT_CLIFF_TTL_S", -1.0)
+
+    assert agg.r_context_cliff_events([]) == 0.0
+    assert agg._CONTEXT_CLIFF_MEMO is not memo
 
 
 def test_registered_brush_derived():

@@ -117,7 +117,7 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
 
     policy_payload, policy_error = _load_json(PROMOTION_POLICY_PATH)
     if policy_error:
-        results.append(_make_result("FAIL", "promotion_policy.json", policy_error))
+        results.append(_make_result("ERROR", "promotion_policy.json", policy_error))
         return results
     payload = policy_payload or {}
 
@@ -191,7 +191,7 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
 
     scorecard_payload, scorecard_error = _load_json(ARCHITECTURE_SCORECARD_PATH)
     if scorecard_error:
-        results.append(_make_result("FAIL", "architecture_scorecard.json", scorecard_error))
+        results.append(_make_result("ERROR", "architecture_scorecard.json", scorecard_error))
     else:
         scorecard_failures = validate_scorecard_contract(payload=scorecard_payload or {})
         if scorecard_failures:

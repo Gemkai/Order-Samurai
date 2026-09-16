@@ -202,6 +202,15 @@ export function RemediationPanel({ eff }: { eff: WIDPayload["remediation_efficac
                       {isRonin ? "⚡ ronin" : "👤 human"}
                     </span>
                   )}
+                  {e.kind === "mechanism" && (
+                    <span style={{
+                      fontSize: "var(--text-caption)", padding: "1px 5px", borderRadius: 3,
+                      color: "var(--bow)", background: "rgba(34,197,94,0.1)",
+                      border: "1px solid rgba(34,197,94,0.3)",
+                    }}>
+                      ⚡ code fix ($0)
+                    </span>
+                  )}
                   <span style={{ marginLeft: "auto", color: "var(--muted-foreground)", minWidth: 0, overflowWrap: "anywhere", textAlign: "right" }}>{e.command}</span>
                 </div>
               )

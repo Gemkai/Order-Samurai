@@ -11,6 +11,8 @@ applies_when:
   - Reconciling a metric against the wrong reducer in the wrong kernel
   - Auditing whether a canary all-fail is real or a harness artifact
 tags: [canary, source-of-truth, sword, reflex, measure-act, two-kernels, windows]
+disposition: out-of-scope
+layer: behavioral-canary-harness
 ---
 
 ## TL;DR

@@ -65,12 +65,12 @@ if str(_REPO_ROOT) not in sys.path:
 # payload build, so this adds no new import weight for the live consumer.
 # ---------------------------------------------------------------------------
 from agentica_core.aggregate import (  # noqa: E402
-    _calibrate_coefficients,
+    _calibrate_coefficients,  # noqa: F401 -- re-export only, checked by test_kernel_drift.py
     _estimated_agent_time_saved,
     _estimated_cost_savings,
     _estimated_human_time_saved,
     _kill_chains_disrupted,
-    _parse_iso,
+    _parse_iso,  # noqa: F401 -- re-export only, checked by test_kernel_drift.py
     _pending_chain_proposals,
 )
 

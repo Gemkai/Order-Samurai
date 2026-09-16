@@ -60,7 +60,6 @@ class BatchDeferredMetrics(unittest.TestCase):
         b = set(batch_deferred_metrics())
         # Representative members (code-modifying, no mechanism) and non-members.
         self.assertIn("Root_Hygiene_Issues", b)
-        self.assertIn("Open_CVEs", b)              # security-adjacent but batched (user decision)
         self.assertIn("Governance_Pass_Rate", b)
         self.assertNotIn("Secrets_Detected", b)    # has secret_scrub mechanism
         self.assertNotIn("Chain_Depth_Avg", b)     # has chain_depth_audit mechanism
@@ -73,6 +72,13 @@ class BatchDeferredMetrics(unittest.TestCase):
         self.assertNotIn("Revision_Ratio", b)
         self.assertNotIn("Raw_Pending", b)
         self.assertNotIn("Wiki_Orphans", b)
+        # DEMOTE 2026-08-24 (F4, remediation-loops program): Open_CVEs was
+        # "security-adjacent but batched" until F4 found pip-safe-upgrade 0/7
+        # lifetime improved and demoted it to auto_remediable=False -- membership
+        # here requires auto_remediable first (see batch_deferred_metrics'
+        # docstring), so a non-remediable metric can't be batch-deferred either;
+        # there's no remediation left to defer.
+        self.assertNotIn("Open_CVEs", b)
 
 
 if __name__ == "__main__":

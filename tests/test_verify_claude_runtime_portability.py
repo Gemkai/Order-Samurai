@@ -83,6 +83,25 @@ class VerifyClaudeRuntimePortabilityTests(unittest.TestCase):
         row = self._labels(results)["runtime_portability.launcher-bypass"]
         self.assertEqual(row["status"], "OK")
 
+    def test_enabled_servers_allowlist_excluded_server_not_flagged(self) -> None:
+        # "rogue" carries no per-server disabled flag, but a top-level
+        # enabledServers allow-list that omits it means it is inactive per
+        # the same convention verify_claude_mcp_contract.server_is_enabled
+        # already honors -- an inactive server bypassing the launcher is not
+        # a real bypass and must not WARN.
+        self._write("settings.json", {"hooks": {}})
+        self._write("mcp.json", {
+            "enabledServers": ["svc"],
+            "mcpServers": {
+                "svc": {"command": "python3",
+                        "args": ["~/.claude/scripts/launch_mcp_server.py", "svc"]},
+                "rogue": {"command": "/usr/local/bin/some-server", "args": ["--stdio"]},
+            },
+        })
+        results = vp.run_checks(runtime_root_dir=self.sandbox)
+        row = self._labels(results)["runtime_portability.launcher-bypass"]
+        self.assertEqual(row["status"], "OK")
+
     def test_missing_runtime_root_warns(self) -> None:
         results = vp.run_checks(runtime_root_dir=self.sandbox / "absent")
         self.assertEqual(len(results), 1)

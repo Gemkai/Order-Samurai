@@ -40,9 +40,10 @@ _KILL_CHAIN_EXTRA_ROOTS: list[Path] = [
     Path(__file__).resolve().parents[1],  # Governance/ (covers all session cwds)
 ]
 
-from . import (harness_config, insights, reflexes, remediation, remediation_delta, scouts,
-               threshold_audit, verify_secrets)
+from . import (display_evidence, harness_config, insights, knowledge_metrics, operator_attention, reflexes,
+               remediation, remediation_delta, scouts, threshold_audit, verify_secrets)
 from .atomic import atomic_json_write, file_write_lock
+from .model_tiers import model_tier
 from .adapter import PlatformUnavailable, list_platforms, resolve_platform
 from .telemetry import (SCHEMA_VERSION, default_events_path, iso_week, normalize_entry,
                         parse_ts, validate_entry, validate_metric)
@@ -50,7 +51,11 @@ from .verifiers import load_verifiers, run_all
 
 _THIS = Path(__file__).resolve()
 PILLARS = ("bow", "sword", "brush", "arts")
-_SCORECARD_DIR = Path(__file__).resolve().parent.parent / "config"
+# 2026-08-25: was `parent.parent / "config"` (= Governance/config/), which holds only
+# scorecard_rubric.json — every _SCORECARDS path resolved to a nonexistent file, so
+# score_architecture() returned None and Architecture_Scorecard_Grade (weight 3.0) sat
+# permanently SIMULATED while the real configs lived one directory over.
+_SCORECARD_DIR = Path(__file__).resolve().parent.parent / "Order Samurai" / "config"
 _SCORECARDS = {
     "default": _SCORECARD_DIR / "architecture_scorecard.json" if (_SCORECARD_DIR / "architecture_scorecard.json").exists() else _SCORECARD_DIR / "claude_architecture_scorecard.json",
     "claude": _SCORECARD_DIR / "claude_architecture_scorecard.json",
@@ -392,11 +397,7 @@ def r_token_density(recs):
     tot = sum(bp.values()) + sum(lp) + sum(bc.values()) + sum(lc)
     return round(tot / succ, 1) if succ else None
 def r_model_tier_mix(recs):
-    c = Counter(r.get("model_tier") for r in recs if r.get("model_tier"))
-    if not c:
-        return None
-    n = sum(c.values())
-    return " ".join(f"{k}:{round(100 * v / n)}%" for k, v in c.most_common())
+    return build_tier_mix(recs)["sword"]["slices"]
 
 
 def _routing_tier_votes(recs) -> list[str]:
@@ -470,15 +471,66 @@ def _w_num(v) -> float:
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
 
 
+_MIX_FIELDS = ("tool_calls", "tokens_prompt", "tokens_completion", "output_words")
+
+
+def _model_usage_parts(record):
+    parts = record.get("_model_usage")
+    return [part for part in parts if isinstance(part, dict)] if isinstance(parts, list) else []
+
+
+def _tier_mix_records(recs):
+    """Collapse cumulative session snapshots; retain unattributed activity, not empty hooks.
+
+    A session that changes models uses its latest observed model. Session totals cannot
+    tell us how much work each model did, so they must not be split across guessed shares.
+    """
+    sessions = {}
+    loose = []
+    excluded = 0
+    for raw in recs:
+        if raw.get("platform") == "git":
+            continue
+        r = dict(raw)
+        r["model_tier"] = model_tier(r.get("model"), r.get("model_tier"))
+        has_model = str(r.get("model") or "").strip().lower() not in {"", "none", "unknown"}
+        if r["model_tier"] == "unknown" and not has_model and not any(
+            _w_num(r.get(f)) > 0 for f in (*_MIX_FIELDS, "total_cost", "cache_read_tokens")
+        ):
+            excluded += 1
+            continue
+        sid = _real_sid(r)
+        if not sid:
+            loose.append(r)
+            continue
+        key = (r.get("platform"), sid)
+        prev = sessions.get(key)
+        if prev is not None:
+            latest = r if str(r.get("timestamp", "")) >= str(prev.get("timestamp", "")) else prev
+            merged = dict(latest)
+            other = prev if latest is r else r
+            if latest["model_tier"] == "unknown" and not latest.get("model"):
+                merged["model_tier"] = other["model_tier"]
+                merged["model"] = other.get("model")
+            for field in _MIX_FIELDS:
+                merged[field] = max(_w_num(r.get(field)), _w_num(prev.get(field)))
+            r = merged
+        sessions[key] = r
+    return list(sessions.values()) + loose, excluded
+
+
 def _tier_mix_weighted(recs, weight_fn=None):
-    """Model-tier distribution weighted by weight_fn(record) (e.g. token spend, tool calls).
-    weight_fn=None weights each record equally (task volume). Returns 'FAST:48% ...' or None."""
     c: Counter = Counter()
     for r in recs:
-        tier = r.get("model_tier")
-        if not tier:
-            continue
-        c[tier] += 1.0 if weight_fn is None else _w_num(weight_fn(r))
+        weighted = [(r, 1.0)]
+        if weight_fn is not None:
+            parts = _model_usage_parts(r)
+            weighted = [(p, max(0, _w_num(weight_fn(p)))) for p in parts]
+            if not any(weight for _, weight in weighted):
+                weighted = [(r, max(0, _w_num(weight_fn(r))))]
+        for item, weight in weighted:
+            if weight:
+                c[model_tier(item.get("model"), item.get("model_tier"))] += weight
     n = sum(c.values())
     if not n:
         return None
@@ -486,15 +538,33 @@ def _tier_mix_weighted(recs, weight_fn=None):
 
 
 def build_tier_mix(recs) -> dict:
-    """Per-pillar model-tier mix, each weighted by a metric appropriate to that pillar.
-    Weight functions read records read-only (no mutation)."""
-    spend = lambda r: _w_num(r.get("tokens_prompt")) + _w_num(r.get("tokens_completion"))
-    return {
-        "bow":   {"backing": "Tool Calls",   "slices": _tier_mix_weighted(recs, lambda r: r.get("tool_calls"))},
-        "sword": {"backing": "Task Volume",  "slices": _tier_mix_weighted(recs, None)},
-        "brush": {"backing": "Token Spend",  "slices": _tier_mix_weighted(recs, spend)},
-        "arts":  {"backing": "Output Words", "slices": _tier_mix_weighted(recs, lambda r: r.get("output_words"))},
+    records, excluded = _tier_mix_records(recs)
+    models = defaultdict(set)
+    for r in records:
+        if r.get("model"):
+            models[r["model_tier"]].add(str(r["model"]))
+        parts = [part for part in _model_usage_parts(r) if part.get("model")]
+        for part in parts:
+            part_tier = model_tier(part.get("model"), part.get("model_tier"))
+            models[part_tier].add(str(part["model"]))
+            if r["model_tier"] == "MIXED":
+                models["MIXED"].add(str(part["model"]))
+    labels = {tier: " · ".join(sorted(names)) for tier, names in models.items()}
+    weights = {
+        "bow": ("Tool Calls", lambda r: r.get("tool_calls")),
+        "sword": ("Task Volume", None),
+        "brush": ("Token Spend", lambda r: _w_num(r.get("tokens_prompt")) + _w_num(r.get("tokens_completion"))),
+        "arts": ("Output Words", lambda r: r.get("output_words")),
     }
+    return {
+        pillar: {"backing": backing, "slices": _tier_mix_weighted(records, weight),
+                 "models": labels, "excluded_empty_records": excluded,
+                 "attribution": ("One task per session; mixed when multiple models observed"
+                                 if weight is None else "Exact per-model transcript usage")}
+        for pillar, (backing, weight) in weights.items()
+    }
+
+
 def r_revision_ratio(recs):
     observed = any(r.get("mod_type") for r in recs)
     mods = [r.get("mod_type") for r in recs if r.get("mod_type") in ("SURGICAL", "CLOBBER")]
@@ -647,6 +717,20 @@ r_retrieval_relevance = _tool_quality("Retrieval_Relevance")
 
 _CLIFF_SCAN_FILES = 60
 _CLIFF_THRESHOLD = 140_000  # absolute high-context cutoff (window-agnostic); surface fallback
+_CONTEXT_CLIFF_MEMO: tuple[float, tuple, float | None] | None = None
+_CONTEXT_CLIFF_TTL_S = 60.0
+
+
+def _file_signature(paths: list[Path]) -> tuple:
+    """Cheap change key for file-backed reducers; missing paths stay visible."""
+    parts = []
+    for path in paths:
+        try:
+            stat = path.stat()
+            parts.append((str(path), stat.st_mtime_ns, stat.st_size))
+        except OSError:
+            parts.append((str(path), None, None))
+    return tuple(parts)
 
 
 def _cliff_threshold() -> int:
@@ -668,12 +752,21 @@ def r_context_cliff_events(recs):  # noqa: ARG001
     SessionEnd telemetry lacks per-msg usage. ABSOLUTE cutoff, window-agnostic: this machine's
     models are ~1M-window (contexts reach 562k with no 1M marker), so a 70%-of-window rule would
     never fire. Returns None (-> SIMULATED) when no usage data is present."""
+    global _CONTEXT_CLIFF_MEMO
     projects_dir = Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".claude" / "projects"
     if not projects_dir.exists():
         return None
     jsonls = sorted(projects_dir.rglob("*.jsonl"), key=lambda p: p.stat().st_mtime)[-_CLIFF_SCAN_FILES:]
     threshold = _cliff_threshold()
+    signature = (threshold, _file_signature(jsonls))
+    now = time.monotonic()
+    if _CONTEXT_CLIFF_MEMO is not None:
+        stamped_at, cached_signature, cached = _CONTEXT_CLIFF_MEMO
+        if now - stamped_at < _CONTEXT_CLIFF_TTL_S and signature == cached_signature:
+            return cached
+
     scanned = cliffs = 0
+    read_failed = False
     for jl in jsonls:
         max_ctx = 0
         try:
@@ -697,6 +790,7 @@ def r_context_cliff_events(recs):  # noqa: ARG001
                             ctx += v
                     max_ctx = max(max_ctx, ctx)
         except OSError:
+            read_failed = True
             continue
         if max_ctx > 0:
             scanned += 1
@@ -706,7 +800,10 @@ def r_context_cliff_events(recs):  # noqa: ARG001
     # volume-coupled — a busy week 'failed' automatically. 100×cliffs/scanned reads
     # as 'what fraction of recent sessions ran hot'. (History rows before this date
     # are counts; the σ window flushes within ~a week.)
-    return round(100.0 * cliffs / scanned, 1) if scanned else None
+    result = round(100.0 * cliffs / scanned, 1) if scanned else None
+    if not read_failed:
+        _CONTEXT_CLIFF_MEMO = (now, signature, result)
+    return result
 
 
 def r_chain_depth_avg(recs):
@@ -767,33 +864,41 @@ def _get_prior_week_val(history_path: Path, metric_key: str,
         return None
     try:
         lines = history_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-        for line in reversed(lines):
-            if not line.strip():
-                continue
+    except OSError:
+        return None
+    for line in reversed(lines):
+        if not line.strip():
+            continue
+        # Per-line try/except (matching load_records/_load_history/populate_history):
+        # one malformed row anywhere above the wanted week must not abort the scan
+        # and hide every valid week that exists earlier in the file.
+        try:
             obj = json.loads(line)
-            # Live rows are computed over the payload's 30-day window, not one ISO
-            # week — using one as a week baseline made the savings figure swing
-            # ~2x on scheduler timing (whether backfill had pruned it yet).
-            # Weekly baselines come from kind:"weekly" (or legacy un-kinded) rows.
-            if obj.get("kind") == "live":
+        except ValueError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        # Live rows are computed over the payload's 30-day window, not one ISO
+        # week — using one as a week baseline made the savings figure swing
+        # ~2x on scheduler timing (whether backfill had pruned it yet).
+        # Weekly baselines come from kind:"weekly" (or legacy un-kinded) rows.
+        if obj.get("kind") == "live":
+            continue
+        if before_week is not None:
+            ts = _parse_iso(obj.get("ts"))
+            # zero-padded %G-W%V strings order lexicographically
+            if ts is None or ts.strftime("%G-W%V") >= before_week:
                 continue
-            if before_week is not None:
-                ts = _parse_iso(obj.get("ts"))
-                # zero-padded %G-W%V strings order lexicographically
-                if ts is None or ts.strftime("%G-W%V") >= before_week:
-                    continue
-            vals = obj.get("values", {})
-            val = vals.get(metric_key)
-            if val is not None:
-                try:
-                    if isinstance(val, str):
-                        cleaned = "".join(c for c in val if c.isdigit() or c == "." or c == "-")
-                        return float(cleaned)
-                    return float(val)
-                except Exception:
-                    pass
-    except Exception:
-        pass
+        vals = obj.get("values", {})
+        val = vals.get(metric_key)
+        if val is not None:
+            try:
+                if isinstance(val, str):
+                    cleaned = "".join(c for c in val if c.isdigit() or c == "." or c == "-")
+                    return float(cleaned)
+                return float(val)
+            except Exception:
+                pass
     return None
 
 def _calibrate_coefficients(backlog: list[dict], coef_path: Path):
@@ -960,18 +1065,37 @@ def _subagent_efficiency_index(records: list[dict]) -> float | None:
     (auto_remediable=False) — orchestration cost is a design tradeoff, not an
     auto-fixable defect."""
     from statistics import median
-    spawn_marginals: list[float] = []
-    solo_costs: list[float] = []
+    # Per-session dedup: total_cost/subagent_spawns are CUMULATIVE per-session snapshots
+    # written by the same SessionEnd emitter every other reducer in this file dedupes via
+    # _dedup_field (a resumed session re-emits the SAME session_id with growing totals on
+    # every resume — verified 6.1x/5.8x inflation, 2026-07-12 audit). Keep each session's
+    # latest (max total_cost) snapshot so a session resumed N times contributes exactly one
+    # sample to the median instead of N partial ones skewing it toward whichever session
+    # happens to resume most often. total_cost/subagent_spawns are kept paired from the
+    # SAME row (not maxed independently) since they are a single snapshot's cumulative pair.
+    best_by_sid: dict[str, dict] = {}
+    loose: list[dict] = []
     for r in records:
         c = r.get("total_cost")
         if not isinstance(c, (int, float)) or isinstance(c, bool) or c <= 0:
             continue  # zero cost = unattributed, not free (same rule as r_cost_per_task)
+        sid = _real_sid(r)
+        if sid:
+            prev = best_by_sid.get(sid)
+            if prev is None or c > prev.get("total_cost", 0):
+                best_by_sid[sid] = r
+        else:
+            loose.append(r)
+    spawn_marginals: list[float] = []
+    solo_costs: list[float] = []
+    for r in [*best_by_sid.values(), *loose]:
+        c = float(r["total_cost"])
         n = r.get("subagent_spawns")
         spawns = n if isinstance(n, (int, float)) and not isinstance(n, bool) else 0
         if spawns > 0:
-            spawn_marginals.append(float(c) / max(spawns, 1))
+            spawn_marginals.append(c / max(spawns, 1))
         else:
-            solo_costs.append(float(c))
+            solo_costs.append(c)
     if not spawn_marginals or not solo_costs:
         return None
     spawn_marginal = median(spawn_marginals)
@@ -1092,7 +1216,7 @@ def _top_usage(records: list[dict], window_days: int | None = None) -> dict:
                 seen_skill.add((sid, s))
             skill_counts[s] += 1
         for tool in (r.get("tool_calls_list") or []):
-            if tool.startswith("mcp__"):
+            if isinstance(tool, str) and tool.startswith("mcp__"):
                 parts = tool.split("__")
                 server = parts[1] if len(parts) > 1 else tool
                 label = _mcp_server_label(server)
@@ -1114,24 +1238,47 @@ def _top_usage(records: list[dict], window_days: int | None = None) -> dict:
 # Remediation actions that count as actually disrupting a chain — the single
 # source of truth for "disrupted" vs "still open" across the kill-chain reducers.
 _DISRUPT_ACTIONS = ("block", "patch", "remediat", "quarantine", "revert")
+_KILL_CHAIN_WEEK_MEMO: tuple[
+    float, tuple, tuple[frozenset, frozenset, frozenset, frozenset]
+] | None = None
+_KILL_CHAIN_WEEK_TTL_S = 60.0
 
 
-def _kill_chain_week_sets(paths: list[Path]) -> tuple[set, set, set, set]:
+def _kill_chain_week_sets(paths: list[Path], records: list[dict] | None = None) -> tuple[set, set, set, set]:
     """Distinct chain_ids with events this/last ISO week across all paths, split into
     (this_detected, last_detected, this_disrupted, last_disrupted).
     Disrupted = at least one event whose remediation_action goes beyond logging.
-    Uses sets so the same chain_id from multiple files is counted only once."""
-    now = datetime.now(timezone.utc)
+    Uses sets so the same chain_id from multiple files is counted only once.
+
+    `records` anchors "this week" via _target_week_anchor (2026-08-08 class sweep,
+    missed here originally): backfill_history.py replays one historical ISO week of
+    telemetry at a time, and a wall-clock `now` stamped every replayed week with
+    whatever the CURRENT real week's kill-chain count happened to be."""
+    global _KILL_CHAIN_WEEK_MEMO
+    now = _target_week_anchor(records if records is not None else [])
     this_week = now.strftime("%G-W%V")
     last_week = (now - timedelta(days=7)).strftime("%G-W%V")
+    signature = (this_week, last_week, _file_signature(paths))
+    now_mono = time.monotonic()
+    if _KILL_CHAIN_WEEK_MEMO is not None:
+        cached_at, cached_signature, cached = _KILL_CHAIN_WEEK_MEMO
+        if now_mono - cached_at < _KILL_CHAIN_WEEK_TTL_S and signature == cached_signature:
+            return tuple(set(items) for items in cached)
+
     this_det: set = set()
     last_det: set = set()
     this_dis: set = set()
     last_dis: set = set()
+    read_failed = False
     for path in paths:
         if not path.exists():
             continue
-        for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        try:
+            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            read_failed = True
+            continue
+        for line in lines:
             line = line.strip()
             if not line:
                 continue
@@ -1154,7 +1301,11 @@ def _kill_chain_week_sets(paths: list[Path]) -> tuple[set, set, set, set]:
                         last_dis.add(chain_id)
             except Exception:
                 continue
-    return this_det, last_det, this_dis, last_dis
+    result = (this_det, last_det, this_dis, last_dis)
+    frozen = tuple(frozenset(items) for items in result)
+    if not read_failed:
+        _KILL_CHAIN_WEEK_MEMO = (now_mono, signature, frozen)
+    return tuple(set(items) for items in frozen)
 
 
 _KC_PRUNE = {"node_modules", ".git", "__pycache__", "dist", ".venv", "venv",
@@ -1177,7 +1328,7 @@ def _kill_chain_paths(repo_root: Path) -> list[Path]:
     return list(dict.fromkeys(p.resolve() for p in paths))
 
 
-def _kill_chains_disrupted(records: list[dict], repo_root: Path | None = None) -> dict:  # noqa: ARG001
+def _kill_chains_disrupted(records: list[dict], repo_root: Path | None = None) -> dict:
     if repo_root is None:
         repo_root = _ORDER_SAMURAI_ROOT
     paths = _kill_chain_paths(repo_root)
@@ -1188,13 +1339,13 @@ def _kill_chains_disrupted(records: list[dict], repo_root: Path | None = None) -
         # (Secrets_Detected) instead of presenting a confident — possibly false — 0.
         return {"val": 0, "week_delta": 0, "calibrated": True, "data_gap": True}
     try:
-        _, _, this_dis, last_dis = _kill_chain_week_sets(paths)
+        _, _, this_dis, last_dis = _kill_chain_week_sets(paths, records)
         return {"val": len(this_dis), "week_delta": len(this_dis) - len(last_dis), "calibrated": True}
     except Exception as e:
         return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
 
 
-def _kill_chains_open(records: list[dict], repo_root: Path | None = None) -> dict:  # noqa: ARG001
+def _kill_chains_open(records: list[dict], repo_root: Path | None = None) -> dict:
     """Open exposure: chains detected this ISO week with NO disruptive event yet
     (block/patch/quarantine/revert). Graded successor of the ungraded
     Kill_Chains_Detected row (2026-07-08 audit consolidation) — the actionable
@@ -1207,7 +1358,7 @@ def _kill_chains_open(records: list[dict], repo_root: Path | None = None) -> dic
         # indistinguishable from a secure week — flag the gap
         return {"val": 0, "week_delta": 0, "calibrated": True, "data_gap": True}
     try:
-        this_det, last_det, this_dis, last_dis = _kill_chain_week_sets(paths)
+        this_det, last_det, this_dis, last_dis = _kill_chain_week_sets(paths, records)
         this_open = len(this_det - this_dis)
         last_open = len(last_det - last_dis)
         return {"val": this_open, "week_delta": this_open - last_open, "calibrated": True}
@@ -2157,76 +2308,9 @@ def _lesson_graduation_rate(records: list[dict]) -> dict:  # noqa: ARG001
     }
 
 
-_CACHE_HIT_CACHE: dict = {"t": 0.0, "v": None}
-_CACHE_HIT_SCAN_FILES = 60  # bounded recent-transcript sample (mirrors _agent_spawn_events)
-
-
-def _cache_hit_rate(records: list[dict]) -> dict:  # noqa: ARG001
-    """AUTO-009 (Cache Hit Rate): prompt-cache reuse on INPUT tokens, read directly from
-    real Claude Code session transcripts (~/.claude/projects/**/*.jsonl).
-
-    The `records` telemetry every other reducer here consumes (the SessionEnd emitter's
-    tokens_prompt/tokens_completion) never carries cache_read_input_tokens or
-    cache_creation_input_tokens — those only exist on the raw assistant message.usage
-    block inside each transcript line. So, like _agent_spawn_events, this reducer
-    ignores `records` and scans the transcripts directly, bounded to the
-    _CACHE_HIT_SCAN_FILES most recently touched session JSONLs (never the full
-    multi-hundred-file history) with a short TTL cache so repeated aggregate() calls
-    in one refresh don't re-scan.
-
-    Cache_Hit_Rate = cache_read_input_tokens
-                     / (cache_read_input_tokens + cache_creation_input_tokens + input_tokens)
-    expressed as a percentage. Cache-read input tokens are ~10x cheaper than fresh/
-    creation input tokens, so a higher rate is a direct Brush token-economics win.
-
-    Returns a data_gap envelope (never a fabricated 0%) when no transcripts or no
-    usage blocks are found in the scanned window."""
-    now = time.monotonic()
-    if (_CACHE_HIT_CACHE["v"] is not None
-            and now - _CACHE_HIT_CACHE["t"] < _SCOUT_CACHE_TTL_SEC):
-        return _CACHE_HIT_CACHE["v"]
-    projects_dir = Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".claude" / "projects"
-    if not projects_dir.exists():
-        result = {"val": None, "data_gap": True, "calibrated": True}
-        _CACHE_HIT_CACHE.update(t=now, v=result)
-        return result
-    jsonls = sorted(projects_dir.rglob("*.jsonl"), key=lambda p: p.stat().st_mtime)[-_CACHE_HIT_SCAN_FILES:]
-    read_sum = creation_sum = input_sum = 0
-    for jl in jsonls:
-        try:
-            with open(jl, encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    if '"usage"' not in line:  # cheap pre-filter before json.loads
-                        continue
-                    try:
-                        entry = json.loads(line)
-                    except Exception:
-                        continue
-                    if not isinstance(entry, dict) or entry.get("type") != "assistant":
-                        continue
-                    usage = (entry.get("message") or {}).get("usage")
-                    if not isinstance(usage, dict):
-                        continue
-                    r = usage.get("cache_read_input_tokens")
-                    c = usage.get("cache_creation_input_tokens")
-                    i = usage.get("input_tokens")
-                    if isinstance(r, (int, float)) and not isinstance(r, bool):
-                        read_sum += r
-                    if isinstance(c, (int, float)) and not isinstance(c, bool):
-                        creation_sum += c
-                    if isinstance(i, (int, float)) and not isinstance(i, bool):
-                        input_sum += i
-        except OSError:
-            continue
-    denom = read_sum + creation_sum + input_sum
-    if denom <= 0:
-        # No usage blocks in the scanned window — a genuine data gap (no transcripts
-        # instrumented yet, or none touched recently), never a fabricated 0%.
-        result = {"val": None, "data_gap": True, "calibrated": True}
-    else:
-        result = {"val": round(100 * read_sum / denom, 1), "calibrated": True}
-    _CACHE_HIT_CACHE.update(t=now, v=result)
-    return result
+def _cache_hit_rate(records: list[dict]) -> dict:
+    """Reduce only attributable records; platform/window collection happens once upstream."""
+    return knowledge_metrics.provider_rate(records, dedup=True)
 
 
 def r_skill_routing_adherence(recs):  # noqa: ARG001
@@ -2321,6 +2405,11 @@ def _dead_rule_count(records: list[dict]) -> dict:  # noqa: ARG001
         return _gap()
     if not Path(violations_file).exists():
         return _gap()
+    # cmd_retirement canonicalizes each hit's rule_id before adding it to `seen`
+    # (a rule rename maps its old id forward, e.g. LEGACY_RULE_IDS); without the
+    # same step here, a hit logged under a pre-rename id never matches the
+    # PATTERNS list's current id and the live rule reads as dead with 0 hits.
+    _canon = getattr(pa, "_canonical_rule_id", lambda rid: rid)
     cutoff = datetime.now() - timedelta(days=window_days)
     seen: set[str] = set()
     try:
@@ -2329,7 +2418,7 @@ def _dead_rule_count(records: list[dict]) -> dict:  # noqa: ARG001
                 try:
                     v = json.loads(line)
                     if datetime.fromisoformat(v["ts"]) >= cutoff:
-                        seen.add(v["rule_id"])
+                        seen.add(_canon(v["rule_id"]))
                 except Exception:
                     continue
     except OSError:
@@ -2746,7 +2835,8 @@ def derive_verifier_metrics(results: list[dict]) -> dict:
 def build_pillars(records: list[dict], *, verifier_results: list[dict] | None = None,
                   orphan_count: int | None = None, secret_fails: int | None = None,
                   security_signals: dict | None = None,
-                  knowledge_signals: dict | None = None) -> dict:
+                  knowledge_signals: dict | None = None,
+                  measurement_signals: dict | None = None) -> dict:
     pillars: dict[str, dict] = {p: {} for p in PILLARS}
     for pillar, group, key, fn, live_tier, is_pct, is_cnt in REGISTRY:
         val = fn(records) if fn else None
@@ -2760,6 +2850,19 @@ def build_pillars(records: list[dict], *, verifier_results: list[dict] | None = 
                    is_percent=is_pct, is_count=is_cnt, simulated=simulated)
         validate_metric(env)  # tier-honesty contract
         pillars[pillar].setdefault(group, {})[key] = env
+
+    if measurement_signals:
+        for key, value in measurement_signals.items():
+            if key != "Cache_Hit_Rate" and key not in knowledge_metrics.RETRIEVAL_KEYS:
+                continue
+            missing = value.get("val") is None
+            group = "Token Efficiency" if key == "Cache_Hit_Rate" else "Knowledge Retrieval"
+            _set(pillars, "brush", group, key, _env(
+                value, "SIMULATED" if missing else "AUTO", simulated=missing,
+                is_percent=key.endswith("Hit_Rate"),
+                is_count=key in {"Embedding_Cache_Hits", "Embedding_Cache_Misses",
+                                "Embedding_Cache_Errors", "Retrieval_Observations",
+                                "Retrieval_Search_Failures"}))
 
     # verifier-derived (real, AUTO) — overwrite SIMULATED placeholders where we have data.
     # Verifier_Failures consolidated into Governance_Pass_Rate (2026-07-08 audit):
@@ -2827,6 +2930,14 @@ def build_pillars(records: list[dict], *, verifier_results: list[dict] | None = 
         # and fails, because that job writes its log too. See insights.METRIC_CONFIG.
         if "scheduled_job_failures" in s:
             _set(pillars, "bow", "Autonomic", "Scheduled_Job_Failures", _env(s["scheduled_job_failures"], "AUTO", is_count=True))
+        # Static_Wiring_Orphans: find_orphans.py's static dataflow audit (see
+        # scouts.security_signals). Informational only (no dir/warn/fail in
+        # METRIC_CONFIG, same pattern as Session_Count) — the live baseline is
+        # double digits (unadjudicated, see claude-home-orphans-and-housekeeping
+        # item a), so grading this before that baseline is triaged would read
+        # permanently red. Threshold calibration deliberately left undone.
+        if "static_wiring_orphans" in s:
+            _set(pillars, "bow", "Autonomic", "Static_Wiring_Orphans", _env(s["static_wiring_orphans"], "AUTO", is_count=True))
         if "doc_parity_issues" in s:
             _set(pillars, "arts", "Docs", "Doc_Parity_Issues", _env(s["doc_parity_issues"], "AUTO", is_count=True))
         if "scorecard_grade" in s:
@@ -2948,10 +3059,54 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", s.lower())
 
 
+def _score_project_bucket(recs: list[dict], plats: Counter) -> dict:
+    """Build the has-data project-entry dict (scores/metrics/tier_mix) for a list of
+    records. Shared by real project folders and the `_meta` unmatched-tag bucket in
+    `build_project_scores` so both stay identical in shape."""
+    # Git-hook telemetry (platform="git", see _GIT_TELEMETRY above) carries presence +
+    # commit stats but no session metrics — it must feed `records`/`tier_mix` for
+    # presence detection only, never build_pillars(), or its zero-valued, no-real-
+    # session-id records get counted as individual "sessions" and inflate Session_Count
+    # while diluting Token_Execution_Density / Avg_Session_Turns.
+    telemetry_recs = [r for r in recs if r.get("platform") != "git"]
+    pillars = build_pillars(telemetry_recs)
+    scores = insights.annotate(pillars)
+    metrics: dict[str, float] = {}
+    for groups in pillars.values():
+        for group in groups.values():
+            for mk, env in group.items():
+                if env.get("is_simulated"):
+                    continue
+                n = insights._num(env.get("val"))
+                if n is not None:
+                    metrics[mk] = n
+    return {
+        "platform": plats.most_common(1)[0][0] if plats else "",
+        "records": len(recs),
+        "has_data": True,
+        # Pass rate (100 × passing/graded), not a weighted mean — decomposable
+        # count ratio per the de-aggregation doctrine (score field removed 2026-07-19).
+        "scores": {
+            k: round(100 * v["rollup"]["passing"] / v["rollup"]["graded"], 1)
+            if v["rollup"]["graded"] else 0
+            for k, v in scores.items()
+        },
+        "metrics": metrics,
+        "tier_mix": build_tier_mix(recs),
+    }
+
+
 def build_project_scores(all_records: list[dict], proj_platform: dict[str, str],
                          root: Path = _PROJECTS_ROOT) -> dict:
     """Roster the real project folders in Desktop/Projects, match each to telemetry
-    (alias or normalized name match), and return its four itemized pillar scores."""
+    (alias or normalized name match), and return its four itemized pillar scores.
+
+    Telemetry `project` tags that never match a real folder (e.g. Antigravity's
+    "HUD"/"HUB" self-reporting on its own dashboard-generation work — legitimately
+    fleet-wide, not any one project's code) used to be silently dropped, which made
+    e.g. Local_Routing_Share read 0.0 in every real project bucket even when local-
+    model work was genuinely happening under one of those tags. They're now
+    collected into an explicit `_meta` bucket instead of vanishing (2026-08-18)."""
     by_tproj: dict[str, list] = {}
     for r in all_records:
         pr = r.get("project")
@@ -2960,6 +3115,7 @@ def build_project_scores(all_records: list[dict], proj_platform: dict[str, str],
 
     folders = sorted(p.name for p in root.iterdir() if p.is_dir()) if root.exists() else []
     out: dict[str, dict] = {}
+    matched_tproj: set[str] = set()
     for f in folders:
         nf = _norm(f)
         aliases = set(_PROJECT_ALIASES.get(f, []))
@@ -2978,32 +3134,9 @@ def build_project_scores(all_records: list[dict], proj_platform: dict[str, str],
             if match:
                 recs.extend(rs)
                 plats[proj_platform.get(tp, "")] += len(rs)
+                matched_tproj.add(tp)
         if recs:
-            pillars = build_pillars(recs)
-            scores = insights.annotate(pillars)
-            metrics: dict[str, float] = {}
-            for groups in pillars.values():
-                for group in groups.values():
-                    for mk, env in group.items():
-                        if env.get("is_simulated"):
-                            continue
-                        n = insights._num(env.get("val"))
-                        if n is not None:
-                            metrics[mk] = n
-            out[f] = {
-                "platform": plats.most_common(1)[0][0] if plats else "",
-                "records": len(recs),
-                "has_data": True,
-                # Pass rate (100 × passing/graded), not a weighted mean — decomposable
-                # count ratio per the de-aggregation doctrine (score field removed 2026-07-19).
-                "scores": {
-                    k: round(100 * v["rollup"]["passing"] / v["rollup"]["graded"], 1)
-                    if v["rollup"]["graded"] else 0
-                    for k, v in scores.items()
-                },
-                "metrics": metrics,
-                "tier_mix": build_tier_mix(recs),
-            }
+            out[f] = _score_project_bucket(recs, plats)
         else:
             out[f] = {"platform": "", "records": 0, "has_data": False,
                       "scores": {"bow": 0, "sword": 0, "brush": 0, "arts": 0}, "metrics": {}}
@@ -3024,6 +3157,24 @@ def build_project_scores(all_records: list[dict], proj_platform: dict[str, str],
                 }
             except Exception:
                 pass
+
+    # Tags that never matched a real folder (e.g. "HUD"/"HUB") — surfaced as one
+    # aggregate bucket instead of silently dropped; `tags` names each source tag
+    # and its record count for traceability back to the emitter.
+    unmatched_recs: list[dict] = []
+    unmatched_plats: Counter = Counter()
+    unmatched_tags: Counter = Counter()
+    for tp, rs in by_tproj.items():
+        if tp not in matched_tproj:
+            unmatched_recs.extend(rs)
+            unmatched_plats[proj_platform.get(tp, "")] += len(rs)
+            unmatched_tags[tp] += len(rs)
+    if unmatched_recs:
+        out["_meta"] = {
+            **_score_project_bucket(unmatched_recs, unmatched_plats),
+            "is_meta": True,
+            "tags": dict(unmatched_tags),
+        }
     return out
 
 
@@ -3062,6 +3213,9 @@ _MAX_SIG = frozenset({
 def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
               window_days: int = 30,
               write_history: bool = False) -> dict:
+    collection_start = datetime.now(timezone.utc)
+    window_end = collection_start
+    window_start = window_end - timedelta(days=window_days)
     platforms = platforms if platforms is not None else list_platforms()
     # Publish this build's window for the REGISTRY reducers that cannot take it as an
     # argument (see _ACTIVE_WINDOW_DAYS). Set first, before any build_pillars() call.
@@ -3070,6 +3224,10 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
     this_week = iso_week(timestamp) if timestamp else None
     if not this_week:
         this_week = datetime.now(timezone.utc).strftime("%G-W%V")
+    # The running release may use a separate checkout but canonical live state.
+    measurement_repo = Path(os.environ.get("AGENTICA_REPO_ROOT", str(_ORDER_SAMURAI_ROOT.parents[1])))
+    measurements = knowledge_metrics.collect(measurement_repo, Path.home(), window_start,
+                                             window_end, platforms)
     per_platform: dict[str, dict] = {}
     per_platform_week: dict[str, dict] = {}   # current-week window → weekly radar
     week_counts: dict[str, int] = {}
@@ -3103,7 +3261,8 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
                 merged_sig[k] = max(merged_sig[k], v) if k in merged_sig else v
             else:
                 merged_sig[k] = merged_sig.get(k, 0) + v
-        per_platform[p] = build_pillars(recs, verifier_results=vres, security_signals=sig)
+        per_platform[p] = build_pillars(recs, verifier_results=vres, security_signals=sig,
+                                       measurement_signals=measurements["by_platform"].get(p))
         # weekly radar: telemetry windowed to the current ISO week + current security/governance
         wrecs = [r for r in recs if iso_week(r.get("timestamp", "")) == this_week]
         week_counts[p] = len(wrecs)
@@ -3125,7 +3284,7 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
     windowed = [r for r in all_records if _within_days(r.get("timestamp", ""), window_days)]
     combined = build_pillars(windowed, verifier_results=all_verifier,
                              orphan_count=orphans, secret_fails=fails, security_signals=merged_sig,
-                             knowledge_signals=ksig)
+                             knowledge_signals=ksig, measurement_signals=measurements["combined"])
     lifetime = build_pillars(all_records, verifier_results=all_verifier,
                              orphan_count=orphans, secret_fails=fails, security_signals=merged_sig,
                              knowledge_signals=ksig)
@@ -3182,12 +3341,13 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
     live_reflexes, advisory_reflexes = reflexes.build_reflexes(
         combined, category_scores, by_project)
 
-    return {
+    return display_evidence.snapshot({
         "schema_version": SCHEMA_VERSION,
         "timestamp": timestamp or "",
         "platforms": list(platforms),
         "record_counts": counts,
-        "window": {"days": window_days, "records": len(windowed)},
+        "window": {"days": window_days, "records": len(windowed),
+                   "start": window_start.isoformat(), "end": window_end.isoformat()},
         "category_scores": category_scores,
         "category_scores_lifetime": category_scores_lifetime,
         "summaries": summaries,
@@ -3209,7 +3369,13 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
         # The one legitimate composite — count + decomposed list (never a hero KPI). Built from
         # the same env["status"] the badges use, so the count can't disagree with the surfaces.
         "needs_attention": insights.needs_attention(combined),
-    }
+        # What needs a HUMAN (coverage review 2026-09-02, W6): doctor rows, fleet escalation
+        # tiers, HITL items expired without decision, auto-disabled jobs, backlog/goal SLAs —
+        # read from the same files the banner and digest read. build_safe never raises: a
+        # reader that cannot answer contributes a data_gap line, never an empty list.
+        "operator_attention": operator_attention.build_safe(
+            os_root=_ORDER_SAMURAI_ROOT, repo_root=_AGENTICA_REPO_ROOT),
+    }, window_start, window_end, collection_start)
 
 
 def default_payload_path() -> Path:

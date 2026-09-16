@@ -1,6 +1,20 @@
 """Tests for reflex_eureka helper functions and analyze() core logic."""
 import json
+import pytest
+
 from agentica_core import reflex_eureka as eur
+
+
+@pytest.fixture(autouse=True)
+def _runtime_home_under_tmp(tmp_path, monkeypatch):
+    """analyze() exports classified findings into the Claude runtime home as a
+    side-effect (the lesson pipeline globs ~/.claude/.tmp/intelligence/). Point
+    that at tmp for every test here: before this fixture the suite wrote into the
+    REAL ~/.claude of every machine that ran it, and on the public export's CI
+    runner that half-present home made doctor report a dead telemetry emitter."""
+    home = tmp_path / "claude-home"
+    monkeypatch.setenv("CLAUDE_RUNTIME_ROOT", str(home))
+    return home
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +198,7 @@ def test_analyze_skill_name_extracted_from_command(tmp_path):
     ]
     log = _write_log(tmp_path, entries)
     out = tmp_path / "findings.md"
-    result = eur.analyze(log, out)
+    eur.analyze(log, out)
     content = out.read_text()
     assert "subagent-audit" in content
 
@@ -194,3 +208,35 @@ def test_analyze_returns_summary_dict_keys(tmp_path):
     out = tmp_path / "findings.md"
     result = eur.analyze(log, out)
     assert set(result.keys()) == {"total_entries", "skill_metric_pairs", "gotchas", "rules", "context"}
+
+
+# ---------------------------------------------------------------------------
+# side-effects stay inside the runtime home (export gate, 2026-09-06)
+# ---------------------------------------------------------------------------
+
+def test_notice_only_analyze_does_not_create_the_runtime_home(tmp_path, _runtime_home_under_tmp):
+    """An analyze() with nothing to classify writes only its own out_path; it must
+    not mkdir ~/.claude/data as a side-effect (that is what left a half-present
+    home behind on every machine that ran this suite)."""
+    out = tmp_path / "findings.md"
+    eur.analyze(tmp_path / "nonexistent.jsonl", out)
+    assert out.exists()
+    assert not _runtime_home_under_tmp.exists()
+
+
+def test_classified_findings_export_under_the_runtime_root(tmp_path, _runtime_home_under_tmp):
+    """The lesson-pipeline export honours CLAUDE_RUNTIME_ROOT, so a redirected
+    home receives the export and the real ~/.claude is never touched."""
+    # Same shape as test_analyze_gotcha_classification: 0/10 improved -> GOTCHA.
+    entries = [
+        {"source": "reflex_engine", "reflex_id": "metric:arts:Slop_Density",
+         "skill": "humanizer", "improved": False, "timestamp": f"2026-01-0{i+1}T00:00:00Z"}
+        for i in range(10)
+    ]
+    log = _write_log(tmp_path, entries)
+    out = tmp_path / "findings.md"
+    result = eur.analyze(log, out)
+    assert result["gotchas"] >= 1
+    exported = list((_runtime_home_under_tmp / ".tmp" / "intelligence").glob("auto_eureka_*.md"))
+    assert len(exported) == 1
+    assert (_runtime_home_under_tmp / "data" / "auto_eureka_skills_export.json").exists()

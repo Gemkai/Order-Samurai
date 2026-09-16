@@ -105,7 +105,7 @@ export interface WIDPayload {
     completed?: number
     success_rate: number | null
     by_skill: Record<string, { applied: number; improved: number; attempted?: number }>
-    events: { metric: string; skill: string; command: string; before: number; after: number; outcome: string; used_at: string; actor?: "human" | "ronin" }[]
+    events: { metric: string; skill: string; command: string; before: number; after: number; outcome: string; used_at: string; actor?: "human" | "ronin"; kind?: string }[]
     note: string
     /** Skills that hit the loop-breaker — ran LOOP_BREAKER_LIMIT times with no improvement. */
     stuck_remediations?: StuckRemediation[]

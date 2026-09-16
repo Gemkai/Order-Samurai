@@ -260,6 +260,13 @@ class RequirementTierTests(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertIn(key, policy)
 
+    def test_the_shipped_policy_classifies_each_harness_control_plane(self) -> None:
+        policy = json.loads(
+            (REPO_ROOT / "config" / "root_hygiene_policy.json").read_text(encoding="utf-8")
+        )
+
+        self.assertTrue({".agents", ".claude", ".codex"} <= set(policy["directories"]["state"]))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,6 +11,12 @@ applies_when:
   - Machine-written state under a git-tracked `state/` directory disagrees with what the runtime believes it wrote
   - Reaching for a whole-tree `git stash` while long-lived uncommitted machine state is in the working tree
 tags: [hitl-queue, git-stash, data-loss, state-hygiene, bushido-engine, false-attribution]
+# Covered since 2026-09-02 (coverage review R2.1): doctor's shared-checkout-health family
+# FAILs on a git-tracked file under state/ modified by a machine writer and WARNs per stash
+# older than a day on the shared checkout — the two conditions this incident needed.
+covered_by:
+  - kind: doctor_family
+    id: shared-checkout-health
 ---
 
 ## Summary

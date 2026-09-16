@@ -94,7 +94,10 @@ def compute_score(scorecard: dict, repo_root: Path = REPO_ROOT) -> dict:
             status, cat_earned = "advisory_gap", 0
         else:
             achievable += weight
-            if fails:
+            if fails or missing_artifacts:
+                # A vanished requiredArtifact is a real regression, same as a
+                # verifier FAIL -- missing_artifacts must gate scoring, not
+                # just ride along in the category dict for display.
                 status, cat_earned = "blocking", 0
             elif warns:
                 status, cat_earned = "advisory_warn", weight
@@ -168,8 +171,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         scorecard = json.loads(SCORECARD_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        print(f"FAIL: cannot read scorecard at {SCORECARD_PATH}: {exc}", file=sys.stderr)
-        return 1
+        # Exit 2, not 1 (plan M3.1, audit finding S1). An unreadable scorecard means
+        # this scorer made NO measurement; reporting that as 1 tells a caller the
+        # architecture failed its own gate, which is a verdict nobody computed.
+        print(f"ERROR: cannot read scorecard at {SCORECARD_PATH}: {exc}", file=sys.stderr)
+        return 2
 
     report = compute_score(scorecard)
 

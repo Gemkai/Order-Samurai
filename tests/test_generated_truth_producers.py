@@ -256,6 +256,9 @@ class RunChecksIntegrationTest(unittest.TestCase):
         self.assertEqual(exit_code, 0)
 
     def test_missing_policy_is_single_fail(self):
+        # Plan M3.1 / audit finding S1: a verifier that cannot read its own
+        # policy made NO measurement. It reports ERROR ("could not run"), not a
+        # synthetic FAIL that reads to every consumer as a measured verdict.
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             with patch.object(
@@ -263,7 +266,7 @@ class RunChecksIntegrationTest(unittest.TestCase):
             ):
                 results = verify_generated_truth.run_checks(repo_root=tmp)
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["status"], "FAIL")
+        self.assertEqual(results[0]["status"], "ERROR")
         self.assertEqual(results[0]["detail"], "missing")
 
     def test_wrong_verifier_routing_fails(self):

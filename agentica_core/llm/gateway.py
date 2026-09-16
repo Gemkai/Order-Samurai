@@ -28,6 +28,7 @@ from agentica_core.llm.local_guards import (
     extract_message_text,
     floor_max_tokens,
 )
+from agentica_core.emit import emit as _emit_telemetry
 
 try:
     from dotenv import load_dotenv
@@ -61,6 +62,24 @@ LOCAL_MODEL = os.getenv("LOCAL_MODEL_NAME", "gemma4:4b")
 # Single home for the local-timeout rule: local_guards.LOCAL_TIMEOUT_SEC.
 OLLAMA_TIMEOUT_SEC = LOCAL_TIMEOUT_SEC  # re-export for existing importers/tests
 CLOUD_TIMEOUT_SEC = 60
+
+# Governance's own local-LLM calls carried no telemetry at all until 2026-08-19 —
+# invisible to Local_Routing_Share and every other by-project metric, even though
+# the routing itself (this file) has always worked. "governance-local" is a
+# library call path, not a coding-agent CLI harness, so it deliberately does NOT
+# fit the claude/antigravity/codex/gemini surface-matrix shape in platforms.json;
+# see that registry entry's own comment for the reasoning.
+_GOVERNANCE_TELEMETRY_PLATFORM = "governance-local"
+
+
+def _is_local_model(model: str | None) -> bool:
+    """True if `model` resolves to an Ollama call — same test the dispatch branch
+    in `generate_text` uses (bare `name:tag`, no provider prefix), kept here as
+    the one shared definition so telemetry tier-tagging can never drift from
+    actual routing behavior."""
+    if not model:
+        return False
+    return model == LOCAL_MODEL or ("/" not in model and ":" in model)
 
 # Canonical task-tier roster used by the lightweight scout/mechanism facade in
 # agentica_core.model_router. Provider execution lives in this module only; the
@@ -227,8 +246,18 @@ class LLMGateway:
         model_chain: Optional[List[str]] = None,
         return_metadata: bool = False,
         local_only: bool = False,
+        task_name: str = "generate_text",
+        project: str = "unknown",
         **kwargs,
     ) -> Any:
+        # Telemetry lives HERE, not in call_routed_llm/call_llm, deliberately: every
+        # real caller (call_routed_llm, call_llm, and every direct gateway.generate_text()
+        # caller — tools/local_ui_patch.py, Order Samurai/execution/audit_remediation_patch.py,
+        # dashboard-ui/qa/local_audit.py, agentica_core/evals/judge.py, verified 2026-08-19)
+        # funnels through this one method, so this is the only point that can actually
+        # cover all of them. task_name/project default to honest "unknown"-shaped values
+        # for the callers not yet retrofitted with real ones, same pattern as call_routed_llm.
+        _gen_start = time.time()
         provider_kwargs = dict(kwargs)
         base_tags = list(provider_kwargs.pop("tags", []))
 
@@ -365,6 +394,11 @@ class LLMGateway:
                         **provider_kwargs,
                     )
 
+                _emit_governance_telemetry(
+                    task_name=task_name, project=project, model=target_model,
+                    latency_ms=(time.time() - _gen_start) * 1000,
+                    prompt=prompt, completion=response_text,
+                )
                 if return_metadata:
                     return {
                         "text": response_text,
@@ -425,6 +459,8 @@ class LLMGateway:
             response_schema={"type": "object"} if required_json_keys else None,
             return_metadata=True,
             tags=[f"task:{task_name}", f"context:{project_context}"],
+            task_name=task_name,
+            project=project_context,
         )
         return self._parse_legacy_content(response["text"], required_json_keys)
 
@@ -553,8 +589,38 @@ class LLMGateway:
         cleaned = re.sub(r"^```json\s*", "", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"^```\s*", "", cleaned)
         cleaned = re.sub(r"\s*```$", "", cleaned).strip()
-        match = re.search(r"(\{.*\})", cleaned, re.DOTALL)
-        return match.group(1) if match else cleaned
+
+        start = cleaned.find("{")
+        if start == -1:
+            return cleaned
+
+        # Walk from the first '{' tracking brace depth (ignoring braces inside
+        # quoted strings) so we return only the first *complete* top-level
+        # JSON object -- a greedy regex here would span past it into any
+        # later brace-shaped text (e.g. "for example {...}") and produce an
+        # unparseable concatenation.
+        depth = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(cleaned)):
+            ch = cleaned[i]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == "\\":
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    return cleaned[start:i + 1]
+        return cleaned
 
     def _call_gemini(self, model: str, prompt: str, **kwargs) -> str:
         if not self.gemini_keys:
@@ -720,7 +786,17 @@ class LLMGateway:
         raise RuntimeError("OpenAI call failed without an exception payload.")
 
     def _call_openrouter(self, prompt: str, **kwargs) -> str:
-        model = self._normalize_openrouter_model(kwargs.get("model", "openrouter/auto"))
+        requested_model = kwargs.get("model", "openrouter/auto")
+        # "openrouter/auto" is OpenRouter's own auto-routing sentinel model id
+        # and must reach the API verbatim. _normalize_openrouter_model's
+        # contract (shared with _normalize_requested_model, which re-adds the
+        # "openrouter/" prefix itself) is to strip that prefix so the bare
+        # routed model name is used -- correct for e.g. "anthropic/..." but it
+        # would turn this sentinel into the meaningless bare model id "auto".
+        if requested_model.strip().lower() == "openrouter/auto":
+            model = "openrouter/auto"
+        else:
+            model = self._normalize_openrouter_model(requested_model)
         system_instruction = kwargs.get("system_instruction")
         temperature = kwargs.get("temperature", 0.0)
         fallback_index = kwargs.get("fallback_index", 0)
@@ -960,6 +1036,28 @@ class LLMGateway:
 gateway = LLMGateway()
 
 
+def _emit_governance_telemetry(*, task_name: str, project: str, model: str | None,
+                               latency_ms: float, prompt: str, completion: str | None) -> None:
+    """Fire-and-forget: append one canonical telemetry record for a completed
+    call_routed_llm() call. Never raises — a telemetry failure must not turn a
+    successful LLM call into a failed one. Token counts are a 4-chars-per-token
+    estimate (no tokenizer dependency here), matching the same estimate Antigravity's
+    own gateway uses for its `wid_pulse_gen` record (this file, line ~870 equivalent)."""
+    try:
+        _emit_telemetry(
+            _GOVERNANCE_TELEMETRY_PLATFORM,
+            task_name,
+            project=project,
+            model_tier="LOCAL" if _is_local_model(model) else "CLOUD",
+            model=model or "unknown",
+            latency_ms=latency_ms,
+            tokens_prompt=len(prompt) // 4,
+            tokens_completion=len(completion) // 4 if completion else 0,
+        )
+    except Exception:
+        pass
+
+
 def call_routed_llm(
     system: str,
     user: str,
@@ -968,6 +1066,7 @@ def call_routed_llm(
     temperature: float = 0.0,
     local_only: bool = False,
     brain: bool = False,
+    project: str = "unknown",
 ) -> Optional[str]:
     """Stable text-router contract for scouts and stateless model callers.
 
@@ -980,6 +1079,13 @@ def call_routed_llm(
     and any failure returns ``None``. Cloud mode retains the quality-first order
     Claude -> Gemini -> local Ollama -> OpenRouter, skipping providers that have
     no configured credential rather than making doomed network calls.
+
+    ``project`` names the real project/repo this call is about (e.g. "agentica_core",
+    "Order Samurai") so Local_Routing_Share and other by-project metrics can
+    attribute this call correctly. Defaults to "unknown" for the many existing
+    call sites not yet retrofitted with a real value (2026-08-19) — that default is
+    honest, not a silent guess, and shows up as its own bucket rather than being
+    misattributed to a random project.
     """
     if task not in ("classification", "analysis"):
         return None
@@ -1012,15 +1118,22 @@ def call_routed_llm(
             chain.append(ROUTED_MODELS["openrouter"][task])
 
     try:
-        result = routed.generate_text(
+        # Telemetry emission now lives inside generate_text() itself (2026-08-19),
+        # so it isn't duplicated here — just pass task_name/project through.
+        response = routed.generate_text(
             prompt=user,
             system_instruction=system,
             temperature=temperature,
             model_chain=chain,
             local_only=local_only,
             max_tokens=max_tokens,
+            return_metadata=True,
+            task_name=task,
+            project=project,
         )
-        return result if isinstance(result, str) and result.strip() else None
+        text = response.get("text") if isinstance(response, dict) else response
+        result = text if isinstance(text, str) and text.strip() else None
+        return result
     except Exception:
         return None
 

@@ -16,6 +16,11 @@ related_components:
   - "state/proposed_kill_chains.json"
   - "agentica_core model_router (local Ollama tier)"
 tags: [kill-chain, security-telemetry, local-llm, fail-closed, privacy, order-samurai]
+covered_by:
+  - kind: metric
+    id: Kill_Chains_Open
+  - kind: hook
+    id: prompt-injection-guard
 ---
 
 # Kill-chain discovery scout — local-only by construction

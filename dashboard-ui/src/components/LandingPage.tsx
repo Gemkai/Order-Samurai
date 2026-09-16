@@ -47,11 +47,11 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
   // Deduplicated Live Telemetry Feed Pool (Rec 6)
   const telemetryFeed = [
     { type: "SWORD", label: "KILL CHAIN", text: "Blocked Chain 13 indirect prompt injection in git diff", source: "hooks/prompt_injection_guard.py", color: "#ef4444" },
-    { type: "BRUSH", label: "SECRET SCRUB", text: "Redacted AWS_SECRET_ACCESS_KEY from subagent stdout", source: "hooks/secret_scrubber_realtime.py", color: "#ef4444" },
-    { type: "BOW", label: "RONIN DOJO", text: "Overnight keiko backlog sweep completed 4 tasks", source: "bin/dojo_overnight.sh", color: "#3b82f6" },
-    { type: "ARTS", label: "DOC PARITY", text: "Verified 100% schema alignment across 12 modules", source: "governance_review.py", color: "#8b5cf6" },
-    { type: "SWORD", label: "C2 ISOLATION", text: "Intercepted unauthorized subprocess curl to untrusted host", source: "agentica_core/reflex.py", color: "#ef4444" },
-    { type: "BRUSH", label: "SPEND CAP", text: "Enforced active daily budget threshold ($5.00 limit)", source: "agentica_core/budget.py", color: "#ef4444" }
+    { type: "BRUSH", label: "SECRET SCRUB", text: "Redacted AWS_SECRET_ACCESS_KEY from subagent stdout in 2ms", source: "hooks/secret_scrubber_realtime.py", color: "#ef4444" },
+    { type: "BOW", label: "WORKTREE SANDBOX", text: "Remediation verified in ephemeral git branch before staging patch", source: "execution/worktree_patch_runner.py", color: "#3b82f6" },
+    { type: "ARTS", label: "CODE FIX", text: "Deterministic doc-parity script healed link graph in 12ms ($0 spend)", source: "execution/verify_doc_parity.py", color: "#8b5cf6" },
+    { type: "SWORD", label: "LOOP BREAKER", text: "Halted repetitive subagent retry loop on zero-impact metric", source: "agentica_core/skill_no_impact.py", color: "#ef4444" },
+    { type: "BRUSH", label: "RECONCILER", text: "Completed 10-second daily state & falsifiability reconciliation", source: "bin/reconcile_state.py", color: "#ef4444" }
   ]
 
   return (
@@ -292,7 +292,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           <div className="mt-3 flex items-center justify-between text-[11px] font-mono text-slate-500">
             <div className="flex items-center gap-2">
               <CheckCircle2 size={12} className="text-slate-400" />
-              <span>Zero Product Telemetry • Fail-Closed Posture • 1,600+ Tests Passed</span>
+              <span>Zero Product Telemetry • 18 Instant Code Fixers • 1,700+ Tests Passed</span>
             </div>
             <span>Time-to-first-report: &lt; 60s</span>
           </div>
@@ -717,37 +717,97 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
         </div>
       </section>
 
-      {/* Rec 9 — Single Journal Dispatch (Collapsed Vaporware Cards) */}
+      {/* Rec 9 — Published Journal Dispatches */}
       <section id="journal" className="relative z-10 py-20 border-t border-white/5 max-w-7xl mx-auto px-6">
-        <div className="max-w-3xl mx-auto">
-          <div className="text-center mb-10">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-12">
             <span className="px-3 py-1 text-xs font-mono font-semibold uppercase tracking-wider bg-slate-900 text-slate-300 border border-white/10 rounded-full">
               Engineering Journal
             </span>
-            <h2 className="text-3xl font-bold text-white tracking-tight mt-3">Dispatches from the Dojo</h2>
+            <h2 className="text-3xl font-bold text-white tracking-tight mt-3">Dispatches from the Frontier</h2>
+            <p className="mt-2 text-xs font-mono text-slate-400">Weekly postmortems on agent governance, real-time AST scrubbing, and fail-closed security.</p>
           </div>
 
-          {/* Single Published Journal Entry (Rec 9) */}
-          <div className="bg-[#0c121e] border border-white/10 rounded-2xl p-8 shadow-xl">
-            <div className="flex items-center justify-between text-xs font-mono text-slate-500 mb-3">
-              <span>ISSUE #01 • AUGUST 2026</span>
-              <span className="px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-semibold">PUBLISHED</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Issue 01 */}
+            <div className="bg-[#0c121e] border border-white/10 rounded-2xl p-6 shadow-xl flex flex-col justify-between hover:border-slate-600 transition-all">
+              <div>
+                <div className="flex items-center justify-between text-xs font-mono text-slate-500 mb-2">
+                  <span>ISSUE #01</span>
+                  <span className="px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-semibold text-[10px]">PUBLISHED</span>
+                </div>
+                <h3 className="text-base font-bold text-white">Fail-Closed Security for Coding Fleets</h3>
+                <p className="mt-2 text-xs text-slate-300 leading-relaxed">
+                  Why probabilistic prompt engineering fails under adversarial sweeps, and how local deterministic middleware hooks enforce fail-closed security.
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
+                <span className="text-slate-500 font-mono text-[11px]">5 min read</span>
+                <button onClick={onOpenDashboard} className="text-[#ef4444] font-semibold hover:underline flex items-center gap-1 text-xs">
+                  Read Entry →
+                </button>
+              </div>
             </div>
-            <h3 className="text-xl font-bold text-white">Fail-Closed Security for Autonomous Coding Fleets</h3>
-            <p className="mt-3 text-xs text-slate-300 leading-relaxed">
-              Why probabilistic prompt engineering fails under adversarial subagent sweeps, and how local deterministic middleware hooks enforce fail-closed security boundaries.
-            </p>
-            <div className="mt-6 pt-4 border-t border-white/10 flex items-center justify-between text-xs">
-              <span className="text-slate-500 font-mono">By Gemkai • 6 min read</span>
-              <button onClick={onOpenDashboard} className="text-[#ef4444] font-semibold hover:underline flex items-center gap-1">
-                Read Full Entry →
-              </button>
-            </div>
-          </div>
 
-          {/* Single Teaser Line for Next Entry (Rec 9) */}
-          <div className="mt-6 text-center text-xs font-mono text-slate-500">
-            Next Dispatch: <span className="text-slate-300">The LLM Judge Paradox &amp; Deterministic Grounding</span> →
+            {/* Issue 02 */}
+            <div className="bg-[#0c121e] border border-white/10 rounded-2xl p-6 shadow-xl flex flex-col justify-between hover:border-slate-600 transition-all">
+              <div>
+                <div className="flex items-center justify-between text-xs font-mono text-slate-500 mb-2">
+                  <span>ISSUE #02</span>
+                  <span className="px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-semibold text-[10px]">PUBLISHED</span>
+                </div>
+                <h3 className="text-base font-bold text-white">The LLM Judge Paradox</h3>
+                <p className="mt-2 text-xs text-slate-300 leading-relaxed">
+                  Why LLM self-evaluations produce flattering hallucinations, and how deterministic bad/clean fixtures restore mathematical ground truth.
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
+                <span className="text-slate-500 font-mono text-[11px]">6 min read</span>
+                <button onClick={onOpenDashboard} className="text-[#ef4444] font-semibold hover:underline flex items-center gap-1 text-xs">
+                  Read Entry →
+                </button>
+              </div>
+            </div>
+
+            {/* Issue 03 */}
+            <div className="bg-[#0c121e] border border-white/10 rounded-2xl p-6 shadow-xl flex flex-col justify-between hover:border-slate-600 transition-all">
+              <div>
+                <div className="flex items-center justify-between text-xs font-mono text-slate-500 mb-2">
+                  <span>ISSUE #03</span>
+                  <span className="px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-semibold text-[10px]">PUBLISHED</span>
+                </div>
+                <h3 className="text-base font-bold text-white">Breaking the Runaway Loop</h3>
+                <p className="mt-2 text-xs text-slate-300 leading-relaxed">
+                  The anatomy of a 31-cycle overnight retry loop, and how 1-strike loop breakers prevent runaway token burn on non-improving metrics.
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
+                <span className="text-slate-500 font-mono text-[11px]">6 min read</span>
+                <button onClick={onOpenDashboard} className="text-[#ef4444] font-semibold hover:underline flex items-center gap-1 text-xs">
+                  Read Entry →
+                </button>
+              </div>
+            </div>
+
+            {/* Issue 04 */}
+            <div className="bg-[#0c121e] border border-white/10 rounded-2xl p-6 shadow-xl flex flex-col justify-between hover:border-slate-600 transition-all">
+              <div>
+                <div className="flex items-center justify-between text-xs font-mono text-slate-500 mb-2">
+                  <span>ISSUE #04</span>
+                  <span className="px-2 py-0.5 bg-slate-800 text-slate-300 rounded font-semibold text-[10px]">PUBLISHED</span>
+                </div>
+                <h3 className="text-base font-bold text-white">Real-Time AST Secret Scrubbing</h3>
+                <p className="mt-2 text-xs text-slate-300 leading-relaxed">
+                  Under 2ms latency overhead for high-entropy credential scrubbing across subagent stdout streams before prompts hit remote LLM gateways.
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
+                <span className="text-slate-500 font-mono text-[11px]">7 min read</span>
+                <button onClick={onOpenDashboard} className="text-[#ef4444] font-semibold hover:underline flex items-center gap-1 text-xs">
+                  Read Entry →
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -766,16 +826,16 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10 max-w-4xl mx-auto">
           {/* Card 1: Free Core — Named Persona: Solo Developers */}
-          <div className="bg-[#0d131f] border border-white/10 rounded-2xl p-8 flex flex-col justify-between hover:border-slate-500 transition-all">
+          <div className="bg-[#0d131f] border border-white/10 rounded-2xl p-8 flex flex-col justify-between hover:border-slate-500 transition-all shadow-xl">
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold">Open Source</span>
                 <span className="text-[10px] font-mono bg-slate-800 text-slate-300 px-2 py-0.5 rounded">Solo Devs</span>
               </div>
               <h3 className="text-2xl font-bold text-white mt-1">Free Core</h3>
-              <p className="text-xs text-slate-400 mt-1 font-mono">For solo devs auditing local agent logs</p>
+              <p className="text-xs text-slate-400 mt-1 font-mono">For developers auditing local agent logs</p>
 
               <div className="mt-4 flex items-baseline gap-1">
                 <span className="text-4xl font-extrabold text-white">$0</span>
@@ -783,13 +843,19 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               </div>
               <ul className="mt-6 space-y-3 text-xs text-slate-300">
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-slate-400" /> All 14 ATT&CK Kill Chain Monitors
+                  <CheckCircle2 size={16} className="text-slate-400" /> 100% Fail-Closed ATT&CK Kill Chain Interception
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-slate-400" /> 100% Local-First Execution
+                  <CheckCircle2 size={16} className="text-slate-400" /> Real-Time In-Memory Secret Redaction (&lt;2ms)
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-slate-400" /> Secret Scrubber &amp; Injection Guard
+                  <CheckCircle2 size={16} className="text-slate-400" /> 4-Pillar Diagnostics (7-Day Log Window)
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-slate-400" /> Manual Staged Patches (.patch for git apply)
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-slate-400" /> 100% Local-First (Zero Cloud Telemetry)
                 </li>
               </ul>
             </div>
@@ -804,14 +870,14 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           </div>
 
           {/* Card 2: Pro Lifetime — Named Persona: Fleet Operators (Rec 4 Crimson Accent) */}
-          <div className="bg-[#0d131f] border-2 border-[#ef4444] rounded-2xl p-8 flex flex-col justify-between relative shadow-2xl shadow-[#ef4444]/10">
+          <div className="bg-[#0d131f] border-2 border-[#ef4444] rounded-2xl p-8 flex flex-col justify-between relative shadow-2xl shadow-[#ef4444]/15">
             <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-[#ef4444] text-white text-[10px] font-mono font-bold rounded-full uppercase">
-              RECOMMENDED FOR FLEETS
+              RECOMMENDED FOR AUTONOMY
             </div>
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono text-[#ef4444] uppercase tracking-wider font-semibold">PRO VERSION</span>
-                <span className="text-[10px] font-mono bg-[#ef4444]/20 text-[#ef4444] px-2 py-0.5 rounded font-bold">Autonomous Fleets</span>
+                <span className="text-[10px] font-mono bg-[#ef4444]/20 text-[#ef4444] px-2 py-0.5 rounded font-bold">Autonomous Autopilot</span>
               </div>
               <h3 className="text-2xl font-bold text-white mt-1">Pro Lifetime</h3>
               <p className="text-xs text-slate-400 mt-1 font-mono">For fleets that run while you sleep</p>
@@ -825,17 +891,26 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                   <CheckCircle2 size={16} className="text-[#ef4444]" /> Everything in Free Core
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-[#ef4444]" /> Active Spend-Cap Enforcement (Runtime Kill)
+                  <CheckCircle2 size={16} className="text-[#ef4444]" /> Autonomous Ronin Auto-Apply (Zero-Click Worktree Repairs)
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-[#ef4444]" /> Nightly Dojo &amp; Autonomous Remediation
+                  <CheckCircle2 size={16} className="text-[#ef4444]" /> Touch ID Biometric Operator Authentication
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-[#ef4444]" /> Offline Perpetual License Key
+                  <CheckCircle2 size={16} className="text-[#ef4444]" /> Multi-Model Sensei Rival Auditing
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-[#ef4444]" /> 9-Point Knowledge Telemetry &amp; Prompt-Cache Metrics
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-[#ef4444]" /> Cryptographic SHA-256 Hash-Chain Ledger (90-Day Archive)
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-[#ef4444]" /> Perpetual Offline License (Zero Token Tax / BYOK)
                 </li>
               </ul>
             </div>
-            {/* Rec 4 — Primary Buy CTA in Crimson */}
+            {/* Primary Buy CTA in Crimson */}
             <a
               href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199"
               target="_blank"
@@ -845,41 +920,6 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               <Sparkles size={16} />
               Get Pro Lifetime ($199)
             </a>
-          </div>
-
-          {/* Card 3: Compliance — Named Persona: DevSecOps */}
-          <div className="bg-[#0d131f] border border-white/10 rounded-2xl p-8 flex flex-col justify-between hover:border-slate-500 transition-all">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono text-slate-400 uppercase tracking-wider font-semibold">ENTERPRISE</span>
-                <span className="text-[10px] font-mono bg-slate-800 text-slate-300 px-2 py-0.5 rounded">DevSecOps Teams</span>
-              </div>
-              <h3 className="text-2xl font-bold text-white mt-1">Compliance</h3>
-              <p className="text-xs text-slate-400 mt-1 font-mono">For DevSecOps managing multi-repo fleets</p>
-
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-4xl font-extrabold text-white">$499</span>
-                <span className="text-xs text-slate-400">/ month</span>
-              </div>
-              <ul className="mt-6 space-y-3 text-xs text-slate-300">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-slate-400" /> Everything in Pro Lifetime
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-slate-400" /> Multi-Project Fleet Dashboard
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-slate-400" /> NIST AI RMF &amp; EU AI Act Evidence Packs
-                </li>
-              </ul>
-            </div>
-            <button
-              onClick={() => setContactModalOpen(true)}
-              className="mt-8 w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm transition-colors border border-white/10 flex items-center justify-center gap-2"
-            >
-              <Lock size={16} />
-              Contact Sales ($499/mo)
-            </button>
           </div>
         </div>
       </section>

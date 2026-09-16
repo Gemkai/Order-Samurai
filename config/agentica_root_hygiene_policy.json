@@ -1,7 +1,7 @@
 {
  "version": 1,
  "name": "Agentica-OS Repo Root Hygiene Policy",
- "description": "Classifies every allowed top-level entry of the AgenticaOS repo root. Anything unclassified surfaces as a WARN in doctor.py (verify_agentica_root_hygiene). File entries may use glob patterns: HANDOFF*.md covers both the plain root HANDOFF.md and the HANDOFF-<workstream>.md form. That pattern read HANDOFF-*.md until 2026-07-29 and so required a hyphen, leaving the ordinary HANDOFF.md permanently unclassified — a standing WARN that pushed the live count above the meditation cycle's A-prime baseline and halted the cycle before it could work any backlog item.",
+ "description": "Classifies every allowed top-level entry of the AgenticaOS repo root. Anything unclassified surfaces as a WARN in doctor.py (verify_agentica_root_hygiene). File entries may use glob patterns: HANDOFF*.md covers both the plain root HANDOFF.md and the HANDOFF-<workstream>.md form. That pattern read HANDOFF-*.md until 2026-07-29 and so required a hyphen, leaving the ordinary HANDOFF.md permanently unclassified \u2014 a standing WARN that pushed the live count above the meditation cycle's A-prime baseline and halted the cycle before it could work any backlog item. 2026-09-02: classified seven entries that had accumulated as standing WARNs since the policy was last touched \u2014 .factory (container-pilot Dockerfile + env allowlist), .githooks (tracked hooks), wargames/ + LEDGER.md (wargame drafts and their ledger), .gitattributes, ruff.toml (the 2026-08-16 lint gate) and .ruff_cache.",
  "directories": {
   "live": [
    "Apps",
@@ -11,14 +11,17 @@
    "Knowledge"
   ],
   "support": [
+   ".factory",
    "docs",
-   "sub-bundles"
+   "sub-bundles",
+   "wargames"
   ],
   "state": [
    ".audit-state",
    ".claude",
    ".planning",
    ".pytest_cache",
+   ".ruff_cache",
    ".tmp",
    "scratch"
   ],
@@ -27,30 +30,34 @@
   ],
   "metadata": [
    ".git",
+   ".githooks",
    ".github"
   ]
  },
  "files": {
   "metadata": [
    ".DS_Store",
+   ".gitattributes",
    ".gitignore",
    ".gitmodules",
    "AGENTS.md",
    "CLAUDE.md",
+   "DASHBOARD.md",
    "PROJECT_FACTS.md",
    "README.md",
-   "SHARED_NOTES.md",
-   "DASHBOARD.md"
+   "SHARED_NOTES.md"
   ],
   "state": [
    ".quality_register.md",
-   "STATE.md",
-   "HANDOFF*.md"
+   "HANDOFF*.md",
+   "LEDGER.md",
+   "STATE.md"
   ],
   "support": [
    "bootstrap-mac.sh",
    "install_gemma4_models.sh",
-   "requirements-dev.txt"
+   "requirements-dev.txt",
+   "ruff.toml"
   ]
  },
  "requiredDirectories": [

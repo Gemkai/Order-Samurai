@@ -370,71 +370,54 @@ class TestCacheHitRate:
     def teardown_method(self):
         agg._CACHE_HIT_CACHE.update(t=0.0, v=None)
 
-    def test_missing_projects_dir_returns_data_gap_not_fake_zero(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    def test_records_without_valid_usage_returns_data_gap(self):
         result = agg._cache_hit_rate([])
         assert result["val"] is None
         assert result["data_gap"] is True
         assert result["calibrated"] is True
 
-    def test_projects_dir_with_no_usage_blocks_returns_data_gap(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("USERPROFILE", str(tmp_path))
-        projects_dir = tmp_path / ".claude" / "projects"
-        _write_transcript(projects_dir, "s1.jsonl", [{"type": "user", "message": {}}])
-        result = agg._cache_hit_rate([])
-        assert result["val"] is None
-        assert result["data_gap"] is True
-
-    def test_computes_real_percentage_from_usage_blocks(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("USERPROFILE", str(tmp_path))
-        projects_dir = tmp_path / ".claude" / "projects"
-        _write_transcript(projects_dir, "s1.jsonl", [
-            _usage_line(input_tokens=2, cache_creation=100, cache_read=900, output_tokens=5),
+    def test_distinct_sessions_are_aggregated_by_max_cumulative_tokens(self):
+        # The reducer is now fed normalized native records, so each session's cumulative
+        # buckets are deduplicated by (platform, session_id) before aggregation.
+        result = agg._cache_hit_rate([
+            {"platform": "claude", "session_id": "s1", "tokens_prompt": 120, "cache_read_tokens": 10,
+             "cache_creation_tokens": 30},
+            {"platform": "claude", "session_id": "s1", "tokens_prompt": 200, "cache_read_tokens": 5,
+             "cache_creation_tokens": 60},
+            {"platform": "claude", "session_id": "s2", "tokens_prompt": 30, "cache_read_tokens": 10,
+             "cache_creation_tokens": 0},
+            {"platform": "codex", "session_id": "c1", "tokens_prompt": 120, "cache_read_tokens": 20,
+             "cache_creation_tokens": 60},
         ])
-        result = agg._cache_hit_rate([])
-        # 900 / (900 + 100 + 2) = 89.8%
-        assert result["val"] == pytest.approx(89.8, abs=0.05)
-        assert result["calibrated"] is True
-        assert "data_gap" not in result
+        # s1 uses the second cumulative row (read=5, creation=60, prompt=200), not row 1.
+        # Numerator: 5 + 10 + 10 + 20 = 45
+        # Denominator: (5+60+200) + (30+0+10) + (20+60+120) = 425
+        # Rate = 45/425 = 10.6%
+        assert result["val"] == pytest.approx(10.6, abs=0.1)
 
-    def test_sums_across_multiple_lines_and_files(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("USERPROFILE", str(tmp_path))
-        projects_dir = tmp_path / ".claude" / "projects"
-        _write_transcript(projects_dir, "s1.jsonl", [
-            _usage_line(input_tokens=0, cache_creation=0, cache_read=100),
-            _usage_line(input_tokens=0, cache_creation=100, cache_read=0),
+    def test_ignores_invalid_negative_or_bool_fields(self):
+        result = agg._cache_hit_rate([
+            {"platform": "claude", "session_id": "s1", "tokens_prompt": True, "cache_read_tokens": 1,
+             "cache_creation_tokens": 1},
+            {"platform": "codex", "session_id": "s1", "tokens_prompt": -5, "cache_read_tokens": 2,
+             "cache_creation_tokens": 3},
+            {"platform": "codex", "session_id": "s2", "tokens_prompt": 100, "cache_read_tokens": float("nan"),
+             "cache_creation_tokens": 5},
+            {"platform": "claude", "session_id": "s3", "tokens_prompt": 100, "cache_read_tokens": 10,
+             "cache_creation_tokens": 0},
         ])
-        result = agg._cache_hit_rate([])
-        # 100 / (100 + 100 + 0) = 50%
-        assert result["val"] == pytest.approx(50.0, abs=0.05)
+        # Only the final row contributes: 10 / (100 + 10 + 0) = 9.1%
+        assert result["val"] == pytest.approx(9.1, abs=0.1)
 
-    def test_ignores_non_assistant_and_malformed_lines(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("USERPROFILE", str(tmp_path))
-        projects_dir = tmp_path / ".claude" / "projects"
-        proj = projects_dir / "proj1"
-        proj.mkdir(parents=True)
-        path = proj / "s1.jsonl"
-        good = json.dumps(_usage_line(input_tokens=1, cache_creation=0, cache_read=99))
-        user_line = json.dumps({"type": "user", "message": {"usage": {"cache_read_input_tokens": 99999}}})
-        path.write_text(good + "\n" + user_line + "\nnot valid json\n", encoding="utf-8")
-        result = agg._cache_hit_rate([])
-        # Only the assistant line's usage counts — the user line's inflated
-        # cache_read_input_tokens must NOT leak in, and the garbage line must not crash it.
-        assert result["val"] == pytest.approx(99.0, abs=0.05)
+    def test_ignores_records_argument_entirely_and_only_uses_provided_records(self):
+        # Regression: previous behavior scanned transcripts regardless of records.
+        # With explicit rows, the result must follow those rows only.
+        result = agg._cache_hit_rate([{"platform": "codex", "session_id": "s1",
+                                       "tokens_prompt": 10, "cache_creation_tokens": 40,
+                                       "cache_read_tokens": 20}])
+        assert result["val"] == pytest.approx(28.6, abs=0.1)
 
-    def test_ignores_records_argument_entirely(self, tmp_path, monkeypatch):
-        # The reducer signature accepts `records` (REGISTRY calls fn(records) uniformly)
-        # but this metric's real source is the transcript files, not telemetry records.
-        monkeypatch.setenv("USERPROFILE", str(tmp_path))
-        projects_dir = tmp_path / ".claude" / "projects"
-        _write_transcript(projects_dir, "s1.jsonl", [
-            _usage_line(input_tokens=1, cache_creation=0, cache_read=9),
-        ])
-        fake_records = [{"total_cost": 999.0, "model_tier": "CLOUD"}] * 50
-        result = agg._cache_hit_rate(fake_records)
-        assert result["val"] == pytest.approx(90.0, abs=0.05)
-
-    def test_registered_in_registry_under_brush_as_auto_percent(self):
+    def test_cached_hit_rate_is_registered_in_registry_under_brush_as_auto_percent(self):
         entry = next((e for e in agg.REGISTRY if e[2] == "Cache_Hit_Rate"), None)
         assert entry is not None, "Cache_Hit_Rate must be registered in aggregate.REGISTRY"
         pillar, group, key, reducer, tier, is_percent, is_count = entry
@@ -444,17 +427,15 @@ class TestCacheHitRate:
         assert is_count is False
         assert reducer is agg._cache_hit_rate
 
-    def test_build_pillars_reports_live_not_simulated(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("USERPROFILE", str(tmp_path))
-        projects_dir = tmp_path / ".claude" / "projects"
-        _write_transcript(projects_dir, "s1.jsonl", [
-            _usage_line(input_tokens=1, cache_creation=1, cache_read=98),
+    def test_build_pillars_reports_live_not_simulated_when_records_present(self):
+        pillars = agg.build_pillars([
+            {"platform": "claude", "session_id": "s1", "tokens_prompt": 5,
+             "cache_creation_tokens": 5, "cache_read_tokens": 1}
         ])
-        pillars = agg.build_pillars([])
         env = pillars["brush"]["Token Efficiency"]["Cache_Hit_Rate"]
         assert env["is_simulated"] is False
         assert env["tier"] == "AUTO"
-        assert env["val"] != "—"  # not the "—" no-data placeholder
+        assert env["val"] != "—"  # not the "—" placeholder
 
 
 def _exec_line(reflex_id, ts, improved):

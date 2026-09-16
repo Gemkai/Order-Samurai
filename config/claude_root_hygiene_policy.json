@@ -233,6 +233,11 @@
         {
           "path": "scripts/proposed_invariant_fixes.md",
           "reason": "Design note (2026-07-17) that diagnosed the retention_reaper coupling as an intentional bridge and prescribed allowlisting it — the antigravity strings are quoted evidence in prose, not runtime code. Documentation of the boundary decision, not a violation of it."
+        },
+        {
+          "path": "skills/cross-pollinate/SKILL.md",
+          "skill": "cross-pollinate",
+          "reason": "The skill's declared SUBJECT is the comparison between the two runtimes — its description opens 'Comparative analysis and improvement pipeline for Claude Code (~/.claude/) vs Antigravity (~/.gemini/antigravity/)', and the 15 antigravity references are the files it must read to score the other system. Scrubbing them to a placeholder would not remove a coupling, it would delete the skill's purpose. Same class as scripts/verify_claude_home.py: the string IS the subject, not drift. Promoted 2026-04 in e7aff387; this reference zeroed the runtime_coupling_boundaries category and held the Claude architecture score at 90/100 with doctor FAIL=1 from 2026-08-23 (audit 2026-09-01 finding B2). Decision D1 of docs/plans/2026-09-01-production-readiness-v2-plan.md, allowlist branch."
         }
       ],
       "description": "Live Claude runtime surfaces must not reference Antigravity-owned paths (except allowlisted intentional/documented references)."

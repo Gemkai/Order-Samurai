@@ -17,10 +17,13 @@
    "harness",
    "prompts",
    "reports",
+   "schema",
    "soji",
-   "tests"
+   "tests",
+   "tools"
   ],
   "state": [
+   ".agents",
    ".claude",
    ".codex",
    ".mex",
@@ -29,6 +32,7 @@
    ".ruff_cache",
    ".tmp",
    "artifacts",
+   "data",
    "state"
   ],
   "metadata": [
@@ -46,6 +50,7 @@
  "files": {
   "metadata": [
    ".DS_Store",
+   ".export-withdrawn",
    ".gitignore",
    ".quality_register.md",
    "CLAUDE.md",
@@ -64,6 +69,7 @@
   ],
   "support": [
    "meditation.env",
+   "meditation.env.example",
    "pyproject.toml",
    "research_insights.md"
   ]

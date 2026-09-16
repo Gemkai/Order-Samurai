@@ -313,7 +313,7 @@ def run_checks(
     if scorecard_payload is None:
         scorecard_payload, error = _load_json(SCORECARD_PATH)
         if error:
-            return [_make_result("FAIL", "claude_architecture_scorecard.json", error)]
+            return [_make_result("ERROR", "claude_architecture_scorecard.json", error)]
     report = compute_score(scorecard_payload or {}, repo_root)
     return results_from_report(report)
 
@@ -321,7 +321,7 @@ def run_checks(
 def main() -> int:
     scorecard_payload, error = _load_json(SCORECARD_PATH)
     if error:
-        results = [_make_result("FAIL", "claude_architecture_scorecard.json", error)]
+        results = [_make_result("ERROR", "claude_architecture_scorecard.json", error)]
     else:
         report = compute_score(scorecard_payload or {})
         json_path, md_path = write_artifacts(report)

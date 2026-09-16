@@ -7,6 +7,7 @@ the grant/revoke/list surface is legible (nothing silent, nothing black-box).
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import sys
 from pathlib import Path
@@ -43,6 +44,10 @@ def _pull_only_semantics(monkeypatch):
 @pytest.fixture()
 def tmp_repo(tmp_path):
     (tmp_path / "state").mkdir()
+    (tmp_path / "state" / "budget_ledger.json").write_text(json.dumps({
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "spent_usd": 0, "daily_limit_usd": 5,
+    }))
     (tmp_path / "state" / "hitl_queue.json").write_text(
         json.dumps({"schema_version": 1, "items": [], "created_at": "x", "updated_at": "x"}),
         encoding="utf-8",

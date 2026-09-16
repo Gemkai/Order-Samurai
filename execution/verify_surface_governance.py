@@ -82,7 +82,7 @@ def run_checks(repo_root: Path = REPO_ROOT) -> list[dict[str, str]]:
 
     policy_payload, policy_error = _load_json(ANTI_SPRAWL_POLICY_PATH)
     if policy_error:
-        results.append(_make_result("FAIL", "anti_sprawl_policy.json", policy_error))
+        results.append(_make_result("ERROR", "anti_sprawl_policy.json", policy_error))
         return results
 
     rule = find_surface_governance_rule(policy_payload or {})

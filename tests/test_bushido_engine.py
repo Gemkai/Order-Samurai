@@ -7,7 +7,6 @@ skill_to_work_item metadata lookup.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -33,6 +32,7 @@ from agentica_core.bushido_engine import (  # noqa: E402
     enqueue_hitl,
     load_skill_metadata,
     mark_complete,
+    raise_hitl,
     reconcile_stale_executing,
     resolve_ceiling,
     resolve_role_binding,
@@ -100,9 +100,9 @@ def test_ronin_mode_collapses_queue_to_auto():
     assert compute_tier(wi, ronin_mode=True) == Tier.AUTO
 
 
-def test_ronin_mode_collapses_hitl_to_auto():
+def test_ronin_mode_preserves_hitl():
     wi = WorkItem(blast_radius=BlastRadius.CONFINED, reversible=False)
-    assert compute_tier(wi, ronin_mode=True) == Tier.AUTO
+    assert compute_tier(wi, ronin_mode=True) == Tier.HITL
 
 
 def test_ronin_mode_does_not_lift_hard_stop():
@@ -119,6 +119,10 @@ def test_ronin_mode_does_not_lift_hard_stop():
 def tmp_repo(tmp_path):
     """Build a repo-shaped tmp_path with empty state/."""
     (tmp_path / "state").mkdir()
+    (tmp_path / "state" / "budget_ledger.json").write_text(json.dumps({
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "spent_usd": 0, "daily_limit_usd": 5,
+    }))
     (tmp_path / "state" / "hitl_queue.json").write_text(
         json.dumps({"schema_version": 1, "items": [], "created_at": "x", "updated_at": "x"}),
         encoding="utf-8",
@@ -152,12 +156,84 @@ def test_enqueue_distinguishes_by_pillar(tmp_repo):
     assert id_a != id_b
 
 
+def test_enqueue_hitl_recovers_from_non_list_items(tmp_repo):
+    """A malformed queue (`items` present but not a list) must not crash the one
+    function whose job is to record a new escalation -- every sibling queue
+    mutator (mark_complete, reconcile_stale_executing/approved, _consume_approval)
+    guards `isinstance(items, list)` and degrades gracefully; enqueue_hitl read the
+    field through `_load_queue()`'s `setdefault` (a no-op when the key already
+    exists) with no such guard, so `items = data["items"]` handed it a bare string
+    and `for item in items: item.get(...)` raised AttributeError on the first
+    character."""
+    queue_path = tmp_repo / "state" / "hitl_queue.json"
+    queue_path.write_text(json.dumps({
+        "schema_version": 1, "items": "not-a-list",
+        "created_at": "x", "updated_at": "x",
+    }))
+
+    wi = WorkItem(
+        skill="simplify", source="reflex", pillar="arts",
+        blast_radius=BlastRadius.REPO, reversible=True,
+        metric_id="metric:arts:Simplify_Age",
+    )
+    qid = enqueue_hitl(wi, Tier.QUEUE, tmp_repo)
+    assert qid
+
+    data = json.loads(queue_path.read_text())
+    assert isinstance(data["items"], list)
+    pending = [i for i in data["items"] if i.get("status") == "pending"]
+    assert len(pending) == 1
+    assert pending[0]["id"] == qid
+
+
+# ── raise_hitl — shared plumbing for dispatcher.py/merge_lane.py/publish.py ────
+
+def test_raise_hitl_same_backlog_id_is_idempotent(tmp_repo):
+    def _raise():
+        return raise_hitl(
+            skill="publish", source="marketing", command="publish.py live (piece p1)",
+            blast_radius=BlastRadius.IRREVERSIBLE, reversible=False,
+            backlog_id="piece-p1", context="user declined at the confirmation prompt",
+            repo_root=tmp_repo,
+        )
+    id1 = _raise()
+    id2 = _raise()
+    assert id1 == id2
+
+    data = json.loads((tmp_repo / "state" / "hitl_queue.json").read_text())
+    pending = [i for i in data["items"] if i.get("status") == "pending"]
+    assert len(pending) == 1
+
+
+def test_raise_hitl_different_backlog_id_enqueues_two_items(tmp_repo):
+    """R4 in miniature: the exact defect shape that bit every pre-consolidation
+    caller — a second escalation for a DIFFERENT item silently swallowed because
+    the approval key collided (a constant/shared backlog_id)."""
+    id_a = raise_hitl(
+        skill="merge-lane", source="factory", command="merge_lane.py --branch feat/a",
+        blast_radius=BlastRadius.REPO, reversible=True, pillar="sword",
+        backlog_id="feat/a", context="gates green; phase 0 needs approval",
+        repo_root=tmp_repo,
+    )
+    id_b = raise_hitl(
+        skill="merge-lane", source="factory", command="merge_lane.py --branch feat/b",
+        blast_radius=BlastRadius.REPO, reversible=True, pillar="sword",
+        backlog_id="feat/b", context="gates green; phase 0 needs approval",
+        repo_root=tmp_repo,
+    )
+    assert id_a != id_b
+
+    data = json.loads((tmp_repo / "state" / "hitl_queue.json").read_text())
+    pending = {i["backlog_id"] for i in data["items"] if i.get("status") == "pending"}
+    assert pending == {"feat/a", "feat/b"}
+
+
 # ── consume-on-check (R2 + R4) ────────────────────────────────────────────────
 
 def test_consume_approval_returns_auto(tmp_repo):
     """Manually inject an `approved` item; decide() consumes it and returns AUTO."""
     wi = WorkItem(
-        skill="simplify", source="reflex", pillar="arts",
+        skill="simplify", source="reflex", pillar="arts", command="/simplify",
         blast_radius=BlastRadius.REPO, reversible=True,
         metric_id="metric:arts:Simplify_Age",
     )
@@ -304,12 +380,12 @@ def test_skill_to_work_item_uses_metadata(tmp_repo_with_tiers):
     assert wi.reversible is True
 
 
-def test_skill_to_work_item_unknown_defaults_to_queue(tmp_repo_with_tiers):
+def test_skill_to_work_item_unknown_needs_owner(tmp_repo_with_tiers):
     wi = skill_to_work_item("does-not-exist-anywhere", source="reflex", repo_root=tmp_repo_with_tiers)
     assert wi.blast_radius == BlastRadius.REPO
     assert wi.reversible is True
-    # Maps to QUEUE
-    assert compute_tier(wi) == Tier.QUEUE
+    # Unknown authority needs classification before execution.
+    assert compute_tier(wi) == Tier.HITL
 
 
 def test_load_skill_metadata_missing_returns_empty(tmp_path):
@@ -411,8 +487,7 @@ def test_zero_daily_limit_freezes_spending(tmp_repo):
     assert qid is None
 
 
-def test_budget_on_different_date_is_not_over(tmp_repo):
-    # ledger date is yesterday — treat as fresh day, not over
+def test_budget_on_different_date_blocks_execution(tmp_repo):
     (tmp_repo / "state" / "budget_ledger.json").write_text(json.dumps({
         "date": "2020-01-01",
         "spent_usd": 100.0,
@@ -423,7 +498,7 @@ def test_budget_on_different_date_is_not_over(tmp_repo):
         blast_radius=BlastRadius.CONFINED, reversible=True,
     )
     tier, _ = decide(wi, tmp_repo)
-    assert tier == Tier.AUTO
+    assert tier == Tier.HARD_STOP
 
 
 @pytest.mark.parametrize("payload", [
@@ -676,10 +751,10 @@ def test_ronin_pillar_resolves_to_auto():
 
 
 def test_override_does_not_widen_untabled_skills():
-    """No override present → matrix default (QUEUE), unchanged."""
+    """An untabled skill requires an owner classification."""
     wi = skill_to_work_item("no-such-skill-anywhere", source="reflex", repo_root=_REPO)
     assert wi.approval_tier is None
-    assert compute_tier(wi) == Tier.QUEUE
+    assert compute_tier(wi) == Tier.HITL
 
 
 @pytest.mark.parametrize("blast,reversible", [

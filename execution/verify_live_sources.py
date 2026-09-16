@@ -134,7 +134,8 @@ def _live_metric_names(payload: dict) -> set[str]:
 
 
 def check_payload_sources(payload: dict, registry: list[dict],
-                          repo_root: Path) -> list[dict[str, str]]:
+                          repo_root: Path,
+                          standalone: bool | None = None) -> list[dict[str, str]]:
     """The pure check: given a payload and the registry, judge every LIVE metric.
 
     Extracted from run_checks() (M6.1) so the contract is testable without any
@@ -160,6 +161,20 @@ def check_payload_sources(payload: dict, registry: list[dict],
             offenders.append(f"{metric_name} (source unresolved: {', '.join(missing)})")
 
     if offenders:
+        # A standalone distribution ships an empty state/ by design, so a LIVE metric
+        # whose source is a runtime file has "no source yet", not a broken declaration.
+        # FAILing there reports the export's own policy back as a defect (audit B3);
+        # in an Agentica checkout the same condition is the real defect this gate exists
+        # for, so only the STATUS changes and every offender is still named.
+        if standalone is None:
+            from execution.claude_runtime_target import is_standalone_distribution
+            standalone = is_standalone_distribution()
+        if standalone:
+            return [_make_result(
+                "WARN", "live-source-scan.not-applicable-outside-agentica",
+                "no runtime history in a standalone distribution, so these declared "
+                "sources cannot exist yet: " + "; ".join(sorted(offenders)),
+            )]
         return [_make_result(
             "FAIL", "live-source-scan",
             "LIVE metric(s) whose declared source is missing: " + "; ".join(sorted(offenders)),

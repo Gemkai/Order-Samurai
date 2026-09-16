@@ -1,6 +1,5 @@
 """Tests for scouts/doc_parity._has_doc() — the module-level doc matching logic."""
 from pathlib import Path
-import pytest
 from agentica_core.scouts import doc_parity
 
 

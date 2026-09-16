@@ -7,7 +7,6 @@ import pytest
 from agentica_core import (
     TelemetryValidationError,
     append_event,
-    normalize_entry,
     validate_entry,
     validate_event,
 )

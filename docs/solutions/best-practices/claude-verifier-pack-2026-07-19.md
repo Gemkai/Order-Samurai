@@ -16,6 +16,11 @@ related_components:
   - "execution/doctor.py (aggregates verifier results)"
   - "execution/score_claude_architecture.py (earned score)"
 tags: [claude-pack, verifiers, policy-as-code, doctor, order-samurai]
+covered_by:
+  - kind: doctor_family
+    id: claude-architecture
+  - kind: verifier
+    id: verify_claude_hook_contract
 ---
 
 # The claude verifier pack

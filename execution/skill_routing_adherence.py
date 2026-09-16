@@ -7,7 +7,7 @@ signal made measurable: the exact governance failure of hand-rolling work a skil
 packages (no rubric, no adversarial-verify, no telemetry) becomes a graded number.
 
   numerator   = detections whose routed skill was invoked in the same session
-  denominator = all detections (router-hook firings)
+  denominator = all detections (router-hook firings) in the last 30 days
   value       = 100 * numerator / denominator   (higher = better adherence)
 
 Sources (written by the two hooks):
@@ -43,8 +43,30 @@ def _load(path: Path) -> list[dict]:
     return out
 
 
-def compute_adherence() -> dict:
-    detections = _load(DETECT)
+def compute_adherence(window_days: int = 30) -> dict:
+    # WINDOWED 2026-08-25 (metric-integrity audit): this was a lifetime cumulative
+    # ratio — the same defect class that retired Subagent_Efficiency_Index. Today the
+    # window barely moves the number (the log only spans ~37 days: 3.9 lifetime →
+    # 4.0 windowed — the low value is real behaviour, not an accumulation artifact),
+    # but without it the metric goes permanently unresponsive as the log grows: a
+    # genuine adherence change would take months to move a lifetime ratio. Detections
+    # are windowed to the canonical 30d payload window (same idiom and rationale as
+    # compute_work_volume below); invocations stay unfiltered on purpose — they are
+    # matched per-session (session_ids are UUIDs, verified never reused across the
+    # window boundary), so an out-of-window session's invocations can only pair with
+    # detections the window already dropped.
+    from datetime import datetime, timedelta, timezone
+    cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+    detections = []
+    for d in _load(DETECT):
+        try:
+            ts = datetime.fromisoformat(str(d.get("ts", "")).replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if ts >= cutoff:
+            detections.append(d)
     invocations = _load(INVOKE)
     # skills invoked per session (leading slug, no leading slash)
     invoked_by_session: dict[str, set] = defaultdict(set)

@@ -18,6 +18,8 @@ tags:
   - mechanism-extraction
   - subprocess
   - determinization
+disposition: out-of-scope
+layer: engineering-practice
 ---
 
 # Inject I/O callables to keep extracted mechanisms pure and fully testable

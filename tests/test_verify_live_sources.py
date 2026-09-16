@@ -108,14 +108,36 @@ def _checks(payload, registry, repo_root):
 
 
 def test_run_checks_fails_on_live_metric_with_missing_source(tmp_path):
+    """Inside an Agentica checkout a missing source is the defect this gate exists for.
+
+    `standalone` is passed explicitly rather than left to ambient detection: the
+    EXPORTED copy of this test runs inside a standalone distribution, where the same
+    input is deliberately a WARN, so an ambient read made the assertion depend on
+    which tree the test happened to be running in (caught by the export CI gate,
+    plan M2.4, the first time it ran)."""
     payload = {"pillars": {"sword": {"Security": {
         "Dead_Metric": {"val": 3, "is_simulated": False},
     }}}}
     registry = [{"metric": "Dead_Metric", "source": "state/gone.json"}]
-    results = _checks(payload, registry, tmp_path)
+    results = vls.check_payload_sources(payload, registry, tmp_path, standalone=False)
     counts, exit_code = vls.summarize(results)
     assert counts["FAIL"] == 1
     assert exit_code == 1
+    assert "Dead_Metric" in results[0]["detail"]
+
+
+def test_a_standalone_distribution_warns_instead_of_failing(tmp_path):
+    """The export ships an empty state/ by design, so a LIVE metric whose source is a
+    runtime file has no source YET. Still named, just not a failure."""
+    payload = {"pillars": {"sword": {"Security": {
+        "Dead_Metric": {"val": 3, "is_simulated": False},
+    }}}}
+    registry = [{"metric": "Dead_Metric", "source": "state/gone.json"}]
+    results = vls.check_payload_sources(payload, registry, tmp_path, standalone=True)
+    counts, exit_code = vls.summarize(results)
+    assert counts["FAIL"] == 0
+    assert exit_code == 0
+    assert results[0]["status"] == "WARN"
     assert "Dead_Metric" in results[0]["detail"]
 
 

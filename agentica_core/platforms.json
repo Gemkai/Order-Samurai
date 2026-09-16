@@ -1,30 +1,67 @@
 {
   "version": 1,
   "description": "Platform registry for the Agentica OS adapter. Adding a platform is a config entry here, not a code change. Path specs support ~ (home), {home}, and {governance} (the Agentica OS Governance dir) tokens.",
+  "telemetry_contract": "telemetry_required is fail-closed: omitted means true. Set it false only when the platform is supported/installed but its production execution surface is explicitly disabled; telemetry_disabled_reason must name the operational gate. Re-enable the requirement in the same change that activates that surface.",
+  "execution_slot_contract": "Slot E (C1). Each value names the FLAG OR MECHANISM that provides the capability, or null when the platform's headless surface does not have it. It is deliberately NOT the argv: the exact argument vector is owned by the adapter that spawns the process, so this registry and that spawn cannot drift (Anti-Pattern #2). Values verified against the installed CLIs' own --help on 2026-07-28.",
   "platforms": {
     "claude": {
       "runtime_root": "~/.claude",
       "telemetry_source": "~/.claude/telemetry/telemetry.jsonl",
-      "surface_matrix": "{governance}/config/claude_surface_matrix.json",
-      "verifiers": "agentica_core.providers.claude_verifiers:get_verifiers"
+      "telemetry_required": true,
+      "surface_matrix": "{governance}/Order Samurai/config/claude_surface_matrix.json",
+      "verifiers": "agentica_core.providers.claude_verifiers:get_verifiers",
+      "execution": {
+        "invoke": "claude --print",
+        "streaming": "--output-format stream-json",
+        "cancel": "sigterm",
+        "resume": "--resume <session_id>",
+        "structured_output": null
+      }
+    },
+    "antigravity": {
+      "runtime_root": "~/.gemini/antigravity",
+      "telemetry_source": "~/.gemini/antigravity/.tmp/logs/telemetry.jsonl",
+      "telemetry_required": true,
+      "surface_matrix": "~/.gemini/antigravity/config/hub_surface_matrix.json",
+      "verifiers": "agentica_core.providers.antigravity_verifiers:get_verifiers",
+      "execution": null
     },
     "codex": {
       "runtime_root": "~/.codex",
       "telemetry_source": "~/.codex/telemetry/telemetry.jsonl",
+      "telemetry_required": true,
       "surface_matrix": "{governance}/platform_surfaces/codex_surface_matrix.json",
-      "verifiers": "agentica_core.providers.codex_verifiers:get_verifiers"
+      "verifiers": "agentica_core.providers.codex_verifiers:get_verifiers",
+      "execution": {
+        "invoke": "codex exec",
+        "streaming": "--json",
+        "cancel": "sigterm",
+        "resume": "codex exec resume",
+        "structured_output": "--output-schema <draft07-file>"
+      }
     },
     "gemini": {
       "runtime_root": "~/.gemini",
-      "telemetry_source": "~/.gemini/telemetry/telemetry.jsonl",
+      "telemetry_source": "~/.gemini/tmp/telemetry.jsonl",
+      "telemetry_required": false,
+      "telemetry_disabled_reason": "Both live Order Samurai launchd surfaces explicitly set RIVAL_HARNESS=claude while Gemini authentication is unavailable; no production Gemini telemetry producer is active. Flip this to true in the same deployment change that removes that hold and wires the emitter.",
       "surface_matrix": "{governance}/platform_surfaces/gemini_surface_matrix.json",
-      "verifiers": "agentica_core.providers.gemini_verifiers:get_verifiers"
+      "verifiers": "agentica_core.providers.gemini_verifiers:get_verifiers",
+      "execution": {
+        "invoke": "gemini --prompt",
+        "streaming": "--output-format stream-json",
+        "cancel": "sigterm",
+        "resume": "--resume <index>",
+        "structured_output": null
+      }
     },
-    "antigravity": {
-      "runtime_root": "~/.gemini/antigravity",
-      "telemetry_source": "~/.gemini/antigravity/telemetry/telemetry.jsonl",
-      "surface_matrix": "{governance}/platform_surfaces/antigravity_surface_matrix.json",
-      "verifiers": "agentica_core.providers.antigravity_verifiers:get_verifiers"
+    "governance-local": {
+      "runtime_root": "{governance}",
+      "telemetry_source": "{governance}/data/telemetry/governance_llm.jsonl",
+      "telemetry_required": false,
+      "telemetry_disabled_reason": "Registered 2026-08-19; agentica_core/llm/gateway.py:call_routed_llm now emits real records on every call, but zero calls have landed since registration so the stream does not exist yet. Flip to true once governance_llm.jsonl shows live records (data_telemetry_fresh would ERROR on a required-but-missing stream otherwise) -- same pattern as the gemini entry above.",
+      "surface_matrix": "{governance}/platform_surfaces/governance_local_surface_matrix.json",
+      "execution": null
     }
   }
 }

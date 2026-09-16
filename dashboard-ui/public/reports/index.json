@@ -1,0 +1,32 @@
+[
+  {
+    "file": "2026-W29__codex.md",
+    "week": "2026-W29",
+    "platform": "codex",
+    "records": 2
+  },
+  {
+    "file": "2026-W29__claude.md",
+    "week": "2026-W29",
+    "platform": "claude",
+    "records": 465
+  },
+  {
+    "file": "2026-W28__codex.md",
+    "week": "2026-W28",
+    "platform": "codex",
+    "records": 2
+  },
+  {
+    "file": "2026-W28__claude.md",
+    "week": "2026-W28",
+    "platform": "claude",
+    "records": 205
+  },
+  {
+    "file": "2026-W28__antigravity.md",
+    "week": "2026-W28",
+    "platform": "antigravity",
+    "records": 258
+  }
+]
