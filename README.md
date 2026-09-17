@@ -78,11 +78,11 @@ A gate that cannot distinguish "clean" from "could not check" is not a gate, so 
 ## Recent Major Advancements
 
 - **Retirement of Manual Meditation Control**: Faults no longer pause the engine for manual operator clicking. The engine uses **Autonomous Ronin Repairs** running in disposable, isolated Git worktrees with regression checks.
-- **Touch ID Biometric Mutation Security**: Operator policy adjustments and mutations require physical Darwin LocalAuthentication biometric attestation.
+- **Touch ID Hardware Authorization**: Operator policy adjustments and high-blast-radius operations require Darwin LocalAuthentication authorization.
 - **Fail-Closed Bushido Security**: `BUSHIDO_FAIL_OPEN=false`, `REFLEX_REQUIRE_GRANT=true` enforced deterministically.
 - **9 Live Knowledge Retrieval Measurements**: Real-time tracking of embedding cache hit rates, p50/p95 latency, collection search failures, and prompt cache reuse across Claude and Codex.
 
 ## Commercial Tiering (Strictly 2 Tiers — Zero Subscriptions)
 
-1. **Free Core ($0 Forever)**: 100% fail-closed ATT&CK kill-chain interception, in-memory secret scrubbing (<2ms), 4-pillar diagnostics, 7-day log history, and **manual staged `.patch` generation**.
-2. **Pro Lifetime ($199 One-Time / Perpetual)**: **Autonomous Ronin auto-apply** in isolated Git worktrees, Touch ID biometric operator authentication, Sensei multi-model rival verification, 9-point deep knowledge telemetry & prompt-cache tracking, 90-day archive, and cryptographic SHA-256 hash-chain ledger.
+1. **Free Core ($0 Forever)**: 100% fail-closed ATT&CK kill-chain interception, in-memory secret scrubbing, 4-pillar diagnostics, 7-day log history, and **manual staged `.patch` generation**.
+2. **Pro Lifetime ($199 One-Time / Perpetual)**: **Autonomous Ronin auto-apply** in isolated Git worktrees, Touch ID hardware authorization (LocalAuthentication), Sensei multi-model rival verification, 9-point deep knowledge telemetry & prompt-cache tracking, 90-day archive, and cryptographic SHA-256 hash-chain ledger.
