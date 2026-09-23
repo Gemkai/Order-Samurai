@@ -28,8 +28,9 @@ The install's tier is a runtime fact of this machine, not a build variant:
   upgrade notice (shared gate: `bin/lib_pro_gate.sh`), and reflex remediation always
   stages patches for human review in `state/pending_remediation_*.patch`, regardless of
   env vars.
-- On Pro: autonomous auto-apply requires BOTH `REFLEX_AUTO_APPLY=true` AND the valid
-  license, evaluated per call (activation needs no restart).
+- On both tiers: patches require explicit human review and approval before application.
+  Broad autonomous repair and `REFLEX_AUTO_APPLY` are retired; a Pro license does not
+  authorize unattended patch application.
 - Maintainer/CI Pro testing: `bin/make_dev_license.sh` writes a simulated
   `license.json` accepted by the same fail-closed reader — no gate bypass exists.
 

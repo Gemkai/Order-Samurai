@@ -1,7 +1,7 @@
 """Tests for bin/samurai's backup/restore behaviour on uninstall.
 
 `_register_hooks_in_file()` names each settings backup `f"{settings_path.name}.bak.{ts}"`.
-`~/.samurai/settings.json` and `~/.claude/hooks/settings.json` share the identical basename
+`~/.samurai/settings.json` and `~/.claude/settings.json` share the identical basename
 `settings.json`, so their backups land in the same `backups/` directory under an
 indistinguishable pattern. `cmd_uninstall()` then does `sorted(backups_dir.glob("settings.json.bak.*"))[-1]`
 and restores that onto `claude_settings` regardless of which original file it actually came
@@ -14,6 +14,8 @@ import argparse
 import importlib.util
 import json
 import sys
+
+import pytest
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
@@ -30,13 +32,14 @@ def _fake_paths(tmp_path: Path) -> dict:
     samurai_home = tmp_path / ".samurai"
     backups_dir = samurai_home / "backups"
     backups_dir.mkdir(parents=True)
-    claude_settings = tmp_path / ".claude" / "hooks" / "settings.json"
-    claude_settings.parent.mkdir(parents=True)
+    claude_settings = tmp_path / ".claude" / "settings.json"
+    claude_hooks = tmp_path / ".claude" / "hooks"
+    claude_hooks.mkdir(parents=True)
     return {
         "root": tmp_path / "order-samurai",
         "home": samurai_home,
         "samurai_settings": samurai_home / "settings.json",
-        "claude_hooks": claude_settings.parent,
+        "claude_hooks": claude_hooks,
         "claude_settings": claude_settings,
         "backups": backups_dir,
         "state": samurai_home / "state",
@@ -93,3 +96,55 @@ def test_uninstall_keep_data_deregisters_hooks_from_samurai_settings_too(tmp_pat
         for m in pre
     )
     assert not still_registered, "samurai uninstall --keep-data left hooks registered in samurai_settings"
+
+
+def test_uninstall_preserves_unrelated_legacy_hook_file_content(tmp_path, monkeypatch):
+    """The v1.0.0 file may contain user hooks too; uninstall removes only Samurai rows."""
+    paths = _fake_paths(tmp_path)
+    monkeypatch.setattr(samurai_cli, "get_paths", lambda: paths)
+
+    legacy = paths["claude_hooks"] / "settings.json"
+    legacy.write_text(json.dumps({
+        "user_setting": "keep-me",
+        "hooks": {
+            "PreToolUse": [
+                {"name": "samurai_prompt_injection_guard", "command": "python3 /samurai/prompt_injection_guard.py"},
+                {"name": "user_pre", "command": "echo user-pre"},
+            ],
+            "PostToolUse": [
+                {"name": "samurai_secret_scrubber", "command": "python3 /samurai/secret_scrubber_realtime.py"},
+                {"name": "user_post", "command": "echo user-post"},
+            ],
+        },
+    }), encoding="utf-8")
+
+    samurai_cli.cmd_uninstall(argparse.Namespace(keep_data=True))
+
+    assert legacy.exists(), "uninstall deleted a legacy settings file containing user configuration"
+    cfg = json.loads(legacy.read_text(encoding="utf-8"))
+    assert cfg["user_setting"] == "keep-me"
+    assert cfg["hooks"]["PreToolUse"] == [{"name": "user_pre", "command": "echo user-pre"}]
+    assert cfg["hooks"]["PostToolUse"] == [{"name": "user_post", "command": "echo user-post"}]
+
+
+@pytest.mark.parametrize("target", ["claude_settings", "samurai_settings", "legacy_settings"])
+def test_uninstall_preserves_malformed_settings_bytes(tmp_path, monkeypatch, target):
+    """Unreadable user configuration must never be replaced with an empty object or deleted."""
+    paths = _fake_paths(tmp_path)
+    monkeypatch.setattr(samurai_cli, "get_paths", lambda: paths)
+
+    settings_path = (
+        paths["claude_hooks"] / "settings.json"
+        if target == "legacy_settings"
+        else paths[target]
+    )
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    original = b'{"hooks": {"PreToolUse": [invalid-user-json]\n'
+    settings_path.write_bytes(original)
+
+    samurai_cli.cmd_uninstall(argparse.Namespace(keep_data=True))
+
+    assert settings_path.exists(), f"uninstall deleted malformed {target} configuration"
+    assert settings_path.read_bytes() == original, (
+        f"uninstall rewrote malformed {target} configuration instead of leaving it for recovery"
+    )

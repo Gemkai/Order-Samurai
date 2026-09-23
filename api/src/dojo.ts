@@ -53,17 +53,8 @@ export class AutoRemediationEngine extends EventEmitter {
     return this.running.size > 0
   }
 
-  check(s: DojoState): void {
-    for (const slug of PILLAR_SLUGS) {
-      const p = s.pillars[slug]
-      if (p.ronin_mode !== 'ronin') continue
-      if (p.live_current === null) continue
-      if (p.live_current >= p.live_baseline) continue
-      if (this.running.has(slug)) continue
-      if (this.queue.includes(slug)) continue
-      this.emit('auto_remediation', slug)
-      this.enqueue(slug)
-    }
+  check(_s: DojoState): void {
+    // A score regression is evidence for review, not authority to launch a repair.
   }
 
   /** Enqueue a pillar run. Runs immediately if nothing is in flight; queues otherwise. */

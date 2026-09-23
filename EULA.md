@@ -9,7 +9,7 @@ This End User License Agreement ("Agreement") is a legal agreement between you (
 ## 1. Dual-Tier Distribution Architecture
 
 1. **Open Source Core (Apache 2.0)**: The core CLI hooks, fail-closed security gates, four-pillar telemetry formatters, and basic alert hooks are licensed open-source under the Apache License 2.0 (`LICENSE`).
-2. **Order Samurai Pro Commercial Extensions**: Advanced autonomous reflex remediation, Nightly Dojo regression loops, maker-checker patch staging, and historical audit report exports require a valid **Order Samurai Pro License**.
+2. **Order Samurai Pro Commercial Extensions**: Nightly Dojo regression loops, maker-checker patch staging for explicit human review and approval, and historical audit report exports require a valid **Order Samurai Pro License**.
 
 ---
 

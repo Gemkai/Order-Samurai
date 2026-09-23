@@ -11,7 +11,7 @@ Welcome to **Order Samurai** ("Service", "Software", "We", "Us"). By installing,
 Order Samurai operates under a dual-tier distribution model:
 
 1. **Open Source Core (OSS Core)**: Licensed under the Apache License 2.0. Includes four-pillar scoring engines, fail-closed CLI security hooks (PreToolUse / PostToolUse), and basic alerting capabilities.
-2. **Order Samurai Pro (Commercial Tier)**: Commercial software licensed per user on a lifetime basis ($199 one-time purchase). Includes Nightly Dojo automated regression runs, autonomous reflex remediation, maker-checker patch staging, extended telemetry time windows, and offline perpetual license key activation.
+2. **Order Samurai Pro (Commercial Tier)**: Commercial software licensed per user on a lifetime basis ($199 one-time purchase). Includes Nightly Dojo automated regression runs, maker-checker patch staging for explicit human review and approval, extended telemetry time windows, and offline perpetual license key activation.
 
 ---
 

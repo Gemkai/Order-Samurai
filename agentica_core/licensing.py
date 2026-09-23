@@ -185,7 +185,7 @@ def _write_entitlement(entitlement: dict[str, Any]) -> None:
 # CLI-facing constant so callers can name the feature set consistently.
 PRO_FEATURES = (
     "Nightly Dojo automated regression runs",
-    "Autonomous reflex remediation (auto-apply)",
+    "Explicit human approval for staged repairs",
     "Maker-checker patch staging",
     "Extended telemetry time windows",
 )

@@ -1,12 +1,15 @@
 from datetime import datetime, timezone, timedelta
 import json
 from pathlib import Path
-import statistics
-import math
 
 import pytest
 
 from agentica_core import aggregate as agg
+
+
+# Requirement: collect() keeps provider usage and retrieval diagnostics separated by
+# platform, applies a half-open window, and exposes the current Cache_Hit_Rate and nested
+# embedding/search diagnostic contract without leaking source content.
 
 
 def _require_knowledge_metrics():
@@ -22,13 +25,26 @@ def _write_jsonl(path: Path, rows: list[dict]):
     path.write_text("\n".join(json.dumps(r) for r in rows) + ("\n" if rows else ""), encoding="utf-8")
 
 
-def _codex_row(ts: datetime, event_name: str = "UserPromptSubmit", status: str = "retrieved", **extra):
+def _diagnostics(status: str) -> dict:
+    embedding = {"hit": "hit", "no_hits": "miss", "unavailable": "error",
+                 "invalid_response": "error"}.get(status)
+    search = {"hit": "ok", "no_hits": "empty", "unavailable": "unavailable",
+              "invalid_response": "invalid_response"}.get(status)
+    result = {}
+    if embedding is not None:
+        result["embedding"] = {"result": embedding}
+    if search is not None:
+        result["search_diagnostics"] = {"wiki_knowledge": {"status": search}}
+    return result
+
+
+def _codex_row(ts: datetime, event_name: str = "UserPromptSubmit", status: str = "hit", **extra):
     row = {
         "at": ts.timestamp(),
         "harness": "codex",
         "event": event_name,
-        "status": status,
         "sources": [],
+        **_diagnostics(status),
     }
     row.update(extra)
     return row
@@ -38,17 +54,16 @@ def _qdrant_row(ts: datetime, status: str, *, elapsed_ms: int, context_chars: in
                 per_collection=None):
     row = {
         "ts": ts.isoformat(),
-        "status": status,
         "elapsed_ms": elapsed_ms,
         "prompt_len": 120,
         "targets": ["wiki_knowledge", "claude_lessons"],
+        **_diagnostics(status),
     }
     if context_chars is not None:
         row["context_chars"] = context_chars
     if per_collection is not None:
-        row["per_collection"] = per_collection
+        row["search_diagnostics"] = per_collection
     return row
-
 
 def _native_records_factory(home: Path, platform: str) -> list[dict]:
     base = datetime(2026, 9, 13, 12, tzinfo=timezone.utc)
@@ -101,8 +116,6 @@ def test_collect_builds_cache_rate_from_native_records(tmp_path):
     home = tmp_path / "home"
     start = datetime(2026, 9, 13, 12, 0, tzinfo=timezone.utc)
     end = datetime(2026, 9, 13, 12, 30, tzinfo=timezone.utc)
-    km_records = [_native_records_factory(home, "claude") + _native_records_factory(home, "codex")]
-
     monkeypatch_records = {
         "claude": _native_records_factory(home, "claude"),
         "codex": _native_records_factory(home, "codex"),
@@ -114,14 +127,14 @@ def test_collect_builds_cache_rate_from_native_records(tmp_path):
     monkeypatcher = pytest.MonkeyPatch()
     monkeypatcher.setattr(km, "_native_records", fake_native_records)
 
-    # Combined expected rate: (50 + 0) / (100+50+50 + 100+0+100) = 12.5
+    # Combined cached-input share: (50 + 0) / (100 + 100) = 25%.
     result = km.collect(repo=repo, home=home, start=start, end=end, platforms=["claude", "codex"])
     by_platform = result["by_platform"]
     assert "claude" in by_platform
     assert "codex" in by_platform
-    assert result["combined"]["Provider_Cache_Hit_Rate"]["val"] == pytest.approx(12.5, abs=0.1)
-    assert by_platform["claude"]["Provider_Cache_Hit_Rate"]["val"] == 25.0
-    assert by_platform["codex"]["Provider_Cache_Hit_Rate"]["val"] == 0.0
+    assert result["combined"]["Cache_Hit_Rate"]["val"] == pytest.approx(25.0, abs=0.1)
+    assert by_platform["claude"]["Cache_Hit_Rate"]["val"] == 50.0
+    assert by_platform["codex"]["Cache_Hit_Rate"]["val"] == 0.0
     monkeypatcher.undo()
 
 
@@ -155,7 +168,8 @@ def test_collect_half_open_timestamp_window_and_userprompt_filtering(tmp_path):
     assert "Data gap" not in obs
     # Start-inclusive, end-exclusive: two UserPromptSubmit rows are accepted
     codex_by_platform = result["by_platform"]["codex"]
-    assert codex_by_platform["Embedding_Cache_Hits"]["val"] >= 0
+    assert codex_by_platform["Retrieval_Observations"]["val"] == 2
+    assert codex_by_platform["Embedding_Cache_Hits"]["val"] == 2
     monkeypatcher.undo()
 
 
@@ -166,22 +180,22 @@ def test_collect_rejects_malformed_lines_and_nonfinite_values(tmp_path):
     qdrant_path = home / ".claude" / "data" / "qdrant_hit_rate.jsonl"
 
     rows = [
-        {"ts": "not-a-timestamp", "status": "hit", "elapsed_ms": "fast"},
-        {"ts": "2026-09-13T12:05:00", "status": "hit", "elapsed_ms": float("nan")},
-        {"ts": "2026-09-13T12:06:00", "status": "hit", "elapsed_ms": -5},
-        {"ts": "2026-09-13T12:07:00", "status": "hit", "elapsed_ms": 10, "context_chars": True},
+        {"ts": "not-a-timestamp", "elapsed_ms": "fast", **_diagnostics("hit")},
+        {"ts": "2026-09-13T12:05:00+00:00", "elapsed_ms": float("nan"), **_diagnostics("hit")},
+        {"ts": "2026-09-13T12:06:00+00:00", "elapsed_ms": -5, **_diagnostics("hit")},
+        {"ts": "2026-09-13T12:07:00+00:00", "elapsed_ms": 10, "context_chars": True, **_diagnostics("hit")},
     ]
-    qdrant_path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    _write_jsonl(qdrant_path, rows)
 
     monkeypatcher = pytest.MonkeyPatch()
     monkeypatcher.setattr(km, "_native_records", lambda _home, platform: [])
     result = km.collect(repo=repo, home=home,
                         start=datetime(2026, 9, 13, 12, 0, tzinfo=timezone.utc),
                         end=datetime(2026, 9, 13, 13, 0, tzinfo=timezone.utc),
-                        platforms=["codex"])
+                        platforms=["claude"])
 
-    assert result["combined"]["Retrieval_Observations"]["val"] == 1
-    assert math.isfinite(result["combined"]["Retrieval_Latency_P50_ms"]["val"])
+    assert result["combined"]["Retrieval_Observations"]["val"] == 3
+    assert result["combined"]["Retrieval_Latency_P50_ms"]["val"] == 10
     assert result["combined"]["Retrieval_Latency_P95_ms"]["val"] == result["combined"]["Retrieval_Latency_P50_ms"]["val"]
     monkeypatcher.undo()
 
@@ -203,7 +217,7 @@ def test_collect_rotated_qdrant_file_is_included(tmp_path):
     result = km.collect(repo=repo, home=home,
                         start=datetime(2026, 9, 13, 12, 0, tzinfo=timezone.utc),
                         end=datetime(2026, 9, 13, 12, 30, tzinfo=timezone.utc),
-                        platforms=["codex"])
+                        platforms=["claude"])
 
     assert result["combined"]["Embedding_Cache_Hits"]["val"] == 1
     assert result["combined"]["Embedding_Cache_Misses"]["val"] == 1
@@ -216,26 +230,14 @@ def test_collect_retrieval_failures_only_count_unavailable_and_invalid_response(
     home = tmp_path / "home"
     base = home / ".claude" / "data"
     _write_jsonl(base / "qdrant_hit_rate.jsonl", [
-        _qdrant_row(datetime(2026, 9, 13, 12, 2, tzinfo=timezone.utc), "hit", elapsed_ms=20, context_chars=90),
-        {
-            "ts": datetime(2026, 9, 13, 12, 4, tzinfo=timezone.utc).isoformat(),
-            "status": "no_hits",
-            "elapsed_ms": 10,
-            "context_chars": 45,
-        },
-        {
-            "ts": datetime(2026, 9, 13, 12, 6, tzinfo=timezone.utc).isoformat(),
-            "status": "unavailable",
-            "elapsed_ms": 60,
-            "context_chars": 80,
-        },
-        {
-            "ts": datetime(2026, 9, 13, 12, 7, tzinfo=timezone.utc).isoformat(),
-            "status": "invalid_response",
-            "elapsed_ms": 40,
-            "per_collection": {"wiki_knowledge": {"status": "invalid_response"}},
-            "context_chars": 20,
-        },
+        _qdrant_row(datetime(2026, 9, 13, 12, 2, tzinfo=timezone.utc),
+                     "hit", elapsed_ms=20, context_chars=90),
+        _qdrant_row(datetime(2026, 9, 13, 12, 4, tzinfo=timezone.utc),
+                     "no_hits", elapsed_ms=10, context_chars=45),
+        _qdrant_row(datetime(2026, 9, 13, 12, 6, tzinfo=timezone.utc),
+                     "unavailable", elapsed_ms=60, context_chars=80),
+        _qdrant_row(datetime(2026, 9, 13, 12, 7, tzinfo=timezone.utc),
+                     "invalid_response", elapsed_ms=40, context_chars=20),
     ])
 
     monkeypatcher = pytest.MonkeyPatch()
@@ -243,7 +245,7 @@ def test_collect_retrieval_failures_only_count_unavailable_and_invalid_response(
     result = km.collect(repo=repo, home=home,
                         start=datetime(2026, 9, 13, 12, 0, tzinfo=timezone.utc),
                         end=datetime(2026, 9, 13, 13, 0, tzinfo=timezone.utc),
-                        platforms=["codex"])
+                        platforms=["claude"])
 
     assert result["combined"]["Retrieval_Search_Failures"]["val"] == 2
     assert result["combined"]["Embedding_Cache_Hits"]["val"] == 1
@@ -268,15 +270,13 @@ def test_collect_injected_context_percentiles_are_sample_based(tmp_path):
     result = km.collect(repo=repo, home=home,
                         start=datetime(2026, 9, 13, 12, 0, tzinfo=timezone.utc),
                         end=datetime(2026, 9, 13, 13, 0, tzinfo=timezone.utc),
-                        platforms=["codex"])
+                        platforms=["claude"])
 
     p50 = result["combined"]["Injected_Context_Chars_P50"]["val"]
     p95 = result["combined"]["Injected_Context_P95_ms"]["val"] if "Injected_Context_P95_ms" in result["combined"] else result["combined"]["Retrieval_Latency_P95_ms"]["val"]
-    assert isinstance(p50, (int, float))
-    assert p50 > 0
-    assert result["combined"]["Retrieval_Observations"]["val"] >= 1
-    assert isinstance(p95, (int, float))
-    assert p95 >= p50
+    assert p50 == 125.0
+    assert result["combined"]["Retrieval_Observations"]["val"] == 3
+    assert p95 == 48.0
     monkeypatcher.undo()
 
 
@@ -287,8 +287,8 @@ def test_collect_does_not_leak_prompt_or_source_text_into_details(tmp_path):
     base = home / ".claude" / "data"
     _write_jsonl(base / "qdrant_hit_rate.jsonl", [
         {
-            "ts": "2026-09-13T12:00:00",
-            "status": "hit",
+            "ts": "2026-09-13T12:00:00+00:00",
+            "embedding": {"result": "hit"},
             "elapsed_ms": 10,
             "context_chars": 10,
             "search_diagnostics": {"wiki_knowledge": {"status": "ok"}},
@@ -301,8 +301,9 @@ def test_collect_does_not_leak_prompt_or_source_text_into_details(tmp_path):
     result = km.collect(repo=repo, home=home,
                         start=datetime(2026, 9, 13, 12, 0, tzinfo=timezone.utc),
                         end=datetime(2026, 9, 13, 13, 0, tzinfo=timezone.utc),
-                        platforms=["codex"])
+                        platforms=["claude"])
 
+    assert result["combined"]["Retrieval_Observations"]["val"] == 1
     detail = result["combined"]["Retrieval_Search_Failures"].get("detail", "")
     assert "should not appear" not in json.dumps(detail)
     assert "/tmp/secret.md" not in json.dumps(detail)
@@ -323,10 +324,10 @@ def test_aggregate_wires_collect_into_build_pillars_and_limits_scope(tmp_path, m
         assert platforms in (["claude"], ["fake"], None) or platforms is None
         return {
             "combined": {
-                "Provider_Cache_Hit_Rate": {"val": 12.5, "calibrated": True},
+                "Cache_Hit_Rate": {"val": 12.5, "calibrated": True},
             },
             "by_platform": {
-                "claude": {"Provider_Cache_Hit_Rate": {"val": 25.0, "calibrated": True}},
+                "claude": {"Cache_Hit_Rate": {"val": 25.0, "calibrated": True}},
             },
         }
 

@@ -49,7 +49,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
     { type: "SWORD", label: "KILL CHAIN", text: "Blocked Chain 13 indirect prompt injection in git diff", source: "hooks/prompt_injection_guard.py", color: "#ef4444" },
     { type: "BRUSH", label: "SECRET SCRUB", text: "Redacted AWS_SECRET_ACCESS_KEY from subagent stdout in 2ms", source: "hooks/secret_scrubber_realtime.py", color: "#ef4444" },
     { type: "BOW", label: "WORKTREE SANDBOX", text: "Remediation verified in ephemeral git branch before staging patch", source: "execution/worktree_patch_runner.py", color: "#3b82f6" },
-    { type: "ARTS", label: "CODE FIX", text: "Deterministic doc-parity script healed link graph in 12ms ($0 spend)", source: "execution/verify_doc_parity.py", color: "#8b5cf6" },
+    { type: "ARTS", label: "DOC CHECK", text: "Deterministic doc-parity check reports link inconsistencies for review", source: "execution/verify_doc_parity.py", color: "#8b5cf6" },
     { type: "SWORD", label: "LOOP BREAKER", text: "Halted repetitive subagent retry loop on zero-impact metric", source: "agentica_core/skill_no_impact.py", color: "#ef4444" },
     { type: "BRUSH", label: "RECONCILER", text: "Completed 10-second daily state & falsifiability reconciliation", source: "bin/reconcile_state.py", color: "#ef4444" }
   ]
@@ -292,7 +292,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           <div className="mt-3 flex items-center justify-between text-[11px] font-mono text-slate-500">
             <div className="flex items-center gap-2">
               <CheckCircle2 size={12} className="text-slate-400" />
-              <span>Zero Product Telemetry • 18 Instant Code Fixers • 1,700+ Tests Passed</span>
+              <span>Zero Product Telemetry • Staged Patch Review • 1,700+ Tests Passed</span>
             </div>
             <span>Time-to-first-report: &lt; 60s</span>
           </div>
@@ -511,7 +511,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
 
               <h3 className="text-sm font-semibold text-slate-200">Agent Time Saved</h3>
               <p className="mt-1.5 text-xs text-slate-400 leading-relaxed">
-                Wall-clock duration of completed autonomous backlog tasks vs baselines.
+                Wall-clock duration of completed, explicitly approved backlog tasks vs baselines.
               </p>
 
               <div className="mt-4 pt-3 border-t border-white/10 text-[10px] font-mono text-slate-500 flex items-center justify-between">
@@ -817,7 +817,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
         <div className="text-center max-w-2xl mx-auto mb-12">
           <h2 className="text-3xl font-bold text-white tracking-tight">Simple, Self-Serve Pricing</h2>
           <p className="mt-3 text-slate-400 text-base">
-            Start free with Open Core on your workstation. Upgrade to Pro for autonomous overnight Dojo remediation.
+            Start free with Open Core on your workstation. Upgrade to Pro for deeper diagnostics, scheduled checks, and staged repair review.
           </p>
 
           {/* Rec 7 — Pricing Flat-Rate Stance Line */}
@@ -872,15 +872,15 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           {/* Card 2: Pro Lifetime — Named Persona: Fleet Operators (Rec 4 Crimson Accent) */}
           <div className="bg-[#0d131f] border-2 border-[#ef4444] rounded-2xl p-8 flex flex-col justify-between relative shadow-2xl shadow-[#ef4444]/15">
             <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-[#ef4444] text-white text-[10px] font-mono font-bold rounded-full uppercase">
-              RECOMMENDED FOR AUTONOMY
+              RECOMMENDED FOR FLEETS
             </div>
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono text-[#ef4444] uppercase tracking-wider font-semibold">PRO VERSION</span>
-                <span className="text-[10px] font-mono bg-[#ef4444]/20 text-[#ef4444] px-2 py-0.5 rounded font-bold">Autonomous Autopilot</span>
+                <span className="text-[10px] font-mono bg-[#ef4444]/20 text-[#ef4444] px-2 py-0.5 rounded font-bold">Fleet Diagnostics</span>
               </div>
               <h3 className="text-2xl font-bold text-white mt-1">Pro Lifetime</h3>
-              <p className="text-xs text-slate-400 mt-1 font-mono">For fleets that run while you sleep</p>
+              <p className="text-xs text-slate-400 mt-1 font-mono">For operators reviewing fleet health</p>
 
               <div className="mt-4 flex items-baseline gap-1">
                 <span className="text-4xl font-extrabold text-white">$199</span>
@@ -891,7 +891,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                   <CheckCircle2 size={16} className="text-[#ef4444]" /> Everything in Free Core
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-[#ef4444]" /> Autonomous Ronin Auto-Apply (Zero-Click Worktree Repairs)
+                  <CheckCircle2 size={16} className="text-[#ef4444]" /> Maker-Checker Patch Staging for Human Approval
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 size={16} className="text-[#ef4444]" /> Touch ID Biometric Operator Authentication

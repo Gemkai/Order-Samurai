@@ -39,7 +39,7 @@ from execution import verify_path_authority  # noqa: E402
 from execution import verify_root_hygiene  # noqa: E402
 from execution.runtime_paths import ROOT_HYGIENE_POLICY_PATH  # noqa: E402
 
-__version__ = "0.1.0"
+__version__ = "2.0.0"
 
 #: What makes a directory an Order Samurai pack: it carries the policy contracts.
 #: Used only to locate a checkout for the operator message -- never to import from.

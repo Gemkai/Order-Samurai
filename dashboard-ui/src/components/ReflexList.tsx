@@ -91,14 +91,14 @@ function ReflexDeck({ group, items, onSelect, onDismiss, dojoProps, stuckReflexI
             </span>
           )}
           {isStuck && (
-            <span title="Auto-remediation was attempted but did not improve this metric. Scroll to the Remediation Efficacy report for details and next steps."
+            <span title="A recorded repair attempt did not improve this metric. Review the repair history for details and next steps."
               style={{ display: "flex", alignItems: "center", gap: 3, fontSize: "var(--text-caption)", color: "rgba(251,146,60,0.95)", background: "rgba(251,146,60,0.1)", border: "1px solid rgba(251,146,60,0.45)", borderRadius: 4, padding: "1px 5px" }}
               className="mono">
               <AlertTriangle size={7} /> investigate
             </span>
           )}
           {r.stuck && (
-            <span title="Autonomous remediation is frozen for this reflex — loop-breaker tripped. Human intervention required."
+            <span title="A previous repair attempt hit the loop-breaker. Human review is required."
               style={{ display: "flex", alignItems: "center", gap: 3, fontSize: "var(--text-caption)", color: "rgba(148,163,184,0.9)", background: "rgba(148,163,184,0.08)", border: "1px solid rgba(148,163,184,0.3)", borderRadius: 4, padding: "1px 5px" }}
               className="mono">
               ⏸ stuck
@@ -138,7 +138,7 @@ function ReflexDeck({ group, items, onSelect, onDismiss, dojoProps, stuckReflexI
           // Advisory metric (auto_remediable:False): the routed skill is preventive / circular /
           // wrong-domain and won't move the metric, so never offer a run button — just label it.
           <div className="mono"
-            title="Advisory — this metric is not auto-remediable (the routed skill can't move it). See the Remediation panel for what to do manually."
+            title="Advisory — the routed skill cannot change this metric. Review the diagnosis and choose an appropriate action."
             style={{ marginTop: "auto", fontSize: "var(--text-caption)", color: "var(--muted-foreground)",
               background: "rgba(255,255,255,0.03)", border: "1px dashed var(--card-border)", borderRadius: 7,
               padding: "4px 8px", textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -264,7 +264,7 @@ export function ReflexPanel({ reflexes, dismissed, onDismiss, onSelect, dojoProp
         )}
         {lastAutoRemediationPillar && (
           <span className="mono" style={{ marginLeft: "auto", fontSize: "var(--text-caption)", color: "#4ade80", background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.3)", borderRadius: 4, padding: "1px 6px" }}>
-            ✓ auto-remediation ran · {lastAutoRemediationPillar}
+            ✓ recorded repair attempt · {lastAutoRemediationPillar}
           </span>
         )}
       </div>
