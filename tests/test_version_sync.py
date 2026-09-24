@@ -22,7 +22,7 @@ def test_versions_are_synchronized():
     assert cli_version_match, "SAMURAI_VERSION not found in bin/samurai"
     cli_version = cli_version_match.group(1)
 
-    expected = "1.0.2"
+    expected = "2.0.0"
     assert root_pkg.get("version") == expected
     assert api_pkg.get("version") == expected
     assert ui_pkg.get("version") == expected

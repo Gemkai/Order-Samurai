@@ -1,7 +1,7 @@
 # Onboarding — Order Samurai
 
 Order Samurai has two tiers. **Free** is fully functional and installs in under a minute.
-**Pro** ($199 lifetime) unlocks the autonomous engines. This guide covers onboarding for
+**Pro** ($199 lifetime) adds scheduled checks and extended review tools. This guide covers onboarding for
 both, plus verification and troubleshooting.
 
 > Everything runs **locally**. No account, no cloud sign-up, no telemetry leaves your
@@ -18,13 +18,12 @@ both, plus verification and troubleshooting.
 | Fail-closed security posture | ✅ | ✅ |
 | Four-pillar metrics + web dashboard | ✅ | ✅ |
 | Honesty invariant (MEASURED vs SIMULATED labels) | ✅ | ✅ |
-| **Nightly Dojo** — autonomous overnight regression runs | — | ✅ |
-| **Autonomous reflex remediation** — auto-apply validated patches | — | ✅ |
+| **Nightly Dojo** — scheduled regression checks and approved backlog work | — | ✅ |
 | **Maker-checker patch staging** | — | ✅ |
 | **Extended telemetry time windows** | — | ✅ |
 | 14-day money-back guarantee | — | ✅ |
 
-Free is not a trial — it is a complete, supported product. Pro adds autonomy on top.
+Free is not a trial — it is a complete, supported product. Pro adds scheduled checks, review tools, and extended telemetry.
 
 ---
 
@@ -79,7 +78,7 @@ and secrets are scrubbed in real time, logging locally to `~/.samurai/`.
 
 ## Part 2 — Pro onboarding (upgrade any time)
 
-Pro is a superset of Free — you keep everything above and add the autonomous engines. There
+Pro is a superset of Free — you keep everything above and add scheduled checks and extended review tools. There
 is nothing to reinstall; you activate a license key on an existing Free install.
 
 ### 1. Buy a license
@@ -111,7 +110,7 @@ You should see `Order Samurai — PRO tier` with your machine name and activatio
 
 ### 3. Use the Pro features
 
-- **Nightly Dojo** (overnight autonomous regression engine):
+- **Nightly Dojo** (scheduled regression checks and explicitly approved backlog work):
   ```bash
   ./bin/dojo_overnight.sh
   ```
@@ -119,10 +118,9 @@ You should see `Order Samurai — PRO tier` with your machine name and activatio
   ```bash
   ./bin/ronin-daemon.sh
   ```
-- **Autonomous reflex remediation** (auto-apply validated patches instead of staging them
-  for review): set `REFLEX_AUTO_APPLY=true` before starting the API server. This env var
-  only takes effect **with a valid Pro license** — on Free it stays in safe review-only mode
-  no matter what.
+- **Repair review**: inspect staged patches and their validation evidence before explicitly
+  approving and applying a change. Scheduled checks and a Pro license do not authorize
+  unattended LLM-generated repair.
 
 ### Moving to a new machine / refunds
 
@@ -152,7 +150,7 @@ to Free. The single source of truth is `agentica_core/licensing.py` (Python) and
 | `samurai doctor` shows *Hook Registration* FAIL | Run `samurai install` (registers the hooks); re-run doctor. |
 | `samurai activate` says "license key invalid" | Check for typos/whitespace; confirm the key from your Lemon Squeezy email. Refunded keys are rejected. |
 | Dojo says *"is an Order Samurai Pro feature"* | You are on Free. Run `samurai activate <key>` (or buy one) to unlock. |
-| `REFLEX_AUTO_APPLY=true` but patches still stage for review | Auto-apply requires **both** the env var and a Pro license — run `samurai license` to confirm PRO. |
+| Legacy `REFLEX_AUTO_APPLY=true` setting | Remove it. Auto-apply is retired on both tiers; review staged patches before explicitly approving a repair. |
 | Want to remove everything | `samurai uninstall` (add `--keep-data` to preserve `~/.samurai`). |
 
 ---

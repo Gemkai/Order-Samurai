@@ -125,14 +125,6 @@ const BUSHIDO_CACHE_MS = 60 * 1000
  *  REFLEX_VERIFY_GATE=false to disable (rollback path, no rebuild). */
 const VERIFY_GATE_ENABLED = (process.env['REFLEX_VERIFY_GATE'] ?? 'true').toLowerCase() !== 'false'
 
-/** Autonomous patch-apply kill switch. DEFAULT OFF for the public pack: a code-modifying
- *  remediation that passes the maker-checker audit + pytest gate is saved to
- *  state/pending_remediation_*.patch for human review instead of being git-applied to the
- *  live repo — so a freshly-cloned install never rewrites a stranger's working tree
- *  unattended. Set REFLEX_AUTO_APPLY=true to restore fully autonomous apply (the audit +
- *  pytest gate run identically either way). Rollback = unset/false + restart, no rebuild. */
-const AUTO_APPLY_ENABLED = (process.env['REFLEX_AUTO_APPLY'] ?? 'false').toLowerCase() === 'true'
-
 /** Parse REFLEX_BATCH_WINDOW = "startHour-endHour" (local 24h, e.g. "2-6" = 02:00–06:00).
  *  Empty / malformed → null (feature disabled = today's real-time behavior). start===end is
  *  rejected (an empty or all-day window is never the intent). Exported for tests. */
@@ -163,11 +155,20 @@ const TIER_ORDER: Record<ReflexTier, number> = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Payloads and injected entries cannot grant themselves operator authority. */
+function stripInProcessAuthority(entry: ReflexEntry): ReflexEntry {
+  const clean = { ...entry } as ReflexEntry & { promptSuffix?: unknown; pillarRun?: unknown }
+  delete clean.manual
+  delete clean.promptSuffix
+  delete clean.pillarRun
+  return clean
+}
+
 function readWid(): ReflexEntry[] {
   try {
     const raw = fs.readFileSync(WID_PAYLOAD_PATH, 'utf8')
     const parsed = JSON.parse(raw) as WidPayload
-    return Array.isArray(parsed.reflexes) ? parsed.reflexes : []
+    return Array.isArray(parsed.reflexes) ? parsed.reflexes.map(stripInProcessAuthority) : []
   } catch {
     return []
   }
@@ -427,7 +428,8 @@ export class ReflexEngine extends EventEmitter {
    * Returns true if the entry was queued, false if ineligible or already present.
    */
   injectReflex(entry: ReflexEntry): boolean {
-    if (!this._isEligible(entry)) return false
+    entry = stripInProcessAuthority(entry)
+    if (!this._isEligible(entry) || !this._mayQueueRepair(entry)) return false
     const alreadyQueued = this.queue.some(q => q.id === entry.id && q.command === entry.command)
     const isActive = this.activeEntry?.id === entry.id && this.activeEntry?.command === entry.command
     if (alreadyQueued || isActive) return false
@@ -579,7 +581,7 @@ export class ReflexEngine extends EventEmitter {
     this.queue = this.queue.filter((q) => liveIds.has(q.id))
 
     for (const entry of reflexes) {
-      if (!this._isEligible(entry)) continue
+      if (!this._isEligible(entry) || !this._mayQueueRepair(entry)) continue
 
       // Not already queued or running?
       const alreadyQueued = this.queue.some(
@@ -595,10 +597,16 @@ export class ReflexEngine extends EventEmitter {
       this._insertWithPriority(entry)
     }
 
-    // Kick off execution if idle
-    if (!this._isRunning) {
+    // Kick off execution only when eligible work is queued.
+    if (!this._isRunning && this.queue.length > 0) {
       this._drainQueue()
     }
+  }
+
+  private _mayQueueRepair(entry: ReflexEntry): boolean {
+    if (entry.manual || entry.mechanism || this._isSkillReadonly(entry.command)) return true
+    this.emit('auto_reflex_skipped', { reflex_id: entry.id, reason: 'autonomous_repair_retired' })
+    return false
   }
 
   private _isEligible(entry: ReflexEntry): boolean {
@@ -903,6 +911,14 @@ export class ReflexEngine extends EventEmitter {
       }
     }
 
+    if (!entry.manual && !entry.mechanism && !this._isSkillReadonly(entry.command)) {
+      this.emit('auto_reflex_skipped', { reflex_id: entry.id, reason: 'autonomous_repair_retired' })
+      this._isRunning = false
+      this.activeEntry = null
+      this._drainQueue()
+      return
+    }
+
     // Snapshot pre-run state for real improvement detection (#16) and audit (#31)
     this._preRunReflexIds = new Set(readWid().map(r => r.id))
     try {
@@ -982,7 +998,7 @@ export class ReflexEngine extends EventEmitter {
     // On success, skip the skill spawn. On failure, fall through to the skill path.
     if (entry.mechanism) {
       const mechResult = await this._runMechanism(entry, worktreeDir)
-      if (gradingOnly) {
+      if (gradingOnly || (!entry.manual && mechResult !== 'done')) {
         this._afterRun(entry, key, mechResult === 'done' ? 'done' : 'error', 'mechanism', undefined, worktreeDir)
         return  // grade only — never escalate to the skill
       }
@@ -1192,7 +1208,7 @@ export class ReflexEngine extends EventEmitter {
         })
       }
 
-      if (auditApproved && pytestPassed && !AUTO_APPLY_ENABLED) {
+      if (auditApproved && pytestPassed) {
         // Review-only mode (public-safe default): the patch passed the audit + pytest gate but
         // auto-apply is disabled, so the live repo is left UNTOUCHED and the validated patch is
         // saved for a human to review/apply. finalStatus stays 'done' (the skill genuinely
@@ -1205,63 +1221,13 @@ export class ReflexEngine extends EventEmitter {
           fs.writeFileSync(pendingPatchPath, patchContent, 'utf8')
           this.emit('auto_reflex_output', {
             metric: entry.id,
-            line: `[Staging] Validation succeeded, but auto-apply is disabled (REFLEX_AUTO_APPLY=false). Validated patch saved for review at ${pendingPatchPath} — live repo left unchanged.`,
+            line: `[Staging] Validation succeeded, but automatic patch application is retired. Validated patch saved for review at ${pendingPatchPath} — live repo left unchanged.`,
           })
         } catch (err) {
           this.emit('auto_reflex_output', {
             metric: entry.id,
             line: `[Staging] Validation succeeded but saving the pending patch failed: ${String(err)}`,
           })
-        }
-      } else if (auditApproved && pytestPassed) {
-        this.emit('auto_reflex_output', {
-          metric: entry.id,
-          line: `[Staging] Validation succeeded. Applying patch to main repository...`,
-        })
-
-        // Apply patch to main repo
-        const applyResult = spawnSync('git', ['-C', ORDER_SAMURAI_ROOT, 'apply', patchFile], { encoding: 'utf8' })
-        if (applyResult.status === 0) {
-          // Copy untracked files
-          const wtUntracked = spawnSync('git', ['-C', worktreeDir, 'ls-files', '--others', '--exclude-standard'], { encoding: 'utf8' })
-          if (wtUntracked.status === 0) {
-            const files = wtUntracked.stdout.split('\n').map(f => f.trim()).filter(Boolean)
-            for (const file of files) {
-              const src = path.join(worktreeDir, file)
-              const dest = path.join(ORDER_SAMURAI_ROOT, file)
-              if (fs.existsSync(src)) {
-                fs.mkdirSync(path.dirname(dest), { recursive: true })
-                fs.copyFileSync(src, dest)
-              }
-            }
-          }
-          // Copy state folder
-          if (fs.existsSync(path.join(worktreeDir, 'state'))) {
-            fs.cpSync(path.join(worktreeDir, 'state'), path.join(ORDER_SAMURAI_ROOT, 'state'), { recursive: true })
-          }
-          this.emit('auto_reflex_output', {
-            metric: entry.id,
-            line: `[Staging] Patch applied and files copied successfully.`,
-          })
-          // Delete stale failed patch if exists
-          try {
-            const failedPatchPath = path.join(ORDER_SAMURAI_ROOT, 'state', `failed_remediation_${entry.id.replace(/[^A-Za-z0-9_-]/g, '_')}.patch`)
-            if (fs.existsSync(failedPatchPath)) {
-              fs.unlinkSync(failedPatchPath)
-            }
-          } catch (err) {}
-        } else {
-          this.emit('auto_reflex_output', {
-            metric: entry.id,
-            line: `[Staging] Failed to apply git patch to main repo: ${applyResult.stderr || applyResult.error?.message}`,
-          })
-          finalStatus = 'error'
-          // Save failed patch to persistent state folder for backlog tickets
-          try {
-            const failedPatchPath = path.join(ORDER_SAMURAI_ROOT, 'state', `failed_remediation_${entry.id.replace(/[^A-Za-z0-9_-]/g, '_')}.patch`)
-            fs.mkdirSync(path.dirname(failedPatchPath), { recursive: true })
-            fs.writeFileSync(failedPatchPath, patchContent, 'utf8')
-          } catch (err) {}
         }
       } else {
         this.emit('auto_reflex_output', {
@@ -1634,7 +1600,7 @@ export class ReflexEngine extends EventEmitter {
   // Internal — approval window (#G1)
   // -------------------------------------------------------------------------
 
-  /** Resolve to true when the approval window expires (auto-approve) or false when cancelled. */
+  /** A legacy cancellation window never grants repair authority. */
   private _waitForApproval(key: string, windowMs: number): Promise<boolean> {
     return new Promise((resolve) => {
       const deadline = Date.now() + windowMs
@@ -1644,7 +1610,7 @@ export class ReflexEngine extends EventEmitter {
           resolve(false)  // operator cancelled
         } else if (Date.now() >= deadline) {
           clearInterval(tick)
-          resolve(true)   // window expired — auto-approve
+          resolve(false)  // silence does not authorize a repair
         }
       }, 1000)
     })

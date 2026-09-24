@@ -335,41 +335,21 @@ class TestLessonGraduationRate:
 
 
 # ── Cache_Hit_Rate (AUTO-009) ─────────────────────────────────────────────────
-# Unlike the DERIVED reducers above, _cache_hit_rate ignores the `records` arg
-# entirely — cache_read_input_tokens / cache_creation_input_tokens only exist on
-# the raw transcript's message.usage block, never on the SessionEnd telemetry
-# record. So these tests point HOME/USERPROFILE at a tmp_path and write fake
-# transcript JSONLs, mirroring how a real ~/.claude/projects/**/*.jsonl looks.
+# Requirement: the reducer consumes the already-windowed normalized records supplied by
+# aggregate(), deduplicates cumulative session snapshots, and reports cached input as a
+# share of total prompt input. It must not rescan transcripts or retain cross-call state.
+
 
 def _write_transcript(projects_dir, name, lines):
+    # Shared by transcript-backed metric tests below; Cache_Hit_Rate itself no longer scans here.
     proj = projects_dir / "proj1"
     proj.mkdir(parents=True, exist_ok=True)
     path = proj / name
-    path.write_text("\n".join(json.dumps(l) for l in lines) + "\n", encoding="utf-8")
+    path.write_text("\n".join(json.dumps(line) for line in lines) + "\n", encoding="utf-8")
     return path
 
 
-def _usage_line(input_tokens=0, cache_creation=0, cache_read=0, output_tokens=0):
-    return {
-        "type": "assistant",
-        "message": {"usage": {
-            "input_tokens": input_tokens,
-            "cache_creation_input_tokens": cache_creation,
-            "cache_read_input_tokens": cache_read,
-            "output_tokens": output_tokens,
-        }},
-    }
-
-
 class TestCacheHitRate:
-    def setup_method(self):
-        # Every test starts with a cold cache so a prior test's tmp_path result
-        # can't leak in via the TTL.
-        agg._CACHE_HIT_CACHE.update(t=0.0, v=None)
-
-    def teardown_method(self):
-        agg._CACHE_HIT_CACHE.update(t=0.0, v=None)
-
     def test_records_without_valid_usage_returns_data_gap(self):
         result = agg._cache_hit_rate([])
         assert result["val"] is None
@@ -377,8 +357,6 @@ class TestCacheHitRate:
         assert result["calibrated"] is True
 
     def test_distinct_sessions_are_aggregated_by_max_cumulative_tokens(self):
-        # The reducer is now fed normalized native records, so each session's cumulative
-        # buckets are deduplicated by (platform, session_id) before aggregation.
         result = agg._cache_hit_rate([
             {"platform": "claude", "session_id": "s1", "tokens_prompt": 120, "cache_read_tokens": 10,
              "cache_creation_tokens": 30},
@@ -389,11 +367,9 @@ class TestCacheHitRate:
             {"platform": "codex", "session_id": "c1", "tokens_prompt": 120, "cache_read_tokens": 20,
              "cache_creation_tokens": 60},
         ])
-        # s1 uses the second cumulative row (read=5, creation=60, prompt=200), not row 1.
-        # Numerator: 5 + 10 + 10 + 20 = 45
-        # Denominator: (5+60+200) + (30+0+10) + (20+60+120) = 425
-        # Rate = 45/425 = 10.6%
-        assert result["val"] == pytest.approx(10.6, abs=0.1)
+        # s1 uses its largest cumulative prompt snapshot. Cached/total prompt input is
+        # (5 + 10 + 20) / (200 + 30 + 120) = 10%.
+        assert result["val"] == pytest.approx(10.0, abs=0.1)
 
     def test_ignores_invalid_negative_or_bool_fields(self):
         result = agg._cache_hit_rate([
@@ -406,16 +382,17 @@ class TestCacheHitRate:
             {"platform": "claude", "session_id": "s3", "tokens_prompt": 100, "cache_read_tokens": 10,
              "cache_creation_tokens": 0},
         ])
-        # Only the final row contributes: 10 / (100 + 10 + 0) = 9.1%
-        assert result["val"] == pytest.approx(9.1, abs=0.1)
+        assert result["val"] == pytest.approx(10.0, abs=0.1)
 
-    def test_ignores_records_argument_entirely_and_only_uses_provided_records(self):
-        # Regression: previous behavior scanned transcripts regardless of records.
-        # With explicit rows, the result must follow those rows only.
-        result = agg._cache_hit_rate([{"platform": "codex", "session_id": "s1",
-                                       "tokens_prompt": 10, "cache_creation_tokens": 40,
-                                       "cache_read_tokens": 20}])
-        assert result["val"] == pytest.approx(28.6, abs=0.1)
+    def test_uses_only_the_provided_windowed_records(self):
+        first = agg._cache_hit_rate([{"platform": "codex", "session_id": "s1",
+                                      "tokens_prompt": 100, "cache_creation_tokens": 40,
+                                      "cache_read_tokens": 20}])
+        second = agg._cache_hit_rate([{"platform": "codex", "session_id": "s2",
+                                       "tokens_prompt": 100, "cache_creation_tokens": 0,
+                                       "cache_read_tokens": 0}])
+        assert first["val"] == pytest.approx(20.0, abs=0.1)
+        assert second["val"] == 0.0
 
     def test_cached_hit_rate_is_registered_in_registry_under_brush_as_auto_percent(self):
         entry = next((e for e in agg.REGISTRY if e[2] == "Cache_Hit_Rate"), None)
@@ -430,13 +407,12 @@ class TestCacheHitRate:
     def test_build_pillars_reports_live_not_simulated_when_records_present(self):
         pillars = agg.build_pillars([
             {"platform": "claude", "session_id": "s1", "tokens_prompt": 5,
-             "cache_creation_tokens": 5, "cache_read_tokens": 1}
+             "cache_creation_tokens": 4, "cache_read_tokens": 1}
         ])
         env = pillars["brush"]["Token Efficiency"]["Cache_Hit_Rate"]
         assert env["is_simulated"] is False
         assert env["tier"] == "AUTO"
         assert env["val"] != "—"  # not the "—" placeholder
-
 
 def _exec_line(reflex_id, ts, improved):
     return json.dumps({

@@ -350,7 +350,7 @@ function Reports({ payload }: { payload: WIDPayload }) {
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 10 }}>
               {[
-                { n: "Est. Agent Hours Saved (Bow hero, calibration-gated)", f: "Completed autonomous backlog items, each timed started→completed and weighted by task-kind coefficients. Until 20 real samples calibrate it, the hero slot falls back to Complexity-Weighted Throughput (real data)." },
+                { n: "Est. Agent Hours Saved (Bow hero, calibration-gated)", f: "Completed, explicitly approved backlog items, each timed started→completed and weighted by task-kind coefficients. Until 20 real samples calibrate it, the hero slot falls back to Complexity-Weighted Throughput (real data)." },
                 { n: "Cost Savings (Brush hero, measured)", f: "Cost-per-task improvement vs last week × this week's task volume — real spend telemetry. A raw spend drop is NOT counted (less work ≠ savings). The old estimated routing-savings component ($0.05/run, no sample source) was removed; this is now a measured metric. Falls back to Cost per Task only if there's no prior-week baseline." },
                 { n: "Craft Improvements (Arts hero, measured)", f: "Real count of discrete craft wins this week — skill promotions plus completed arts backlog items. Replaced the former synthetic 'Est. Human Hours Saved' (real deltas × hours coefficients with no sample source). Vibe-alignment and doc-parity deltas appear in the breakdown and as their own metrics. Falls back to Knowledge Vault Health only if the source is unavailable." },
                 { n: "Subagent ROI Index (graded, w2)", f: "100 × (successful sessions ÷ subagent spawns) × cost penalty. Penalty kicks in when avg cost per spawn exceeds the $0.10 benchmark. Capped at 100." },
@@ -820,10 +820,10 @@ export default function App() {
 function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, marginTop: 40 }}>
-      {/* Autonomous Remediation Queue (Pro) */}
+      {/* Repair Review Queue (Pro) */}
       <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", border: "1px solid rgba(250,204,21,0.25)" }}>
         <div style={{ filter: "blur(6px)", opacity: 0.5, pointerEvents: "none", userSelect: "none", background: "rgba(255,255,255,0.02)", padding: 24 }}>
-          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "rgba(255,255,255,0.55)", marginBottom: 14 }}>REMEDIATION QUEUE · OVERNIGHT DOJO</div>
+          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "rgba(255,255,255,0.55)", marginBottom: 14 }}>REPAIR REVIEW · SCHEDULED DOJO</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
             <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(74,222,128,0.05)" }}>reflex loop_breaker → agent #7 chain severed · verified · $38.20 spent</div>
             <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(74,222,128,0.05)" }}>reflex zombie_reaper → 4 orphaned processes reaped · verified</div>
@@ -832,7 +832,7 @@ function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
         </div>
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
-          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>AUTONOMOUS REMEDIATION · PRO</div>
+          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>REPAIR REVIEW · PRO</div>
           <a href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
           </a>
@@ -1080,7 +1080,7 @@ function Overview({ payload, onSelect, reflexProps, dojoProps, onUnlock, isDemo 
         </div>
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
-          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>REMEDIATION EFFICACY & DOJO HISTORY · PRO</div>
+          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>REPAIR & DOJO HISTORY · PRO</div>
           <a href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
           </a>

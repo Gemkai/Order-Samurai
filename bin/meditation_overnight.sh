@@ -51,9 +51,10 @@ python3 "$PREFLIGHT" --state-dir "$STATE_DIR"
 # Conservative bounds so the run (incl. the slower qwen faithfulness judge) finishes inside the
 # 600s box; a too-large run would be killed mid-way and leave the metrics stale. Override in
 # meditation.env if the box is widened.
+[ -f "$MAIN_DIR/bin/tool_quality_scout.py" ] && \
 TOOL_QUALITY_MAX_JUDGMENTS="${TOOL_QUALITY_MAX_JUDGMENTS:-15}" \
 TOOL_QUALITY_MAX_TOOL_USES="${TOOL_QUALITY_MAX_TOOL_USES:-20}" \
-[ -f "$MAIN_DIR/bin/tool_quality_scout.py" ] && tmo 600s python3 "$MAIN_DIR/bin/tool_quality_scout.py" >/dev/null 2>&1 \
+tmo 600s python3 "$MAIN_DIR/bin/tool_quality_scout.py" >/dev/null 2>&1 \
   || echo "[meditation] tool_quality_scout skipped (nonzero exit, timeout, or missing)"
 
 [ -f "$MAIN_DIR/bin/tool_trust_annotator.py" ] && tmo 300s python3 "$MAIN_DIR/bin/tool_trust_annotator.py" >/dev/null 2>&1 \

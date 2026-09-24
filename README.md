@@ -77,7 +77,7 @@ A gate that cannot distinguish "clean" from "could not check" is not a gate, so 
 
 ## Recent Major Advancements
 
-- **Retirement of Manual Meditation Control**: Faults no longer pause the engine for manual operator clicking. The engine uses **Autonomous Ronin Repairs** running in disposable, isolated Git worktrees with regression checks.
+- **Repair scope (September 23, 2026)**: Broad autonomous LLM repair and auto-apply are retired. Order Samurai supports diagnosis, staged patches for explicit human review and approval, and existing bounded deterministic maintenance. A passing check alone does not authorize applying a repair.
 - **Touch ID Hardware Authorization**: Operator policy adjustments and high-blast-radius operations require Darwin LocalAuthentication authorization.
 - **Fail-Closed Bushido Security**: `BUSHIDO_FAIL_OPEN=false`, `REFLEX_REQUIRE_GRANT=true` enforced deterministically.
 - **9 Live Knowledge Retrieval Measurements**: Real-time tracking of embedding cache hit rates, p50/p95 latency, collection search failures, and prompt cache reuse across Claude and Codex.
@@ -85,4 +85,4 @@ A gate that cannot distinguish "clean" from "could not check" is not a gate, so 
 ## Commercial Tiering (Strictly 2 Tiers — Zero Subscriptions)
 
 1. **Free Core ($0 Forever)**: 100% fail-closed ATT&CK kill-chain interception, in-memory secret scrubbing, 4-pillar diagnostics, 7-day log history, and **manual staged `.patch` generation**.
-2. **Pro Lifetime ($199 One-Time / Perpetual)**: **Autonomous Ronin auto-apply** in isolated Git worktrees, Touch ID hardware authorization (LocalAuthentication), Sensei multi-model rival verification, 9-point deep knowledge telemetry & prompt-cache tracking, 90-day archive, and cryptographic SHA-256 hash-chain ledger.
+2. **Pro Lifetime ($199 One-Time / Perpetual)**: **Maker-checker patch staging** for human review, Touch ID hardware authorization (LocalAuthentication), Sensei multi-model rival verification, 9-point deep knowledge telemetry & prompt-cache tracking, 90-day archive, and cryptographic SHA-256 hash-chain ledger.

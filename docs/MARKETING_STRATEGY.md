@@ -67,7 +67,7 @@
 | :--- | :--- | :--- |
 | **Month 1** | **Open Core & Launch Day** | Product Hunt Launch, Hacker News "Show HN" with 20-second visible recovery loop, Dispatches #01 & #02. |
 | **Month 2** | **Public Scanner & Badges** | Launch `ordersamurai.ai/audit`, publish 500-repo benchmark report. |
-| **Month 3** | **Pro Autopilot & Worktree Self-Healing** | Roll out Autonomous Ronin Auto-Apply, Touch ID biometric integration, and full 90-day cryptographic audit packs ($199 Lifetime). |
+| **Month 3** | **Pro Diagnostics & Repair Review** | Highlight staged patches for human approval, Touch ID biometric integration, and full 90-day cryptographic audit packs ($199 Lifetime). |
 
 ---
 *Maintained by the Order Samurai Growth & Marketing Team.*

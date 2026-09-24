@@ -158,17 +158,16 @@ export function RemediationPanel({ eff }: { eff: WIDPayload["remediation_efficac
   const completed = eff.completed ?? 0
 
   return (
-    <div style={{ marginTop: 40 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-        <span style={{ fontSize: "1.5rem" }}>🩺</span>
-        <h2 style={{ fontSize: "1.2rem", margin: 0, letterSpacing: 2, textTransform: "uppercase" }}>Remediation Efficacy</h2>
-        <span className="mono" style={{ fontSize: "var(--text-caption)", color: "var(--muted-foreground)" }}>{eff.note}</span>
-      </div>
+    <details style={{ marginTop: 40 }}>
+      <summary style={{ cursor: "pointer", fontSize: "1.2rem" }}>Repair history</summary>
+      <p style={{ color: "var(--muted-foreground)", fontSize: "0.8rem" }}>
+        Broad autonomous repair is retired. Historical records and human-reviewed repairs remain available here.
+      </p>
 
       {/* ── Summary stats + event log ── */}
       {eff.applied === 0 && attempted === 0 ? (
         <div className="glass" style={{ borderRadius: 16, padding: 18, fontSize: "0.7rem", color: "var(--muted-foreground)" }}>
-          No remediation skill has run in response to a flagged metric yet.
+          No repair attempts in this window — not evaluated.
         </div>
       ) : (
         <div className="glass" style={{ borderRadius: 18, padding: "20px 22px" }}>
@@ -240,6 +239,6 @@ export function RemediationPanel({ eff }: { eff: WIDPayload["remediation_efficac
           </div>
         </div>
       )}
-    </div>
+    </details>
   )
 }

@@ -5,6 +5,21 @@ All notable changes to **Order Samurai** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-09-23
+
+### Breaking — broad autonomous repair retired
+
+- Retire broad unattended LLM-generated repair and autonomous patch application.
+  `REFLEX_AUTO_APPLY` no longer enables auto-apply on either tier; remove this
+  legacy setting. Staged repairs require explicit human review and approval.
+- Retain diagnosis, validation evidence, existing bounded deterministic maintenance,
+  and explicitly approved backlog work. Passing validation alone does not authorize
+  a repair.
+- Replace autonomous repair promises in the dashboard, onboarding, and commercial
+  feature descriptions with diagnostics and staged repair review. Pricing and
+  license terms remain unchanged.
+- Align the package, CLI, installer, and JavaScript version mirrors at `2.0.0`.
+
 ## [1.0.1] - 2026-08-10
 
 ### Fixed — hook wiring (critical: v1.0.0 protected nothing)

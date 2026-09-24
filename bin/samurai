@@ -12,7 +12,15 @@ import datetime
 import argparse
 from pathlib import Path
 
-SAMURAI_VERSION = "1.0.0"
+SAMURAI_VERSION = "2.0.0"
+
+GUARD_MARKER = "prompt_injection_guard"
+SCRUBBER_MARKER = "secret_scrubber_realtime"
+
+# Tool patterns the guard and scrubber are scoped to. Claude Code matches these
+# against the tool name for each PreToolUse/PostToolUse event.
+GUARD_MATCHER = "Bash|Write|Edit|MultiEdit|WebFetch"
+SCRUBBER_MATCHER = "Bash|Read|WebFetch"
 
 def get_paths():
     home = Path.home()
@@ -20,7 +28,10 @@ def get_paths():
     samurai_home = Path(os.environ.get("SAMURAI_HOME", home / ".samurai"))
     samurai_settings = samurai_home / "settings.json"
     claude_hooks = home / ".claude" / "hooks"
-    claude_settings = claude_hooks / "settings.json"
+    # Claude Code loads ~/.claude/settings.json. It does NOT read
+    # ~/.claude/hooks/settings.json -- registering there (as v1.0.0 did) means
+    # the guard never fires. See tests/test_hook_wiring.py.
+    claude_settings = home / ".claude" / "settings.json"
     backups_dir = samurai_home / "backups"
     
     return {
@@ -34,67 +45,88 @@ def get_paths():
         "taxonomy": samurai_root / "state" / "kill_chain_taxonomy.json"
     }
 
-def _drop_samurai_matcher(matchers: list, command: str) -> list:
-    """Drop any matcher entry this installer previously added for `command`, so a
-    re-run of `samurai install` stays idempotent instead of appending a duplicate
-    hook every time. Non-matching entries (including malformed ones) are preserved
-    untouched -- this only removes samurai's own prior entries."""
-    kept = []
-    for m in matchers:
-        if (isinstance(m, dict) and isinstance(m.get("hooks"), list)
-                and any(isinstance(h, dict) and h.get("command") == command for h in m["hooks"])):
-            continue
-        kept.append(m)
-    return kept
+def _backup(settings_path: Path, backups_dir: Path, label: str):
+    """Back up settings_path under a label unique to its target.
+
+    The label matters: both target files are named settings.json, so a shared
+    backup name lets an uninstall restore the wrong one over the user's real
+    Claude Code config.
+    """
+    if not settings_path.exists():
+        return
+    backups_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_file = backups_dir / f"{label}.bak.{ts}"
+    shutil.copy2(settings_path, backup_file)
+    print(f"  [✓] Backed up prior settings to {backup_file}")
 
 
-def _register_hooks_in_file(settings_path: Path, guard_script: str, scrubber_script: str, backups_dir: Path,
-                             backup_label: str):
-    if not settings_path.parent.exists():
-        settings_path.parent.mkdir(parents=True, exist_ok=True)
-    if settings_path.exists():
-        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Keyed by backup_label, not settings_path.name: samurai_settings and claude_settings
-        # both end in "settings.json", so a name-only key made their backups indistinguishable
-        # in the shared backups_dir -- cmd_uninstall's restore step could then copy an
-        # unrelated samurai_settings backup straight over the user's real claude_settings.
-        backup_file = backups_dir / f"{backup_label}.bak.{ts}"
-        shutil.copy2(settings_path, backup_file)
-        print(f"  [✓] Backed up prior settings to {backup_file}")
-    
-    existing_settings = {}
-    if settings_path.exists():
-        try:
-            with open(settings_path, "r") as f:
-                existing_settings = json.load(f)
-        except Exception:
-            existing_settings = {}
+def _load_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
-    hooks = existing_settings.get("hooks", {})
-    pre_matchers = hooks.get("PreToolUse", [])
-    post_matchers = hooks.get("PostToolUse", [])
 
-    pre_command = f"python3 {guard_script}"
-    post_command = f"python3 {scrubber_script}"
+def _write_json(path: Path, data: dict):
+    """Write atomically -- the Claude Code config is large and user-owned."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, path)
 
-    # Claude Code's real settings.json hooks shape is hooks.<Event> = [matcher, ...], each
-    # matcher {"matcher": ..., "hooks": [{"type": "command", "command": str}]} -- see
-    # execution/verify_claude_hook_contract.py::collect_hook_commands(). A flat
-    # {"name", "command", "async"} object (the old shape here) is invisible to that parser,
-    # so the installed hook would never actually run.
-    pre_matchers = _drop_samurai_matcher(pre_matchers, pre_command)
-    post_matchers = _drop_samurai_matcher(post_matchers, post_command)
 
-    pre_matchers.append({"matcher": "*", "hooks": [{"type": "command", "command": pre_command}]})
-    post_matchers.append({"matcher": "*", "hooks": [{"type": "command", "command": post_command}]})
+def _entry_targets(entry: dict, marker: str) -> bool:
+    """True when a Claude-Code-shaped entry runs one of our scripts."""
+    if not isinstance(entry, dict):
+        return False
+    for hook in entry.get("hooks", []) or []:
+        if isinstance(hook, dict) and marker in str(hook.get("command", "")):
+            return True
+    return False
 
-    hooks["PreToolUse"] = pre_matchers
-    hooks["PostToolUse"] = post_matchers
-    existing_settings["hooks"] = hooks
 
-    with open(settings_path, "w") as f:
-        json.dump(existing_settings, f, indent=2)
+def _register_claude_hooks(settings_path: Path, guard_script: str, scrubber_script: str, backups_dir: Path, target_label: str = "claude-settings"):
+    """Register into ~/.claude/settings.json using Claude Code's own schema.
+
+    Entries take the form {"matcher": ..., "hooks": [{"type": "command", ...}]}.
+    Merges into the existing config: unrelated keys and the user's own hooks are
+    preserved, and re-running replaces our entries rather than duplicating them.
+    """
+    _backup(settings_path, backups_dir, target_label)
+    settings = _load_json(settings_path)
+
+    hooks = settings.get("hooks") if isinstance(settings.get("hooks"), dict) else {}
+
+    for event, marker, matcher, script in (
+        ("PreToolUse", GUARD_MARKER, GUARD_MATCHER, guard_script),
+        ("PostToolUse", SCRUBBER_MARKER, SCRUBBER_MATCHER, scrubber_script),
+    ):
+        script_marker = Path(script).name
+        entries = [e for e in (hooks.get(event) or []) if not (_entry_targets(e, marker) or _entry_targets(e, script_marker))]
+        entries.append({
+            "matcher": matcher,
+            "hooks": [{
+                "type": "command",
+                "command": f"python3 {script}",
+                "timeout": 5000,
+            }],
+        })
+        hooks[event] = entries
+
+    settings["hooks"] = hooks
+    _write_json(settings_path, settings)
     print(f"  [✓] Registered hooks in {settings_path}")
+
+
+def _register_hooks_in_file(settings_path: Path, guard_script: str, scrubber_script: str, backups_dir: Path, target_label: str = "samurai-settings"):
+    """Use the same hook schema in the agent-agnostic settings record."""
+    _register_claude_hooks(settings_path, guard_script, scrubber_script, backups_dir, target_label)
 
 def cmd_install(args):
     paths = get_paths()
@@ -106,14 +138,12 @@ def cmd_install(args):
     guard_script = str(paths["root"] / "hooks" / "prompt_injection_guard.py")
     scrubber_script = str(paths["root"] / "hooks" / "secret_scrubber_realtime.py")
 
-    # Install into ~/.samurai/settings.json (agent-agnostic primary)
-    _register_hooks_in_file(paths["samurai_settings"], guard_script, scrubber_script, paths["backups"],
-                             "samurai_settings")
+    # Agent-agnostic record for non-Claude harnesses.
+    _register_hooks_in_file(paths["samurai_settings"], guard_script, scrubber_script, paths["backups"])
 
-    # Also install into ~/.claude/hooks/settings.json if .claude directory exists
-    if (Path.home() / ".claude").is_dir() or paths["claude_settings"].exists():
-        _register_hooks_in_file(paths["claude_settings"], guard_script, scrubber_script, paths["backups"],
-                                 "claude_settings")
+    # The one that actually enforces anything: Claude Code's own config. Always
+    # written -- if Claude Code is installed later, the guard is already wired.
+    _register_claude_hooks(paths["claude_settings"], guard_script, scrubber_script, paths["backups"])
 
     print(f"⚔️  Installation complete! Run 'samurai doctor' to verify system health.")
     return 0
@@ -152,90 +182,86 @@ def cmd_doctor(args):
     fail_open = os.environ.get("BUSHIDO_FAIL_OPEN", "false").lower() == "true"
     check("Security Posture", not fail_open, f"BUSHIDO_FAIL_OPEN={fail_open} (Fail-closed enforced)")
 
-    # Check 4: Hook Registration (Check generic samurai_settings or claude_settings)
-    guard_command = f"python3 {paths['root'] / 'hooks' / 'prompt_injection_guard.py'}"
-    registered = False
-    for settings_path in [paths["samurai_settings"], paths["claude_settings"]]:
-        if settings_path.exists():
-            try:
-                with open(settings_path) as f:
-                    cfg = json.load(f)
-                    pre = cfg.get("hooks", {}).get("PreToolUse", [])
-                    if any(isinstance(m, dict) and isinstance(m.get("hooks"), list)
-                           and any(isinstance(h, dict) and h.get("command") == guard_command for h in m["hooks"])
-                           for m in pre):
-                        registered = True
-                        break
-            except Exception:
-                pass
-    check("Claude Code Hook Registration (Agnostic)", registered, "PreToolUse prompt_injection_guard registered")
+    # Check 4: Hook Registration.
+    # Asserted ONLY against ~/.claude/settings.json in Claude Code's own schema.
+    # v1.0.0 accepted ~/.samurai/settings.json as proof and reported PASS while
+    # the guard was wired nowhere Claude Code would ever load it.
+    claude_settings = paths["claude_settings"]
+    pre = _load_json(claude_settings).get("hooks", {}).get("PreToolUse", []) or []
+    registered = any(_entry_targets(e, GUARD_MARKER) for e in pre)
+    detail = (
+        f"PreToolUse guard registered in {claude_settings}"
+        if registered
+        else f"NOT registered in {claude_settings} -- run 'samurai install'"
+    )
+    check("Claude Code Hook Registration", registered, detail)
 
-    # Check 5: Path Authority. agentica_core lives in two different places
-    # depending on layout (same distinction emit_event.py/secret_scrub.py/
-    # bushido_check.py resolve for their own imports):
-    #   live tree:      Governance/Order Samurai/bin/samurai -> paths["root"]
-    #                    is ".../Governance/Order Samurai", and agentica_core
-    #                    is a SIBLING under Governance/, i.e. paths["root"].parent
-    #   public export:  <root>/bin/samurai (pack flattened to the root) ->
-    #                    agentica_core is a direct child of paths["root"]
-    # Checking only the child case reported Path Authority FAIL on every real
-    # dev checkout, since that layout is a sibling, not a child.
+    # Check 5: Path Authority
     agentica_core_dir = paths["root"] / "agentica_core"
     if not agentica_core_dir.is_dir():
         agentica_core_dir = paths["root"].parent / "agentica_core"
     root_ok = paths["root"].exists() and agentica_core_dir.is_dir()
-    check("Path Authority", root_ok, f"Root: {paths['root']} (agentica_core: {agentica_core_dir})")
+    check("Path Authority", root_ok, f"Root: {paths['root']}")
 
     print("----------------------------------------")
     print(f"Summary: {passed}/{total} checks passed.")
     return 0 if passed == total else 1
 
-def _deregister_hooks_in_file(settings_path: Path, guard_command: str, scrubber_command: str) -> None:
-    if not settings_path.exists():
-        return
-    try:
-        with open(settings_path, "r") as f:
-            cfg = json.load(f)
-        hooks = cfg.get("hooks", {})
-        if "PreToolUse" in hooks:
-            hooks["PreToolUse"] = _drop_samurai_matcher(hooks["PreToolUse"], guard_command)
-        if "PostToolUse" in hooks:
-            hooks["PostToolUse"] = _drop_samurai_matcher(hooks["PostToolUse"], scrubber_command)
-        cfg["hooks"] = hooks
-        with open(settings_path, "w") as f:
-            json.dump(cfg, f, indent=2)
-        print(f"  [✓] Deregistered Order Samurai hooks from {settings_path}.")
-    except Exception as e:
-        print(f"  [!] Error deregistering hooks from {settings_path}: {e}")
-
-
 def cmd_uninstall(args):
     paths = get_paths()
     print(f"⚔️  Uninstalling Order Samurai v{SAMURAI_VERSION}...")
 
-    # 1. Remove hooks from settings.json -- BOTH samurai_settings (the agent-agnostic
-    # primary cmd_install always writes to) and claude_settings (installed
-    # conditionally). This must run independent of --keep-data: --keep-data only
-    # decides whether ~/.samurai/state survives, not whether its hooks stay wired.
-    guard_command = f"python3 {paths['root'] / 'hooks' / 'prompt_injection_guard.py'}"
-    scrubber_command = f"python3 {paths['root'] / 'hooks' / 'secret_scrubber_realtime.py'}"
-    _deregister_hooks_in_file(paths["samurai_settings"], guard_command, scrubber_command)
-    _deregister_hooks_in_file(paths["claude_settings"], guard_command, scrubber_command)
-
-    # 2. Restore prior backup if available (claude_settings backups only -- see
-    # _register_hooks_in_file's backup_label: a samurai_settings backup is unrelated content
-    # and must never be restored onto claude_settings).
-    backups = sorted(paths["backups"].glob("claude_settings.bak.*"))
-    if backups:
-        latest_backup = backups[-1]
+    # 1. Surgically deregister our own entries, leaving the user's hooks intact.
+    #    Deliberately NOT a restore-from-backup: both settings files share a
+    #    basename, so restoring "the newest backup" could drop ~/.samurai's file
+    #    on top of the user's real Claude Code config. Backups are kept on disk
+    #    for manual recovery instead.
+    for label, settings_path in (
+        ("Claude Code", paths["claude_settings"]),
+        ("agent-agnostic", paths["samurai_settings"]),
+        ("legacy Claude", paths["claude_hooks"] / "settings.json"),
+    ):
+        if not settings_path.exists():
+            continue
         try:
-            shutil.copy2(latest_backup, paths["claude_settings"])
-            print(f"  [✓] Restored prior settings from {latest_backup.name}")
+            # A malformed user file must survive for recovery, never become {}.
+            cfg = json.loads(settings_path.read_text(encoding="utf-8"))
+            if not isinstance(cfg, dict):
+                continue
+            hooks = cfg.get("hooks", {})
+            if not isinstance(hooks, dict):
+                continue
+            for event, marker, legacy_name in (
+                ("PreToolUse", GUARD_MARKER, "samurai_prompt_injection_guard"),
+                ("PostToolUse", SCRUBBER_MARKER, "samurai_secret_scrubber"),
+            ):
+                entries = hooks.get(event) or []
+                entries = [e for e in entries if not _entry_targets(e, marker)]
+                # Also strip v1.0.0's mis-shaped entries wherever they linger.
+                entries = [
+                    e for e in entries
+                    if not (isinstance(e, dict) and e.get("name") == legacy_name)
+                ]
+                hooks[event] = entries
+            cfg["hooks"] = hooks
+            _write_json(settings_path, cfg)
+            print(f"  [✓] Deregistered Order Samurai hooks from {label} settings.")
         except Exception as e:
-            print(f"  [!] Warning restoring backup: {e}")
+            print(f"  [!] Error deregistering hooks from {label} settings: {e}")
 
-    # 3. Handle zero-residue data cleanup
+    # 2. Handle data cleanup. license.json is a paid entitlement -- preserve a
+    #    copy rather than silently destroying it with the state directory.
     if not args.keep_data and paths["home"].exists():
+        license_file = paths["home"] / "license.json"
+        if license_file.exists():
+            rescued = Path.home() / "order-samurai-license-backup.json"
+            try:
+                shutil.copy2(license_file, rescued)
+                print(f"  [✓] Saved your Pro license to {rescued}")
+            except Exception as e:
+                print(f"  [!] Could not preserve license.json: {e}")
+                print("  [!] Aborting removal so your license is not lost. Re-run with --keep-data.")
+                return 1
         shutil.rmtree(paths["home"])
         print("  [✓] Removed ~/.samurai state (Zero-residue audit PASS).")
     elif args.keep_data:

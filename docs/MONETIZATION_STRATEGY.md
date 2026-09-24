@@ -13,7 +13,7 @@ Order Samurai employs a clean, transparent **2-Tier Model (Free Core vs. Pro Lif
 │ 1. Free Core         │ $0 (Forever Free)             │ Real-time local shield, ATT&CK  │
 │                      │                               │ interceptor, manual .patch staging│
 ├──────────────────────┼───────────────────────────────┼─────────────────────────────────┤
-│ 2. Pro Lifetime      │ $199 (One-Time / Perpetual)   │ Autonomous Ronin self-healing,  │
+│ 2. Pro Lifetime      │ $199 (One-Time / Perpetual)   │ Staged repair review,           │
 │                      │                               │ Touch ID biometric mutation auth│
 │                      │                               │ 9-point knowledge telemetry     │
 └──────────────────────┴───────────────────────────────┴─────────────────────────────────┘
@@ -33,13 +33,13 @@ Order Samurai employs a clean, transparent **2-Tier Model (Free Core vs. Pro Lif
   * **Deterministic Reconciler**: `samurai doctor`, `samurai audit`, and `samurai reconcile`.
   * **Manual Patch Staging**: Generates deterministic `.patch` files in `state/pending_remediation_*.patch` for inspection and manual `git apply`.
   * **Basic Knowledge Retrieval Metrics**: Local hit counters and retrieval latency.
-* **Conversion Trigger**: Manual copy-paste fatigue. The developer sees the exact code fix staged, but must manually review, context-switch, and run `git apply` every time.
+* **Conversion Trigger**: Deeper diagnostic evidence, extended telemetry, and review tools for operators managing larger fleets.
 
-### Tier 2: Pro Lifetime ($199 One-Time Payment) — "The Autonomous Autopilot"
+### Tier 2: Pro Lifetime ($199 One-Time Payment) — "Fleet Diagnostics & Review"
 * **Target**: Professional software engineers, autonomous agent fleet operators, agency leads.
-* **Core Principle**: Monetize recovered developer time and hands-free convenience, not basic safety.
+* **Core Principle**: Monetize diagnostic depth and review support, not basic safety or unattended repairs.
 * **Included**:
-  * **Autonomous Ronin Auto-Apply (`REFLEX_AUTO_APPLY=true`)**: Replaces the manual meditation button with fully autonomous self-healing. Faults are isolated into temporary Git worktrees, repaired, and validated against regression test suites with zero human clicks.
+  * **Maker-Checker Patch Staging**: Presents proposed patches and validation evidence for explicit human review and approval. Broad autonomous LLM repair and auto-apply are no longer Pro features.
   * **Hardware Biometric Protection (Touch ID)**: Critical operator mutations and policy adjustments require Darwin LocalAuthentication Touch ID biometric attestation (falling back to device owner PIN/password on supported environments).
   * **Multi-Model Rival Auditing (Sensei Engine)**: Multi-model consensus where autonomous scout findings (Bow, Sword, Brush, Arts) are audited by an independent rival LLM (`CONFIRMED`, `REFUTED`, `SUSPECT`) before code is touched.
   * **9-Point Deep Knowledge Telemetry**: Real-time observability under **Brush → Knowledge Retrieval**:
