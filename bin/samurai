@@ -22,6 +22,52 @@ SCRUBBER_MARKER = "secret_scrubber_realtime"
 GUARD_MATCHER = "Bash|Write|Edit|MultiEdit|WebFetch"
 SCRUBBER_MATCHER = "Bash|Read|WebFetch"
 
+def _licensing_module():
+    """Import agentica_core.licensing, resolving its sibling-vs-child location the
+    same way cmd_doctor's Path Authority check does: live tree
+    has agentica_core as a SIBLING of Order Samurai under Governance/; a flattened
+    export has it as a direct CHILD of the repo root. Import lazily so `samurai
+    doctor`/`install`/`uninstall` never pay for this or fail when agentica_core is
+    absent (e.g. a partial checkout)."""
+    root = get_paths()["root"]
+    for governance_dir in (root.parent, root):
+        if (governance_dir / "agentica_core").is_dir():
+            if str(governance_dir) not in sys.path:
+                sys.path.insert(0, str(governance_dir))
+            import agentica_core.licensing as licensing  # noqa: PLC0415
+            return licensing
+    print("  [!] Could not locate agentica_core/licensing.py — is the checkout complete?", file=sys.stderr)
+    sys.exit(1)
+
+
+def cmd_activate(args):
+    licensing = _licensing_module()
+    result = licensing.activate(args.license_key, instance_name=args.instance_name)
+    print(("⚔️  " if result.get("ok") else "❌ ") + result.get("message", ""))
+    return 0 if result.get("ok") else 1
+
+
+def cmd_deactivate(args):
+    licensing = _licensing_module()
+    result = licensing.deactivate()
+    print(("⚔️  " if result.get("ok") else "❌ ") + result.get("message", ""))
+    return 0 if result.get("ok") else 1
+
+
+def cmd_license(args):
+    licensing = _licensing_module()
+    st = licensing.status()
+    print(f"Tier: {st.get('tier', 'free').upper()}")
+    if st.get("activated"):
+        print(f"  Provider:    {st.get('provider', 'gumroad')}")
+        print(f"  License key: {st.get('license_key')}")
+        print(f"  Instance:    {st.get('instance_name')}")
+        print(f"  Email:       {st.get('customer_email')}")
+        print(f"  Activated:   {st.get('activated_at')}")
+    elif st.get("reason"):
+        print(f"  {st['reason']}")
+    return 0
+
 def get_paths():
     home = Path.home()
     samurai_root = Path(os.environ.get("SAMURAI_ROOT", Path(__file__).resolve().parent.parent))
@@ -284,6 +330,14 @@ def main():
     un_parser = subparsers.add_parser("uninstall", help="Uninstall Order Samurai hooks and restore settings")
     un_parser.add_argument("--keep-data", action="store_true", help="Preserve ~/.samurai state directory")
 
+    # activate / deactivate / license
+    act_parser = subparsers.add_parser("activate", help="Activate an Order Samurai Pro license key")
+    act_parser.add_argument("license_key", help="Pro license key (Gumroad or Lemon Squeezy)")
+    act_parser.add_argument("--instance-name", default=None, help="Name for this machine (defaults to hostname)")
+
+    subparsers.add_parser("deactivate", help="Deactivate Pro on this machine (revert to Free)")
+    subparsers.add_parser("license", help="Show the current license tier and entitlement status")
+
     args = parser.parse_args()
     if not args.command or args.command == "doctor":
         sys.exit(cmd_doctor(args))
@@ -291,6 +345,12 @@ def main():
         sys.exit(cmd_install(args))
     elif args.command == "uninstall":
         sys.exit(cmd_uninstall(args))
+    elif args.command == "activate":
+        sys.exit(cmd_activate(args))
+    elif args.command == "deactivate":
+        sys.exit(cmd_deactivate(args))
+    elif args.command == "license":
+        sys.exit(cmd_license(args))
     else:
         parser.print_help()
         sys.exit(1)

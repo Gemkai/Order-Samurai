@@ -8,6 +8,7 @@ import {
 } from "@/lib/data"
 import {
   num, topMovers, platformMetricVal, reflexMetric, resolveHero, scoreMap, type ScoreScope,
+  isProEntitled,
 } from "@/lib/metrics"
 import {
   ScoreNumber, ScoreDelta, PillarStatus, TierMixMini, TrendMark, TrendChips, Sparkline,
@@ -660,7 +661,7 @@ export default function App() {
             <a href="../" style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontFamily: "inherit" }}>
               ← Back to site
             </a>
-            <a href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199" target="_blank" rel="noopener noreferrer" style={{ color: "#facc15", textDecoration: "none", fontWeight: 600, fontFamily: "inherit" }}>
+            <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" style={{ color: "#facc15", textDecoration: "none", fontWeight: 600, fontFamily: "inherit" }}>
               Unlock Pro Lifetime — $199 →
             </a>
           </div>
@@ -833,7 +834,7 @@ function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
           <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>REPAIR REVIEW · PRO</div>
-          <a href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
+          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
           </a>
         </div>
@@ -852,7 +853,7 @@ function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
           <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>CROSS-HARNESS FLEET VIEW · PRO</div>
-          <a href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
+          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
           </a>
         </div>
@@ -871,7 +872,7 @@ function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
           <div style={{ fontSize: 22 }}>🔒</div>
           <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>COMPLIANCE PACKS · PRO</div>
-          <a href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
+          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
             UNLOCK PRO LIFETIME — $199
           </a>
         </div>
@@ -944,6 +945,7 @@ function TopUsagePanel({ usage }: { usage: WIDPayload["top_usage"] }) {
 // ── Overview page ─────────────────────────────────────────────────────────────
 function Overview({ payload, onSelect, reflexProps, dojoProps, onUnlock, isDemo }: { payload: WIDPayload; onSelect: (v: View) => void; reflexProps: ReflexProps; dojoProps: DojoProps; onUnlock: () => void; isDemo: boolean }) {
   const scope: ScoreScope = "window"
+  const isPro = isProEntitled(payload)
 
   const scores = scoreMap(payload, scope)
   // Worst pillar by tier rollup (CRITICAL > HIGH > PASS), ties broken by fewest passing.
@@ -1074,20 +1076,27 @@ function Overview({ payload, onSelect, reflexProps, dojoProps, onUnlock, isDemo 
 
       <TopUsagePanel usage={payload.top_usage} />
 
-      <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", marginTop: 40, border: "1px solid rgba(250,204,21,0.25)" }}>
-        <div style={{ filter: "blur(6px)", opacity: 0.5, pointerEvents: "none", userSelect: "none" }}>
+      {isPro ? (
+        <div style={{ marginTop: 40 }}>
           <RemediationPanel eff={payload.remediation_efficacy} />
         </div>
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
-          <div style={{ fontSize: 22 }}>🔒</div>
-          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>REPAIR & DOJO HISTORY · PRO</div>
-          <a href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
-            UNLOCK PRO LIFETIME — $199
-          </a>
+      ) : (
+        <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", marginTop: 40, border: "1px solid rgba(250,204,21,0.25)" }}>
+          <div style={{ filter: "blur(6px)", opacity: 0.5, pointerEvents: "none", userSelect: "none" }}>
+            <RemediationPanel eff={payload.remediation_efficacy} />
+          </div>
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
+            <div style={{ fontSize: 22 }}>🔒</div>
+            <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>REPAIR & DOJO HISTORY · PRO</div>
+            <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
+              UNLOCK PRO LIFETIME — $199
+            </a>
+          </div>
         </div>
-      </div>
+      )}
 
-      <ProLockedPanels onUnlock={onUnlock} />
+      {/* Mock teasers for unbuilt Pro views: shown only as an upgrade prompt, never "unlocked". */}
+      {!isPro && <ProLockedPanels onUnlock={onUnlock} />}
     </section>
   )
 }

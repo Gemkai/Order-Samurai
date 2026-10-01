@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { num, volatility, vizScores, assignViz, ringMax, scoreMap, topMovers, platformMetricVal, reflexMetric, resolveHero } from "./metrics"
+import { num, volatility, vizScores, assignViz, ringMax, scoreMap, topMovers, platformMetricVal, reflexMetric, resolveHero, isProEntitled } from "./metrics"
 import type { FlatMetric } from "@/lib/data"
 import type { WIDPayload, Pillars, Reflex } from "@/types"
 
@@ -175,5 +175,13 @@ describe("resolveHero data-gap gating", () => {
     const hero = resolveHero(groupsWith({ val: "12.5", calibrated: true, data_gap: false }) as unknown as Parameters<typeof resolveHero>[0], meta)
     expect(hero.fallbackActive).toBe(false)
     expect(hero.label).toBe("Est. Cost Savings")
+  })
+})
+
+describe("isProEntitled", () => {
+  it("unlocks only for an explicit pro tier", () => {
+    expect(isProEntitled({ license: { tier: "pro" } } as WIDPayload)).toBe(true)
+    expect(isProEntitled({ license: { tier: "free" } } as WIDPayload)).toBe(false)
+    expect(isProEntitled({} as WIDPayload)).toBe(false)
   })
 })

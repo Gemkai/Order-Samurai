@@ -7,16 +7,17 @@ Provides license key validation and activation via Gumroad's API (https://api.gu
 import sys
 import os
 import json
+import hashlib
 import urllib.request
 import urllib.parse
 import urllib.error
 
 GUMROAD_API_URL = "https://api.gumroad.com/v2/licenses/verify"
 GUMROAD_PRODUCT_ID = os.environ.get("GUMROAD_PRODUCT_ID", "AePROIWPGu9a6k-dm9W4ww==")
-GUMROAD_PERMALINK = os.environ.get("GUMROAD_PRODUCT_PERMALINK", "ordersamurai-pro")
+GUMROAD_PERMALINK = os.environ.get("GUMROAD_PRODUCT_PERMALINK", "sqwomh")
 
 
-def validate_license_key(license_key: str, product_id: str = None) -> dict:
+def validate_license_key(license_key: str, product_id: str = None, increment_uses_count: bool = False, timeout: int = 15) -> dict:
     """Validate a Gumroad license key for Order Samurai Pro ($199)."""
     key = (license_key or "").strip()
     if not key:
@@ -25,7 +26,11 @@ def validate_license_key(license_key: str, product_id: str = None) -> dict:
     # No key-prefix bypass: every key is verified against Gumroad's API below.
     # Maintainer/CI Pro testing uses bin/make_dev_license.sh instead.
     pid = product_id or GUMROAD_PRODUCT_ID
-    payload = {"product_id": pid, "license_key": key}
+    payload = {
+        "product_id": pid,
+        "license_key": key,
+        "increment_uses_count": "true" if increment_uses_count else "false",
+    }
     data = urllib.parse.urlencode(payload).encode("utf-8")
     req = urllib.request.Request(
         GUMROAD_API_URL,
@@ -34,11 +39,15 @@ def validate_license_key(license_key: str, product_id: str = None) -> dict:
     )
 
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
             res_data = json.loads(response.read().decode("utf-8"))
             success = res_data.get("success", False)
-            purchase = res_data.get("purchase", {})
-            refunded = purchase.get("refunded", False) or purchase.get("disputed", False)
+            purchase = res_data.get("purchase") or {}
+            # A dispute the seller won leaves the purchase in good standing.
+            refunded = bool(purchase.get("refunded") or purchase.get("chargebacked")
+                            or (purchase.get("disputed") and not purchase.get("dispute_won")))
+            if not success:
+                return {"valid": False, "not_found": True, "error": "license key not recognized by Gumroad"}
             return {
                 "valid": success and not refunded,
                 "license_key": key,
@@ -49,21 +58,28 @@ def validate_license_key(license_key: str, product_id: str = None) -> dict:
             }
     except urllib.error.HTTPError as err:
         if err.code == 404:
-            return {"valid": False, "error": "license key not recognized by Gumroad"}
+            return {"valid": False, "not_found": True, "error": "license key not recognized by Gumroad"}
+        if err.code >= 500:
+            return {"valid": False, "error": f"Could not reach Gumroad (HTTP {err.code}). Try again shortly."}
         return {"valid": False, "error": f"Gumroad API HTTP {err.code}"}
+    except urllib.error.URLError as err:
+        return {"valid": False, "error": f"Could not reach Gumroad ({err.reason}). Check your network connection and try again."}
+    except (TimeoutError, OSError) as err:
+        return {"valid": False, "error": f"Could not reach Gumroad ({err}). Check your network connection and try again."}
     except Exception as e:
         return {"valid": False, "error": str(e)}
 
 
 def activate_license_key(license_key: str, instance_name: str) -> dict:
     """Activate a Gumroad license key for a local developer machine."""
-    val = validate_license_key(license_key)
+    val = validate_license_key(license_key, increment_uses_count=True)
     if not val.get("valid"):
         return {"activated": False, "error": val.get("error", "invalid key")}
 
+    instance_hash = hashlib.sha256(f"{license_key}:{instance_name}".encode("utf-8")).hexdigest()[:16]
     return {
         "activated": True,
-        "instance_id": f"gum_{hash(f'{license_key}:{instance_name}') & 0xffffffff}",
+        "instance_id": f"gum_{instance_hash}",
         "instance_name": instance_name,
         "license_key": license_key,
         "customer_email": val.get("customer_email"),

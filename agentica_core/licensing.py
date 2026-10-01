@@ -2,7 +2,8 @@
 """Order Samurai Pro entitlement — the single authority for "is this machine Pro?".
 
 Offline-perpetual model (per TERMS.md / EULA.md): the license key is validated ONCE
-online at activation time via Lemon Squeezy (execution/lemonsqueezy_mcp.py), and the
+online at activation time via Gumroad (execution/gumroad_mcp.py; Lemon Squeezy is a
+legacy fallback in execution/lemonsqueezy_mcp.py), and the
 resulting entitlement is written to ``~/.samurai/license.json``. After that, every
 Pro-gated feature reads that file locally — no network, works offline forever, which is
 exactly what "offline perpetual key activation" promises.
@@ -77,6 +78,7 @@ def status() -> dict[str, Any]:
     return {
         "tier": "pro" if is_pro() else "free",
         "activated": is_pro(),
+        "provider": ent.get("provider", "gumroad") if is_pro() else None,
         "status": ent.get("status"),
         "license_key": _mask_key(ent.get("license_key", "")),
         "instance_name": ent.get("instance_name"),
@@ -85,6 +87,16 @@ def status() -> dict[str, Any]:
         **({"reason": "license present but not active (refunded/inactive)"}
            if not is_pro() else {}),
     }
+
+
+def dashboard_summary() -> dict[str, str]:
+    """Tier-only entitlement for wid_payload.json. Carries no key or email, because the
+    payload is served to the dashboard."""
+    return {"tier": "pro" if is_pro() else "free"}
+
+
+def _is_unreachable(result: dict[str, Any]) -> bool:
+    return "could not reach" in str(result.get("error", "")).lower()
 
 
 def _mask_key(key: str) -> str:
@@ -106,38 +118,49 @@ def activate(license_key: str, instance_name: str | None = None) -> dict[str, An
 
     instance = instance_name or socket.gethostname() or "unknown-host"
 
-    # Dual-provider verification: try Gumroad first, then Lemon Squeezy
-    val = {}
-    act = {}
+    # Gumroad is the live storefront; Lemon Squeezy is only a fallback for legacy keys.
     provider = "gumroad"
-
     try:
-        from execution.gumroad_mcp import (  # noqa: PLC0415
-            validate_license_key as g_val, activate_license_key as g_act,
-        )
+        from execution.gumroad_mcp import validate_license_key as g_val  # noqa: PLC0415
         val = g_val(key)
-        if val.get("valid"):
-            act = g_act(key, instance)
     except Exception:
-        pass
+        val = {}
 
-    if not val.get("valid"):
-        try:
-            from execution.lemonsqueezy_mcp import (  # noqa: PLC0415
-                validate_license_key as l_val, activate_license_key as l_act,
-            )
-            val = l_val(key)
-            if val.get("valid"):
-                act = l_act(key, instance)
-                provider = "lemonsqueezy"
-        except Exception:
-            pass
+    # Unreachable Gumroad is a connectivity problem, not a bad key: never fall through to
+    # the fallback provider, whose own error would misreport it.
+    if _is_unreachable(val):
+        return {"ok": False, "message": f"network error: {val['error']}"}
 
-    if not val.get("valid"):
-        return {"ok": False,
-                "message": f"license key invalid: {val.get('error', 'not recognized by payment provider')}"}
     if val.get("refunded") or val.get("status") == "refunded":
         return {"ok": False, "message": "this license key has been refunded/revoked"}
+
+    if not val.get("valid"):
+        # Only a key Gumroad has never seen may be a legacy Lemon Squeezy key; any other
+        # Gumroad verdict is final, so the key is not sent to a second provider.
+        fallback = {}
+        if val.get("not_found"):
+            try:
+                from execution.lemonsqueezy_mcp import validate_license_key as l_val  # noqa: PLC0415
+                fallback = l_val(key)
+            except Exception:
+                pass
+        if not fallback.get("valid"):
+            # Gumroad's answer is authoritative. Lemon Squeezy answers an unknown key with
+            # HTTP 404, which its client words as "Could not reach", so never surface that.
+            return {"ok": False, "message": "license key invalid: "
+                    + val.get("error", "not recognized by payment provider")}
+        val, provider = fallback, "lemonsqueezy"
+        if val.get("refunded") or val.get("status") == "refunded":
+            return {"ok": False, "message": "this license key has been refunded/revoked"}
+
+    try:
+        if provider == "gumroad":
+            from execution.gumroad_mcp import activate_license_key as act_fn  # noqa: PLC0415
+        else:
+            from execution.lemonsqueezy_mcp import activate_license_key as act_fn  # noqa: PLC0415
+        act = act_fn(key, instance)
+    except Exception as e:
+        act = {"error": str(e)}
 
     if not act.get("activated"):
         return {"ok": False,
@@ -145,6 +168,7 @@ def activate(license_key: str, instance_name: str | None = None) -> dict[str, An
 
     entitlement = {
         "tier": "pro",
+        "provider": provider,
         "valid": True,
         "status": val.get("status", "active"),
         "refunded": False,

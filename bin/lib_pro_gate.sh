@@ -38,7 +38,7 @@ require_pro() {
 ⚔️  $feature is an Order Samurai Pro feature.
     Free tier includes four-pillar scoring + fail-closed CLI security hooks.
     Unlock Pro:  samurai activate <license-key>
-    Buy a key:   https://ordersamurai.lemonsqueezy.com  (14-day money-back guarantee)
+    Buy a key:   https://jemakaib1.gumroad.com/l/sqwomh  (14-day money-back guarantee)
 EOF
   exit 2
 }
