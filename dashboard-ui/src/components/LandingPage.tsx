@@ -912,7 +912,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
             </div>
             {/* Primary Buy CTA in Crimson */}
             <a
-              href="https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199"
+              href="https://jemakaib1.gumroad.com/l/sqwomh"
               target="_blank"
               rel="noopener noreferrer"
               className="mt-8 w-full py-3 px-4 bg-[#ef4444] hover:bg-[#dc2626] text-white rounded-xl font-bold text-sm transition-colors shadow-lg shadow-[#ef4444]/25 flex items-center justify-center gap-2 text-center"

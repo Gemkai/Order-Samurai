@@ -31,7 +31,7 @@ def validate_license_key(license_key: str, instance_id: str = None) -> dict:
     req = urllib.request.Request(url, data=data, headers={"Accept": "application/json"})
     
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=15) as response:
             res_data = json.loads(response.read().decode("utf-8"))
             return {
                 "valid": res_data.get("valid", False),
@@ -60,7 +60,7 @@ def activate_license_key(license_key: str, instance_name: str) -> dict:
     req = urllib.request.Request(url, data=data, headers={"Accept": "application/json"})
 
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=15) as response:
             res_data = json.loads(response.read().decode("utf-8"))
             return {
                 "activated": res_data.get("activated", False),

@@ -152,3 +152,6 @@ export function reflexMetric(payload: WIDPayload, r: Reflex): { metric: FlatMetr
 export type ScoreScope = "window" | "all"
 export const scoreMap = (p: WIDPayload, scope: ScoreScope) =>
   scope === "all" ? p.category_scores_lifetime : p.category_scores
+
+/** True only when the aggregator reported a Pro entitlement; anything else stays locked. */
+export const isProEntitled = (payload: WIDPayload): boolean => payload.license?.tier === "pro"

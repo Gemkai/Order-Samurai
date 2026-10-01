@@ -3,7 +3,7 @@ import { motion } from "motion/react"
 import { MetricViz } from "@/components/MetricViz"
 import { PILLARS, type PillarKey, type WIDPayload } from "@/types"
 import { flatten, metricLabel, type FlatMetric } from "@/lib/data"
-import { num, assignViz, resolveHero, ringMax, scoreMap } from "@/lib/metrics"
+import { num, assignViz, resolveHero, ringMax, scoreMap, isProEntitled } from "@/lib/metrics"
 import { ScoreNumber, PillarStatus, TierMixMini, TrendBadge, StatusBadge } from "@/components/helpers"
 import { ThresholdSparkline } from "@/components/ThresholdSparkline"
 import { metricStatus } from "@/lib/slo"
@@ -46,6 +46,7 @@ export function PillarPage({ payload, pk, reflexProps, onSelectMetric, dojoProps
   const meta = PILLARS.find((p) => p.key === pk)!
 
   // Swap both pillars + score when tier selected; fall back to combined view
+  const isPro = isProEntitled(payload)
   const tierPillars = selectedTier ? payload.by_tier?.[selectedTier] : undefined
   const activePillars = tierPillars ?? payload.pillars
 
@@ -223,7 +224,7 @@ export function PillarPage({ payload, pk, reflexProps, onSelectMetric, dojoProps
               const execRunning = isActiveExec && dojoProps?.execStatus === 'running'
               const execDone    = isActiveExec && dojoProps?.execStatus === 'done'
               const execError   = isActiveExec && dojoProps?.execStatus === 'error'
-              const isProLocked = !FREE_UNLOCKED_METRICS[pk]?.has(m.key.toLowerCase())
+              const isProLocked = !isPro && !FREE_UNLOCKED_METRICS[pk]?.has(m.key.toLowerCase())
               return (
                 <div key={`${m.group}::${m.key}`} style={{ position: "relative", borderRadius: 14, overflow: "hidden" }}>
                   <motion.div
@@ -236,7 +237,7 @@ export function PillarPage({ payload, pk, reflexProps, onSelectMetric, dojoProps
                     onClick={() => {
                       if (isProLocked) {
                         if (typeof window !== "undefined") {
-                          window.open("https://ordersamurai.lemonsqueezy.com/checkout/buy/default_pro_199", "_blank")
+                          window.open("https://jemakaib1.gumroad.com/l/sqwomh", "_blank")
                         }
                       } else {
                         onSelectMetric({ metric: m, color: meta.accent })

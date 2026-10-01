@@ -84,9 +84,9 @@ is nothing to reinstall; you activate a license key on an existing Free install.
 ### 1. Buy a license
 
 Purchase the **$199 Pro Lifetime License** at
-<https://ordersamurai.lemonsqueezy.com>. Checkout is handled by Lemon Squeezy and backed by
+<https://jemakaib1.gumroad.com/l/sqwomh>. Checkout is handled by Gumroad and backed by
 a **14-day 100% money-back guarantee** (see [TERMS.md](../TERMS.md) and [EULA.md](../EULA.md)).
-You receive a license key by email immediately after purchase.
+You receive a license key immediately on your receipt and by email.
 
 ### 2. Activate
 
@@ -94,7 +94,7 @@ You receive a license key by email immediately after purchase.
 samurai activate <your-license-key>
 ```
 
-This validates the key online **once** with Lemon Squeezy, registers this machine, and
+This validates the key online **once** via Gumroad, registers this machine, and
 writes your entitlement to `~/.samurai/license.json`. After that it is an **offline
 perpetual** license — the Pro features work with no network connection, forever, on this
 machine.
@@ -148,7 +148,7 @@ to Free. The single source of truth is `agentica_core/licensing.py` (Python) and
 |---|---|
 | `samurai: command not found` | Run from the repo: `./bin/samurai <cmd>`, or add `bin/` to your `PATH`. |
 | `samurai doctor` shows *Hook Registration* FAIL | Run `samurai install` (registers the hooks); re-run doctor. |
-| `samurai activate` says "license key invalid" | Check for typos/whitespace; confirm the key from your Lemon Squeezy email. Refunded keys are rejected. |
+| `samurai activate` says "license key invalid" | Check for typos/whitespace; copy the key from your Gumroad receipt. Refunded keys are rejected. |
 | Dojo says *"is an Order Samurai Pro feature"* | You are on Free. Run `samurai activate <key>` (or buy one) to unlock. |
 | Legacy `REFLEX_AUTO_APPLY=true` setting | Remove it. Auto-apply is retired on both tiers; review staged patches before explicitly approving a repair. |
 | Want to remove everything | `samurai uninstall` (add `--keep-data` to preserve `~/.samurai`). |

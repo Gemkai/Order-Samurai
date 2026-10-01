@@ -2,6 +2,12 @@
 # dojo_overnight.sh — the 6-hour autonomous engine for the Order Samurai Dojo.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR}/lib_pro_gate.sh" ]; then
+  . "${SCRIPT_DIR}/lib_pro_gate.sh"
+  require_pro "Nightly Dojo"
+fi
+
 # Portable timeout: GNU coreutils `timeout` when present, bash watchdog on macOS
 # (where `timeout` does not exist — it silently killed every Mac dojo cycle).
 tmo() {

@@ -117,6 +117,8 @@ export interface WIDPayload {
   }
   architecture?: ArchitectureBreakdown | null
   needs_attention?: NeedsAttention
+  /** Pro entitlement (tier only) from ~/.samurai/license.json, written by the aggregator. */
+  license?: { tier: "free" | "pro" }
 }
 
 /** The ONE legitimate composite (plan Phase 2): metrics currently breaching their SLO.

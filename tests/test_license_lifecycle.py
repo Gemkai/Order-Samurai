@@ -231,6 +231,93 @@ def test_network_error_during_activation_fails_closed_with_retry_message(tmp_pat
     assert not (tmp_path / "license.json").exists()
 
 
+def test_gumroad_network_error_is_not_reported_as_invalid_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("SAMURAI_HOME", str(tmp_path))
+    _patch_providers(
+        monkeypatch,
+        gumroad_validate=lambda key, product_id=None: {
+            "valid": False,
+            "error": "Could not reach Gumroad (timed out). Check your network connection and try again.",
+        },
+        gumroad_activate=_never_called,
+        lemonsqueezy_validate=_never_called,
+        lemonsqueezy_activate=_never_called,
+    )
+
+    result = licensing.activate(FAKE_KEY, instance_name="macbook-dev")
+    assert result["ok"] is False
+    assert result["message"].startswith("network error")
+    assert "invalid" not in result["message"].lower()
+    assert not (tmp_path / "license.json").exists()
+
+
+def test_unrecognized_key_reports_gumroad_reason_not_fallback_error(tmp_path, monkeypatch):
+    # Lemon Squeezy answers an unknown key with HTTP 404, which its client words as
+    # "Could not reach ...". A typo'd key must still read as invalid, not as a network fault.
+    monkeypatch.setenv("SAMURAI_HOME", str(tmp_path))
+    _patch_providers(
+        monkeypatch,
+        gumroad_validate=lambda key, product_id=None: {
+            "valid": False, "error": "license key not recognized by Gumroad",
+        },
+        gumroad_activate=_never_called,
+        lemonsqueezy_validate=lambda key, instance_id=None: {
+            "valid": False,
+            "error": "Could not reach Lemon Squeezy to validate this license "
+                     "(HTTP Error 404: Not Found). Check your network connection and try again.",
+        },
+        lemonsqueezy_activate=_never_called,
+    )
+
+    result = licensing.activate(FAKE_KEY, instance_name="macbook-dev")
+    assert result["ok"] is False
+    assert result["message"] == "license key invalid: license key not recognized by Gumroad"
+
+
+def test_gumroad_activation_increments_seat_count_exactly_once(tmp_path, monkeypatch):
+    import urllib.parse
+    import urllib.request
+
+    monkeypatch.setenv("SAMURAI_HOME", str(tmp_path))
+    increments = []
+
+    def fake_urlopen(req, *_args, **_kwargs):
+        sent = urllib.parse.parse_qs(req.data.decode("utf-8"))
+        increments.append(sent.get("increment_uses_count", ["true"])[0])
+        return _FakeResponse(json.dumps({"success": True, "purchase": {"email": "buyer@example.com"}}).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    result = licensing.activate(FAKE_KEY, instance_name="macbook-dev")
+    assert result["ok"] is True
+    assert increments.count("true") == 1, f"each activation must burn one seat, got {increments}"
+
+
+def test_gumroad_instance_id_is_deterministic_across_processes():
+    code = (
+        "import sys; sys.path.insert(0, sys.argv[1]);"
+        "import execution.gumroad_mcp as g;"
+        "g.validate_license_key = lambda *a, **k: {'valid': True};"
+        "print(g.activate_license_key('KEY-1', 'host-a')['instance_id'])"
+    )
+    ids = {
+        subprocess.run([sys.executable, "-c", code, str(ROOT)], capture_output=True, text=True,
+                       check=True).stdout.strip()
+        for _ in range(3)
+    }
+    assert len(ids) == 1, f"instance_id must be stable across runs, got {ids}"
+
+
+def test_dashboard_summary_exposes_tier_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("SAMURAI_HOME", str(tmp_path))
+    assert licensing.dashboard_summary() == {"tier": "free"}
+
+    (tmp_path / "license.json").write_text(json.dumps({
+        "tier": "pro", "valid": True, "status": "active",
+        "license_key": FAKE_KEY, "customer_email": "buyer@example.com",
+    }))
+    assert licensing.dashboard_summary() == {"tier": "pro"}
+
+
 # --------------------------------------------------------------------------- #
 # 4. After activation, verification works OFFLINE -- no provider call on is_pro().
 # --------------------------------------------------------------------------- #
@@ -296,7 +383,7 @@ def test_lib_pro_gate_require_pro_exits_2_with_upgrade_notice(tmp_path):
 #    only the key (+ instance identifiers) leave the machine.
 # --------------------------------------------------------------------------- #
 
-ALLOWED_PAYLOAD_KEYS = {"license_key", "product_id", "instance_id", "instance_name"}
+ALLOWED_PAYLOAD_KEYS = {"license_key", "product_id", "instance_id", "instance_name", "increment_uses_count"}
 
 
 class _FakeResponse:
@@ -399,3 +486,15 @@ def test_status_masks_license_key_end_to_end(tmp_path, monkeypatch):
     st = licensing.status()
     assert FAKE_KEY not in json.dumps(st)
     assert st["license_key"].endswith(FAKE_KEY[-4:])
+
+
+def test_payload_schema_accepts_tier_only_license_block():
+    import jsonschema
+    from agentica_core import aggregate
+
+    base = {"schema_version": "agentica.1", "timestamp": "2026-10-01T00:00:00Z", "reflexes": []}
+    aggregate.validate_payload({**base, "license": {"tier": "pro"}})
+    for leaky in ({"tier": "pro", "license_key": FAKE_KEY}, {"tier": "pro", "customer_email": "a@b.c"},
+                  {"tier": "enterprise"}):
+        with pytest.raises(jsonschema.ValidationError):
+            aggregate.validate_payload({**base, "license": leaky})

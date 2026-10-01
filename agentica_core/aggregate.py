@@ -40,7 +40,7 @@ _KILL_CHAIN_EXTRA_ROOTS: list[Path] = [
     Path(__file__).resolve().parents[1],  # Governance/ (covers all session cwds)
 ]
 
-from . import (display_evidence, harness_config, insights, knowledge_metrics, operator_attention, reflexes,
+from . import (display_evidence, harness_config, insights, knowledge_metrics, licensing, operator_attention, reflexes,
                remediation, remediation_delta, scouts, threshold_audit, verify_secrets)
 from .atomic import atomic_json_write, file_write_lock
 from .model_tiers import model_tier
@@ -3375,6 +3375,8 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
         # reader that cannot answer contributes a data_gap line, never an empty list.
         "operator_attention": operator_attention.build_safe(
             os_root=_ORDER_SAMURAI_ROOT, repo_root=_AGENTICA_REPO_ROOT),
+        # Unlocks the dashboard's Pro metrics. Tier only, read from ~/.samurai/license.json.
+        "license": licensing.dashboard_summary(),
     }, window_start, window_end, collection_start)
 
 

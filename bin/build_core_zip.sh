@@ -17,8 +17,10 @@ out_zip="$out_dir/order-samurai-core.zip"
 mkdir -p "$out_dir"
 rm -f "$out_zip" "$out_zip.sha256"
 
-# Exclusion patterns (grep -E, matched against each tracked path).
-exclude_re='^docs/productization/|^docs/INTERNAL_STRATEGY_MONETIZATION\.md$|(^|/)__pycache__/|\.pyc$|\.ps1$|(^|/)\.env(\.|$)'
+# Exclusion patterns (grep -E, matched against each tracked path). Prior builds are
+# tracked (dist/ and the landing page's dashboard-ui/public/ copy); packing them would
+# nest every earlier zip inside the next one.
+exclude_re='^docs/productization/|^docs/INTERNAL_STRATEGY_MONETIZATION\.md$|(^|/)__pycache__/|\.pyc$|\.ps1$|(^|/)\.env(\.|$)|(^|/)order-samurai-core\.zip(\.sha256)?$'
 
 tmp_list="$(mktemp)"
 trap 'rm -f "$tmp_list"' EXIT

@@ -180,3 +180,15 @@ def test_install_with_space_in_home_path(tmp_path, local_zip_server):
     )
     assert res_install.returncode == 0, res_install.stderr
     assert (home / ".claude" / "settings.json").exists()
+
+
+def test_core_zip_does_not_embed_a_previous_build():
+    # dashboard-ui/public/ carries a tracked copy of the zip for the landing page; packing
+    # it into the next build nests every prior build and doubles the download each time.
+    import zipfile
+
+    if not DIST_ZIP.exists():
+        pytest.skip(f"{DIST_ZIP.name} is not built -- run 'bash bin/build_core_zip.sh' first")
+    names = zipfile.ZipFile(DIST_ZIP).namelist()
+    nested = [n for n in names if "order-samurai-core.zip" in n or n.startswith("dist/")]
+    assert not nested, f"core zip embeds build artifacts: {nested}"

@@ -12,6 +12,12 @@
 #   MAX_TURNS=30            COOLDOWN=15
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR}/lib_pro_gate.sh" ]; then
+  . "${SCRIPT_DIR}/lib_pro_gate.sh"
+  require_pro "Ronin Daemon"
+fi
+
 # Portable timeout: GNU coreutils `timeout` when present, bash watchdog on macOS
 # (where `timeout` does not exist — it silently killed every Mac meditation cycle).
 tmo() {
