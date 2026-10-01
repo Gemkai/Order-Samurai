@@ -13,10 +13,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "${SCRIPT_DIR}/lib_pro_gate.sh" ]; then
-  . "${SCRIPT_DIR}/lib_pro_gate.sh"
-  require_pro "Ronin Daemon"
-fi
+# Fail closed: without the gate library this Pro feature does not run.
+. "${SCRIPT_DIR}/lib_pro_gate.sh" 2>/dev/null || { echo "Ronin Daemon: license gate missing (bin/lib_pro_gate.sh)" >&2; exit 2; }
+require_pro "Ronin Daemon"
 
 # Portable timeout: GNU coreutils `timeout` when present, bash watchdog on macOS
 # (where `timeout` does not exist — it silently killed every Mac meditation cycle).

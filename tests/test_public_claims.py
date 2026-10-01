@@ -57,3 +57,12 @@ def test_buy_links_point_at_the_live_storefront():
         REPO_ROOT / "bin" / "lib_pro_gate.sh",
     ]:
         assert CHECKOUT_URL in p.read_text(encoding="utf-8"), f"{p.name} has no link to {CHECKOUT_URL}"
+
+
+def test_tracked_demo_payload_is_never_pro():
+    # bin/agentica_emit.py refreshes this file from the live aggregate; a maintainer's dev
+    # license must never ship as the public landing-page demo.
+    import json
+
+    demo = json.loads((REPO_ROOT / "dashboard-ui" / "public" / "wid_payload.json").read_text(encoding="utf-8"))
+    assert (demo.get("license") or {}).get("tier", "free") != "pro"

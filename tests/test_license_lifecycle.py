@@ -498,3 +498,88 @@ def test_payload_schema_accepts_tier_only_license_block():
                   {"tier": "enterprise"}):
         with pytest.raises(jsonschema.ValidationError):
             aggregate.validate_payload({**base, "license": leaky})
+
+
+# --------------------------------------------------------------------------- #
+# 9. Real gumroad_mcp responses (fake HTTP): revoked purchases never activate,
+#    provider faults read as network errors, and neither reaches Lemon Squeezy.
+# --------------------------------------------------------------------------- #
+
+def _gumroad_http(monkeypatch, *, purchase=None, http_error=None, exc=None):
+    import io
+    import urllib.error
+    import urllib.request
+
+    def fake_urlopen(req, *_args, **_kwargs):
+        assert "gumroad.com" in req.full_url, f"key sent to a second provider: {req.full_url}"
+        if exc is not None:
+            raise exc
+        if http_error is not None:
+            raise urllib.error.HTTPError(req.full_url, http_error, "err", {}, io.BytesIO(b"{}"))
+        return _FakeResponse(json.dumps({"success": True, "uses": 1, "purchase": {
+            "email": "buyer@example.com", "refunded": False, "disputed": False,
+            "chargebacked": False, **(purchase or {})}}).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+
+@pytest.mark.parametrize("purchase", [
+    {"refunded": True}, {"chargebacked": True}, {"disputed": True},
+])
+def test_revoked_gumroad_purchase_never_activates(tmp_path, monkeypatch, purchase):
+    monkeypatch.setenv("SAMURAI_HOME", str(tmp_path))
+    _gumroad_http(monkeypatch, purchase=purchase)
+    result = licensing.activate(FAKE_KEY, instance_name="macbook-dev")
+    assert result["ok"] is False
+    assert "refund" in result["message"].lower()
+    assert licensing.is_pro() is False
+
+
+def test_dispute_won_by_seller_still_activates(tmp_path, monkeypatch):
+    monkeypatch.setenv("SAMURAI_HOME", str(tmp_path))
+    _gumroad_http(monkeypatch, purchase={"disputed": True, "dispute_won": True})
+    assert licensing.activate(FAKE_KEY, instance_name="macbook-dev")["ok"] is True
+    assert licensing.is_pro() is True
+
+
+@pytest.mark.parametrize("fault", ["http_503", "read_timeout"])
+def test_gumroad_outage_reads_as_network_error(tmp_path, monkeypatch, fault):
+    monkeypatch.setenv("SAMURAI_HOME", str(tmp_path))
+    if fault == "http_503":
+        _gumroad_http(monkeypatch, http_error=503)
+    else:
+        _gumroad_http(monkeypatch, exc=TimeoutError("The read operation timed out"))
+    result = licensing.activate(FAKE_KEY, instance_name="macbook-dev")
+    assert result["ok"] is False
+    assert result["message"].startswith("network error"), result["message"]
+
+
+# --------------------------------------------------------------------------- #
+# 10. Pro entrypoints refuse to run on Free -- including when the gate lib is gone.
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("script", ["dojo_overnight.sh", "ronin-daemon.sh"])
+@pytest.mark.parametrize("with_lib", [True, False])
+def test_pro_entrypoints_exit_2_on_free(tmp_path, script, with_lib):
+    import shutil
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    shutil.copy2(ROOT / "bin" / script, bin_dir / script)
+    if with_lib:
+        shutil.copy2(LIB_PRO_GATE, bin_dir / "lib_pro_gate.sh")
+    env = dict(os.environ, SAMURAI_HOME=str(tmp_path / "home"))
+    res = subprocess.run(["bash", str(bin_dir / script)], capture_output=True, text=True,
+                         env=env, timeout=30)
+    assert res.returncode == 2, res.stderr
+
+
+def test_ronin_arm_refuses_on_free_without_launching(tmp_path):
+    env = dict(os.environ, SAMURAI_HOME=str(tmp_path))
+    pid_file = ROOT / "state" / "daemon.pid"
+    before = pid_file.read_text() if pid_file.exists() else None
+    res = subprocess.run(["bash", str(ROOT / "bin" / "ronin"), "arm"], capture_output=True,
+                         text=True, env=env, timeout=30)
+    assert res.returncode == 2, res.stdout + res.stderr
+    assert "Daemon armed" not in res.stdout
+    assert (pid_file.read_text() if pid_file.exists() else None) == before

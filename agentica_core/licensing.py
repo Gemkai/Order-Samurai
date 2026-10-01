@@ -131,21 +131,27 @@ def activate(license_key: str, instance_name: str | None = None) -> dict[str, An
     if _is_unreachable(val):
         return {"ok": False, "message": f"network error: {val['error']}"}
 
+    if val.get("refunded") or val.get("status") == "refunded":
+        return {"ok": False, "message": "this license key has been refunded/revoked"}
+
     if not val.get("valid"):
-        try:
-            from execution.lemonsqueezy_mcp import validate_license_key as l_val  # noqa: PLC0415
-            fallback = l_val(key)
-        except Exception:
-            fallback = {}
+        # Only a key Gumroad has never seen may be a legacy Lemon Squeezy key; any other
+        # Gumroad verdict is final, so the key is not sent to a second provider.
+        fallback = {}
+        if val.get("not_found"):
+            try:
+                from execution.lemonsqueezy_mcp import validate_license_key as l_val  # noqa: PLC0415
+                fallback = l_val(key)
+            except Exception:
+                pass
         if not fallback.get("valid"):
             # Gumroad's answer is authoritative. Lemon Squeezy answers an unknown key with
             # HTTP 404, which its client words as "Could not reach", so never surface that.
             return {"ok": False, "message": "license key invalid: "
                     + val.get("error", "not recognized by payment provider")}
         val, provider = fallback, "lemonsqueezy"
-
-    if val.get("refunded") or val.get("status") == "refunded":
-        return {"ok": False, "message": "this license key has been refunded/revoked"}
+        if val.get("refunded") or val.get("status") == "refunded":
+            return {"ok": False, "message": "this license key has been refunded/revoked"}
 
     try:
         if provider == "gumroad":

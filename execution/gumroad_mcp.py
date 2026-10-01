@@ -42,8 +42,12 @@ def validate_license_key(license_key: str, product_id: str = None, increment_use
         with urllib.request.urlopen(req, timeout=timeout) as response:
             res_data = json.loads(response.read().decode("utf-8"))
             success = res_data.get("success", False)
-            purchase = res_data.get("purchase", {})
-            refunded = purchase.get("refunded", False) or purchase.get("disputed", False)
+            purchase = res_data.get("purchase") or {}
+            # A dispute the seller won leaves the purchase in good standing.
+            refunded = bool(purchase.get("refunded") or purchase.get("chargebacked")
+                            or (purchase.get("disputed") and not purchase.get("dispute_won")))
+            if not success:
+                return {"valid": False, "not_found": True, "error": "license key not recognized by Gumroad"}
             return {
                 "valid": success and not refunded,
                 "license_key": key,
@@ -54,10 +58,14 @@ def validate_license_key(license_key: str, product_id: str = None, increment_use
             }
     except urllib.error.HTTPError as err:
         if err.code == 404:
-            return {"valid": False, "error": "license key not recognized by Gumroad"}
+            return {"valid": False, "not_found": True, "error": "license key not recognized by Gumroad"}
+        if err.code >= 500:
+            return {"valid": False, "error": f"Could not reach Gumroad (HTTP {err.code}). Try again shortly."}
         return {"valid": False, "error": f"Gumroad API HTTP {err.code}"}
     except urllib.error.URLError as err:
         return {"valid": False, "error": f"Could not reach Gumroad ({err.reason}). Check your network connection and try again."}
+    except (TimeoutError, OSError) as err:
+        return {"valid": False, "error": f"Could not reach Gumroad ({err}). Check your network connection and try again."}
     except Exception as e:
         return {"valid": False, "error": str(e)}
 

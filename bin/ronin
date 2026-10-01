@@ -68,6 +68,11 @@ except Exception:
 # arm
 # ---------------------------------------------------------------------------
 cmd_arm() {
+  # Check the licence up front: the daemon would exit 2 on Free right after a
+  # "Daemon armed" message, leaving a stale PID file behind.
+  . "$BIN_DIR/lib_pro_gate.sh" 2>/dev/null || { echo "ronin: license gate missing (bin/lib_pro_gate.sh)" >&2; exit 2; }
+  require_pro "Ronin Daemon"
+
   command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1 \
     || _err "python/python3 not found in PATH"
 
