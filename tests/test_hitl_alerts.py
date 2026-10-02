@@ -783,6 +783,15 @@ def test_backlog_summary_counts_unapproved_and_oldest_age(isolated, tmp_path: Pa
     assert hitl_alerts.load_backlog_summary() == {"pending": 2, "oldest_days": 25}
 
 
+def test_backlog_summary_ages_items_that_only_carry_created_at(isolated, tmp_path: Path) -> None:
+    # replenish_backlog.py stamps new proposals with created_at and no triaged_at.
+    created = (FIXED_NOW - timedelta(days=40)).isoformat()
+    (tmp_path / "PROPOSED_BACKLOG.json").write_text(json.dumps({"items": [
+        {"id": "AUTO-001", "status": "proposed", "approved": False, "created_at": created},
+    ]}), encoding="utf-8")
+    assert hitl_alerts.load_backlog_summary() == {"pending": 1, "oldest_days": 40}
+
+
 def test_backlog_summary_missing_file_reports_nothing(isolated) -> None:
     assert hitl_alerts.load_backlog_summary() is None
 
