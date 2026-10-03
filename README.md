@@ -84,5 +84,5 @@ A gate that cannot distinguish "clean" from "could not check" is not a gate, so 
 
 ## Commercial Tiering (Strictly 2 Tiers — Zero Subscriptions)
 
-1. **Free Core ($0 Forever)**: 100% fail-closed ATT&CK kill-chain interception, in-memory secret scrubbing, 4-pillar diagnostics, 7-day log history, and **manual staged `.patch` generation**.
+1. **Free Core ($0 Forever)**: Fail-closed checks in supported hooks, secret scrubbing, four-pillar diagnostics, 7-day log history, and **manual staged `.patch` generation**. No tool guarantees interception of every attack or protection outside registered hooks.
 2. **Pro Lifetime ($199 One-Time / Perpetual)**: **Maker-checker patch staging** for human review, Touch ID hardware authorization (LocalAuthentication), Sensei multi-model rival verification, 9-point deep knowledge telemetry & prompt-cache tracking, 90-day archive, and cryptographic SHA-256 hash-chain ledger.

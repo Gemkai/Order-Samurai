@@ -40,8 +40,10 @@ The install's tier is a runtime fact of this machine, not a build variant:
   false) and never soften a block into a warning.
 - Licensing fails closed to Free. Never bypass the license readers or persist entitlement
   anywhere other than `~/.samurai/license.json`.
-- Local-first: no code, prompts, or telemetry leaves the machine. The only sanctioned
-  network call is the one-time license activation.
+- Local-first: no product telemetry is collected by Order Samurai. License activation
+  contacts Gumroad; dependency installation and explicit update checks contact their
+  registries. Third-party AI review requires explicit opt-in and redaction. Do not
+  enable transmission merely because credentials or a provider CLI are available.
 - Honesty invariant: every metric is labelled **MEASURED** or **SIMULATED**. Never present
   simulated data as measured.
 - No blended pillar scores: pillar status is a worst-tier rollup — a hard FAIL is never

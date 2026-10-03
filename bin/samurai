@@ -12,7 +12,7 @@ import datetime
 import argparse
 from pathlib import Path
 
-SAMURAI_VERSION = "2.0.0"
+SAMURAI_VERSION = "2.0.1"
 
 GUARD_MARKER = "prompt_injection_guard"
 SCRUBBER_MARKER = "secret_scrubber_realtime"
@@ -210,8 +210,8 @@ def cmd_doctor(args):
         print(f"{status} {name}: {detail}")
 
     # Check 1: Python Version
-    py_ok = sys.version_info >= (3, 10)
-    check("Python Version", py_ok, f"Python {sys.version.split()[0]} (>= 3.10 required)")
+    py_ok = sys.version_info >= (3, 11)
+    check("Python Version", py_ok, f"Python {sys.version.split()[0]} (>= 3.11 required)")
 
     # Check 2: Taxonomy File
     tax_ok = paths["taxonomy"].exists()

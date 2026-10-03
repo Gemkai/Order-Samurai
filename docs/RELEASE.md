@@ -8,7 +8,8 @@ SemVer: MAJOR = breaking CLI/config change, MINOR = new feature, PATCH = fix.
 ## 1. Version bump
 1. Update `pyproject.toml`, then the mirrors listed above.
 2. Add a `CHANGELOG.md` entry with the date.
-3. `grep -rn "<old version>"` across those files to catch stragglers.
+3. Check the version mirrors and each lockfile's root/package metadata. Do not
+   replace dependency versions or historical changelog entries.
 
 ## 2. Test gates (all must pass before packaging)
 ```bash
@@ -45,7 +46,13 @@ Gate: `unzip -l dist/order-samurai-core.zip | grep -icE 'productization|__pycach
    ```
    Also verify the tamper path: corrupt a served copy of the zip → installer must abort non-zero.
 5. `python3 demo/validate_payload.py demo/wid_payload.json` must pass.
+   Run all site tests too. Check both served ZIP copies and sidecars against the
+   product ZIP, and inspect the archived CLI for activation/license commands.
+   Matching version strings alone do not prove matching release contents.
 6. Commit. **Human pushes** (push = deploy via Vercel).
+7. After deployment, download the publicly served ZIP and sidecar with bounded
+   network timeouts. Verify the checksum and exact expected bytes, then repeat
+   the clean-room installer/hook checks. Do not call a local copy deployed.
 
 ## 5. Tag + GitHub release (human-run; never automated blind)
 ```bash

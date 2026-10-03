@@ -5,6 +5,16 @@ All notable changes to **Order Samurai** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-10-02
+
+### Fixed
+- Label static demo reflexes as sample data, not live telemetry.
+- Use recorded Craft Improvements for the Arts headline instead of conflating
+  deliverables with estimated human hours saved.
+- Document complete dependency/hook setup, current support channels, online
+  Gumroad activation and the limits of refund revocation for offline entitlements.
+- Align the synthetic demo and customer ZIP with the reviewed public source.
+
 ## [2.0.0] - 2026-09-23
 
 ### Breaking — broad autonomous repair retired

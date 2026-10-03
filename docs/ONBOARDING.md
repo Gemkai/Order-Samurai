@@ -1,11 +1,13 @@
 # Onboarding — Order Samurai
 
-Order Samurai has two tiers. **Free** is fully functional and installs in under a minute.
+Order Samurai has two tiers. **Free** includes the core local checks and dashboard.
 **Pro** ($199 lifetime) adds scheduled checks and extended review tools. This guide covers onboarding for
 both, plus verification and troubleshooting.
 
-> Everything runs **locally**. No account, no cloud sign-up, no telemetry leaves your
-> machine. State lives in `~/.samurai/`.
+> Analysis runs locally by default, with no product telemetry collected by Order
+> Samurai. Dependency installation and Pro activation need network access. Optional
+> third-party AI review transmits review content only after explicit opt-in.
+> State lives in `~/.samurai/`.
 
 ---
 
@@ -37,13 +39,27 @@ One-command install (macOS / Linux):
 curl -fsSL https://raw.githubusercontent.com/Gemkai/order-samurai/main/install.sh | bash
 ```
 
-Or clone and install locally:
+The website installer downloads and verifies the archive; it does not install runtime
+dependencies or register hooks. Extract the ZIP into a permanent path without spaces,
+then follow the setup below. Alternatively, clone the public source:
 
 ```bash
 git clone https://github.com/Gemkai/order-samurai.git
 cd order-samurai
-./bin/samurai install
+python3 -m venv .venv
+source .venv/bin/activate
+PYTHON="$PWD/.venv/bin/python" bash bin/install.sh
+python bin/samurai install
+python bin/samurai doctor
 ```
+
+Python **3.11+** is required. `bin/install.sh` installs dependencies and generates the
+first report; `samurai install` separately registers hooks. Stop if either command
+fails. Keep the virtual environment activated in future sessions, and add this
+checkout's `bin/` to your PATH for the `samurai` shorthand. Launch Claude Code from
+that activated shell: the hooks invoke `python3` and need those dependencies on its
+interpreter path. The current hook command requires a permanent checkout path
+without spaces.
 
 `samurai install` registers the security hooks into `~/.claude/settings.json` (it backs up
 any existing settings to `~/.samurai/backups/` first) and writes an install marker to
@@ -55,9 +71,10 @@ any existing settings to `~/.samurai/backups/` first) and writes an install mark
 samurai doctor
 ```
 
-A healthy Free install reports **4/5 checks passed** plus a `License Tier: FREE` line. The
-one expected non-pass on a brand-new machine is *Claude Code Hook Registration* until the
-first `samurai install` completes — after install it turns green.
+Require `samurai doctor` to exit successfully and show registered hooks plus
+`License Tier: FREE`. Missing hook registration is a failed installation, not an
+expected healthy state. Doctor checks configuration; verify supported hooks in your
+actual agent workflow before relying on protection.
 
 ### 3. Launch the dashboard (optional)
 
@@ -126,8 +143,11 @@ You should see `Order Samurai — PRO tier` with your machine name and activatio
 
 - **New machine**: run `samurai deactivate` on the old machine, then `samurai activate` on
   the new one.
-- **Refund** (within 14 days): email `support@ordersamurai.dev`. On refund the key is
-  revoked; `samurai license` will report Free again after your next activation check.
+- **Refund** (within 14 days): contact the seller through your Gumroad receipt or
+  email `support@ordersamurai.ai`. Deactivate the local entitlement after a refund.
+  Subsequent activation rejects a refunded key; an already activated offline
+  entitlement is not automatically revoked remotely. `samurai license` only reads
+  local state and does not refresh refund status.
 
 ---
 

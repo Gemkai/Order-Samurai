@@ -14,6 +14,7 @@ const TIER_PULSE: Record<string, string> = {
 }
 
 export type ReflexProps = {
+  isDemo?: boolean
   dismissed: Set<string>
   onDismiss: (id: string) => void
   onSelect: (r: Reflex) => void
@@ -28,8 +29,8 @@ export type ReflexProps = {
   na?: NeedsAttention
 }
 
-function ReflexDeck({ group, items, onSelect, onDismiss, dojoProps, stuckReflexIds }: {
-  group: string; items: Reflex[]; onSelect: (r: Reflex) => void; onDismiss: (id: string) => void; dojoProps?: DojoProps; stuckReflexIds?: Set<string>
+function ReflexDeck({ group, items, onSelect, onDismiss, dojoProps, stuckReflexIds, isDemo = false }: {
+  group: string; items: Reflex[]; onSelect: (r: Reflex) => void; onDismiss: (id: string) => void; dojoProps?: DojoProps; stuckReflexIds?: Set<string>; isDemo?: boolean
 }) {
   const [top, setTop] = useState(0)
   const n = items.length
@@ -120,7 +121,7 @@ function ReflexDeck({ group, items, onSelect, onDismiss, dojoProps, stuckReflexI
               ↻ {idx + 1}/{n}
             </button>
           )}
-          <span className="mono" style={{ marginLeft: "auto", fontSize: "var(--text-caption)", color: r.source === "metric" ? t.color : "var(--muted-foreground)" }}>{r.source === "metric" ? "● live" : r.status}</span>
+          <span className="mono" style={{ marginLeft: "auto", fontSize: "var(--text-caption)", color: r.source === "metric" ? t.color : "var(--muted-foreground)" }}>{r.source === "metric" ? (isDemo ? "● sample" : "● live") : r.status}</span>
           <button onClick={(e) => { e.stopPropagation(); onDismiss(r.id) }} title="dismiss reflex"
             style={{ display: "flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.06)", border: "1px solid var(--card-border)", borderRadius: 5, cursor: "pointer", color: "var(--muted-foreground)", padding: "1px 5px", fontSize: "var(--text-caption)" }}
             className="mono"
@@ -224,7 +225,7 @@ function ReflexDeck({ group, items, onSelect, onDismiss, dojoProps, stuckReflexI
   )
 }
 
-export function ReflexPanel({ reflexes, dismissed, onDismiss, onSelect, dojoProps, stuckReflexIds, lastAutoRemediationPillar, na }: { reflexes: Reflex[] } & ReflexProps) {
+export function ReflexPanel({ reflexes, dismissed, onDismiss, onSelect, dojoProps, stuckReflexIds, lastAutoRemediationPillar, na, isDemo = false }: { reflexes: Reflex[] } & ReflexProps) {
   // Dedupe by id — reflex ids are React keys; a transient backend duplicate
   // (e.g. mid-regeneration payload) must not break child identity.
   const uniq = [...new Map((reflexes ?? []).map((r) => [r.id, r])).values()]
@@ -271,7 +272,7 @@ export function ReflexPanel({ reflexes, dismissed, onDismiss, onSelect, dojoProp
       {live.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))", gap: 14, alignItems: "start" }}>
           {groups.map((g) => (
-            <ReflexDeck key={g.key} group={g.key} items={g.items} onSelect={onSelect} onDismiss={onDismiss} dojoProps={dojoProps} stuckReflexIds={stuckReflexIds} />
+            <ReflexDeck key={g.key} group={g.key} items={g.items} onSelect={onSelect} onDismiss={onDismiss} dojoProps={dojoProps} stuckReflexIds={stuckReflexIds} isDemo={isDemo} />
           ))}
         </div>
       )}

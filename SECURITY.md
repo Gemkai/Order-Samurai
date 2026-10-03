@@ -6,8 +6,8 @@ Order Samurai is designed to secure agentic coding workflows. We take the securi
 
 | Version | Supported |
 | ------- | --------- |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x: |
+| 2.0.x   | :white_check_mark: |
+| < 2.0   | :x: Upgrade to the current release |
 
 ## Reporting a Vulnerability
 
@@ -15,7 +15,7 @@ If you discover a potential security flaw, prompt-injection bypass, secret scrub
 
 1. **Email us directly** at `security@ordersamurai.ai` (or notify maintainers directly via GitHub private vulnerability reporting).
 2. **Include details**: Steps to reproduce, agent runtime used (Claude Code, etc.), tool inputs/outputs, and sample logs if safe to share.
-3. **Response timeline**: We aim to acknowledge receipt within 24-48 business hours and provide a triage decision and patch promptly.
+3. **Response timeline**: We aim to acknowledge within 24–48 business hours. This is a target, not a staffed response guarantee; triage and patch timing depend on severity and investigation. Use GitHub private vulnerability reporting if email is unavailable.
 4. **Public Disclosure**: Please allow us to patch the issue before making public disclosures.
 
 ## Security Guarantees & Architecture
