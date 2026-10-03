@@ -223,19 +223,33 @@ def check_headline_metrics(payload, violations):
 
 
 def check_remediation_efficacy(payload, violations):
-    """A remediation showcase reporting zero applied fixes sells nothing."""
-    eff = payload.get("remediation_efficacy") or {}
-    if not eff:
+    """Require the render contract without inventing successful repairs."""
+    eff = payload.get("remediation_efficacy")
+    # Legacy payloads can omit the panel entirely; a present object must be complete.
+    if eff is None:
         return
-    if eff.get("success_rate") is None:
-        violations.append(
-            "remediation_efficacy.success_rate is null; renders as an em dash"
-        )
-    applied, attempted = eff.get("applied", 0), eff.get("attempted", 0)
-    if attempted and not applied:
-        violations.append(
-            f"remediation_efficacy: {attempted} attempted but 0 applied"
-        )
+    if not isinstance(eff, dict):
+        violations.append("remediation_efficacy must be an object")
+        return
+    for key in ("applied", "improved", "regressed", "flat"):
+        value = eff.get(key)
+        if type(value) is not int or value < 0:
+            violations.append(f"remediation_efficacy.{key} must be a nonnegative integer")
+    for key in ("attempted", "completed"):
+        if key in eff and (type(eff[key]) is not int or eff[key] < 0):
+            violations.append(f"remediation_efficacy.{key} must be a nonnegative integer")
+    if not isinstance(eff.get("events"), list):
+        violations.append("remediation_efficacy.events must be a list")
+    if not isinstance(eff.get("by_skill"), dict):
+        violations.append("remediation_efficacy.by_skill must be an object")
+    if not isinstance(eff.get("note"), str) or not eff["note"].strip():
+        violations.append("remediation_efficacy.note must be a nonempty string")
+    if "success_rate" not in eff:
+        violations.append("remediation_efficacy.success_rate is required (null when not evaluated)")
+    elif eff["success_rate"] is not None:
+        rate = to_float(eff["success_rate"])
+        if rate is None or not 0 <= rate <= 100:
+            violations.append("remediation_efficacy.success_rate must be null or a percentage")
 
 
 def check_tier_mix(payload, violations):

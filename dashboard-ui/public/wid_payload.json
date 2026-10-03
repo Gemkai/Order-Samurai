@@ -4062,7 +4062,18 @@
       "stuck": true
     }
   ],
-  "remediation_efficacy": {},
+  "remediation_efficacy": {
+    "attempted": 0,
+    "completed": 0,
+    "applied": 0,
+    "improved": 0,
+    "regressed": 0,
+    "flat": 0,
+    "success_rate": null,
+    "by_skill": {},
+    "events": [],
+    "note": "Synthetic demo: no repair attempts; efficacy is not evaluated."
+  },
   "top_usage": {
     "skills": [
       {
