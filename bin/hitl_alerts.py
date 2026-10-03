@@ -248,10 +248,10 @@ def load_backlog_summary() -> dict | None:
     pending = [i for i in items if isinstance(i, dict) and i.get("approved") is False]
     oldest_days = None
     for i in pending:
-        # triaged_at is free text with a YYYY-MM-DD prefix on triaged items; unparseable
-        # or absent dates simply don't contribute to the age.
+        # created_at (replenish_backlog proposals) else triaged_at, which is free text
+        # with a YYYY-MM-DD prefix; unparseable or absent dates don't contribute to the age.
         try:
-            t = datetime.fromisoformat(str(i.get("triaged_at", ""))[:10]).replace(tzinfo=timezone.utc)
+            t = datetime.fromisoformat(str(i.get("created_at") or i.get("triaged_at") or "")[:10]).replace(tzinfo=timezone.utc)
         except ValueError:
             continue
         days = (_now() - t).days
