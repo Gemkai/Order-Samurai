@@ -55,6 +55,8 @@ def validate_license_key(license_key: str, product_id: str = None, increment_use
                 "status": "refunded" if refunded else ("active" if success else "invalid"),
                 "refunded": refunded,
                 "uses": res_data.get("uses", 1),
+                # Start of the refund window that licensing.revalidate() enforces.
+                "purchased_at": purchase.get("sale_timestamp") or purchase.get("created_at"),
             }
     except urllib.error.HTTPError as err:
         if err.code == 404:

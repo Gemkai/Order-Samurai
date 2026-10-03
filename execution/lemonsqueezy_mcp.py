@@ -20,7 +20,7 @@ def _get_api_key():
 def _get_store_id():
     return os.environ.get("LEMONSQUEEZY_STORE_ID", "")
 
-def validate_license_key(license_key: str, instance_id: str = None) -> dict:
+def validate_license_key(license_key: str, instance_id: str = None, timeout: int = 15) -> dict:
     """Validate a Lemon Squeezy license key for Order Samurai Pro ($199)."""
     url = f"{LEMONSQUEEZY_API_URL}/licenses/validate"
     payload = {"license_key": license_key}
@@ -31,7 +31,7 @@ def validate_license_key(license_key: str, instance_id: str = None) -> dict:
     req = urllib.request.Request(url, data=data, headers={"Accept": "application/json"})
     
     try:
-        with urllib.request.urlopen(req, timeout=15) as response:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
             res_data = json.loads(response.read().decode("utf-8"))
             return {
                 "valid": res_data.get("valid", False),

@@ -323,6 +323,8 @@ def test_dashboard_summary_exposes_tier_only(tmp_path, monkeypatch):
 # --------------------------------------------------------------------------- #
 
 def test_offline_verification_never_calls_provider(tmp_path, monkeypatch):
+    # Changed: is_pro() now re-verifies during the refund window, so it only stays offline
+    # within 24h of the last check, or forever once the entitlement is settled.
     monkeypatch.setenv("SAMURAI_HOME", str(tmp_path))
 
     validate_counter = _CallCounter({
@@ -347,6 +349,15 @@ def test_offline_verification_never_calls_provider(tmp_path, monkeypatch):
     # repeated is_pro()/status() calls never touch the network at all.
     _patch_providers(monkeypatch, gumroad_validate=_never_called, lemonsqueezy_validate=_never_called)
 
+    # Within 24h of the activation-time check: no provider call.
+    for _ in range(3):
+        assert licensing.is_pro() is True
+    assert licensing.status()["activated"] is True
+
+    # A settled entitlement never calls the provider, however old the last check is.
+    ent = json.loads((tmp_path / "license.json").read_text())
+    ent.update(settled=True, last_checked_at="2020-01-01T00:00:00+00:00")
+    (tmp_path / "license.json").write_text(json.dumps(ent))
     for _ in range(3):
         assert licensing.is_pro() is True
     assert licensing.status()["activated"] is True
