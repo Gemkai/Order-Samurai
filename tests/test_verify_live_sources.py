@@ -288,6 +288,12 @@ def test_real_canonical_path_answers_inside_the_doctor_budget():
     load, validate, stat every declared source — fits inside the budget that
     used to be blown 5x over by a single rebuild. live_machine: reads the real
     Data/wid_payload.json, which only this host maintains."""
+    # The claim is conditional on a fresh payload. Without one, run_checks()
+    # takes the bounded build path, which by design spends the whole budget
+    # and reports WARN — a host-state fact, not a timing regression.
+    if vls.load_fresh_payload() is None:
+        pytest.skip("no fresh canonical payload on this host; the timing "
+                    "claim only holds while the refresh cycle keeps it current")
     import time
     t0 = time.perf_counter()
     results = vls.run_checks()
