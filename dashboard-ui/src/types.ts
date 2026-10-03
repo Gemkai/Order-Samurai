@@ -199,7 +199,7 @@ export const PILLARS: PillarMeta[] = [
   { key: "brush", label: "Brush", category: "Architecture", glyph: "🌸", accent: "var(--brush)", headline: "Estimated_Cost_Savings",
     headlineLabel: "Cost Savings",
     headlineDesc: "USD saved this week via token optimization, local model routing, and runaway spend prevention." },
-  { key: "arts",  label: "Arts",  category: "Craft",        glyph: "👺", accent: "var(--arts)",  headline: "Human_Hours_Saved",
-    headlineLabel: "Human Hours Saved",
-    headlineDesc: "Developer review & QA hours saved by autonomous verifiers, auto-cleaning, and doc parity." },
+  { key: "arts",  label: "Arts",  category: "Craft",        glyph: "👺", accent: "var(--arts)",  headline: "Craft_Improvements",
+    headlineLabel: "Craft Improvements",
+    headlineDesc: "Recorded skill promotions and completed craft deliverables this period; not an estimate of human hours saved." },
 ]

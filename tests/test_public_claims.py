@@ -44,9 +44,26 @@ def test_no_stale_support_emails_or_dead_checkout_links():
         if not p.exists():
             continue
         text = p.read_text(encoding="utf-8")
+        lower = text.lower()
         forbidden_agentica = "".join(["support@", "agentica"])
-        assert "lemonsqueezy.com" not in text, f"Found dead Lemon Squeezy checkout link in {p.name}"
-        assert "lemon squeezy" not in text.lower(), f"Found stale Lemon Squeezy buyer instruction in {p.name}"
+        assert "lemonsqueezy.com" not in lower, f"Found dead Lemon Squeezy checkout link in {p.name}"
+        if p.name == "PRIVACY.md":
+            mentions = [
+                sentence.strip()
+                for sentence in re.split(r"(?<=[.!?])\s+", text)
+                if "lemon squeezy" in sentence.lower()
+            ]
+            assert len(mentions) == 1, (
+                "PRIVACY.md must contain exactly one Lemon Squeezy disclosure"
+            )
+            disclosure = mentions[0].lower()
+            assert "unknown legacy keys may be checked with lemon squeezy" in disclosure
+            assert not any(
+                buyer_term in disclosure
+                for buyer_term in ("buy", "purchase", "checkout", "receipt", "storefront", "pricing")
+            ), "PRIVACY.md contains Lemon Squeezy buyer instructions, not a privacy disclosure"
+        else:
+            assert "lemon squeezy" not in lower, f"Found stale Lemon Squeezy buyer instruction in {p.name}"
         assert forbidden_agentica not in text, f"Found stale agentica support email in {p.name}"
 
 

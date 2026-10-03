@@ -11,8 +11,6 @@ import {
   Eye,
   AlertTriangle,
   Zap,
-  Star,
-  Quote,
   Play,
   ArrowRight,
   ShieldCheck,
@@ -292,9 +290,9 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           <div className="mt-3 flex items-center justify-between text-[11px] font-mono text-slate-500">
             <div className="flex items-center gap-2">
               <CheckCircle2 size={12} className="text-slate-400" />
-              <span>Zero Product Telemetry • Staged Patch Review • 1,700+ Tests Passed</span>
+              <span>No Product Telemetry • Staged Patch Review • Public CI Evidence</span>
             </div>
-            <span>Time-to-first-report: &lt; 60s</span>
+            <span>Setup and scan time varies</span>
           </div>
         </motion.div>
       </section>
@@ -305,7 +303,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           <div className="flex items-center gap-6 whitespace-nowrap min-w-max">
             <span className="text-[11px] font-mono text-slate-500 uppercase tracking-widest flex items-center gap-2 shrink-0">
               <span className="w-2 h-2 rounded-full bg-[#ef4444] animate-ping" />
-              LIVE TELEMETRY STREAM:
+              ILLUSTRATIVE EVENT STREAM:
             </span>
             {telemetryFeed.map((item, idx) => (
               <div key={idx} className="flex items-center gap-2 font-mono text-xs text-slate-400 bg-slate-950/60 border border-white/5 px-3 py-1.5 rounded-lg shrink-0">
@@ -616,86 +614,25 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
         </div>
       </section>
 
-      {/* Rec 10 — Social Proof & Grounded Maintainer Attribution */}
+      {/* Illustrative workflows; not customer endorsements or performance evidence. */}
       <section id="proof" className="relative z-10 py-20 border-t border-white/5 bg-[#090d15]">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto mb-12">
-            <span className="px-3 py-1 text-xs font-mono font-semibold uppercase tracking-wider bg-slate-900 text-slate-300 border border-white/10 rounded-full">
-              Social Proof & Trust
-            </span>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mt-4">
-              Trusted By Security & Open-Source AI Practitioners
-            </h2>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight mt-4">Workflows to explore</h2>
+            <p className="text-xs text-slate-400 mt-4">Illustrative use cases, not testimonials or measured customer results.</p>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
-            <div className="bg-[#0e1422] border border-white/10 rounded-2xl p-6 relative flex flex-col justify-between shadow-xl">
-              <div>
-                <div className="flex items-center gap-1 text-slate-400 mb-4">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} size={15} fill="currentColor" className="text-amber-400" />
-                  ))}
-                </div>
-                <Quote size={20} className="text-slate-600 mb-3" />
-                <p className="text-xs text-slate-300 italic leading-relaxed">
-                  "Order Samurai caught a prompt injection trying to exfiltrate AWS credentials during an overnight subagent run. Paid for itself on day one."
-                </p>
-              </div>
-              <div className="mt-6 pt-4 border-t border-white/10 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center font-bold text-xs text-white">
-                  MV
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-white">Marcus Vance</h4>
-                  <p className="text-[11px] text-slate-400">Lead SecOps Engineer @ Agentic Stack</p>
-                </div>
-              </div>
+            <div className="bg-[#0e1422] border border-white/10 rounded-2xl p-6">
+              <h3 className="text-sm font-bold text-white">Review dangerous tool actions</h3>
+              <p className="text-xs text-slate-300 mt-3">Register and test the supported hooks before relying on their policy checks.</p>
             </div>
-
-            <div className="bg-[#0e1422] border border-white/10 rounded-2xl p-6 relative flex flex-col justify-between shadow-xl">
-              <div>
-                <div className="flex items-center gap-1 text-slate-400 mb-4">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} size={15} fill="currentColor" className="text-amber-400" />
-                  ))}
-                </div>
-                <Quote size={20} className="text-slate-600 mb-3" />
-                <p className="text-xs text-slate-300 italic leading-relaxed">
-                  "Finally an agent governance system that keeps 100% of telemetry local. Zero cloud endpoints, zero secret leakage."
-                </p>
-              </div>
-              <div className="mt-6 pt-4 border-t border-white/10 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center font-bold text-xs text-white">
-                  ER
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-white">Dr. Elena Rostova</h4>
-                  <p className="text-[11px] text-slate-400">Principal AI Infrastructure Engineer</p>
-                </div>
-              </div>
+            <div className="bg-[#0e1422] border border-white/10 rounded-2xl p-6">
+              <h3 className="text-sm font-bold text-white">Inspect local fleet health</h3>
+              <p className="text-xs text-slate-300 mt-3">Read available telemetry locally. Missing data is not proof of safety; optional third-party review requires opt-in.</p>
             </div>
-
-            <div className="bg-[#0e1422] border border-white/10 rounded-2xl p-6 relative flex flex-col justify-between shadow-xl">
-              <div>
-                <div className="flex items-center gap-1 text-slate-400 mb-4">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} size={15} fill="currentColor" className="text-amber-400" />
-                  ))}
-                </div>
-                <Quote size={20} className="text-slate-600 mb-3" />
-                <p className="text-xs text-slate-300 italic leading-relaxed">
-                  "The local hook interception and secret scrubbing give our team complete peace of mind while running Claude Code in autonomous mode."
-                </p>
-              </div>
-              <div className="mt-6 pt-4 border-t border-white/10 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center font-bold text-xs text-white">
-                  DC
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-white">Devon Chen</h4>
-                  <p className="text-[11px] text-slate-400">Open-Source Agent Harness Builder</p>
-                </div>
-              </div>
+            <div className="bg-[#0e1422] border border-white/10 rounded-2xl p-6">
+              <h3 className="text-sm font-bold text-white">Review staged repairs</h3>
+              <p className="text-xs text-slate-300 mt-3">Inspect proposed patches and their evidence, then explicitly approve any application.</p>
             </div>
           </div>
 
@@ -843,10 +780,10 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               </div>
               <ul className="mt-6 space-y-3 text-xs text-slate-300">
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-slate-400" /> 100% Fail-Closed ATT&CK Kill Chain Interception
+                  <CheckCircle2 size={16} className="text-slate-400" /> Fail-Closed Checks in Supported Hooks
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-slate-400" /> Real-Time In-Memory Secret Redaction (&lt;2ms)
+                  <CheckCircle2 size={16} className="text-slate-400" /> Secret Redaction in Supported Workflows
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 size={16} className="text-slate-400" /> 4-Pillar Diagnostics (7-Day Log Window)
@@ -855,7 +792,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                   <CheckCircle2 size={16} className="text-slate-400" /> Manual Staged Patches (.patch for git apply)
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-slate-400" /> 100% Local-First (Zero Cloud Telemetry)
+                  <CheckCircle2 size={16} className="text-slate-400" /> Local by Default; Optional Review Requires Opt-In
                 </li>
               </ul>
             </div>

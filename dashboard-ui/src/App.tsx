@@ -596,7 +596,7 @@ export default function App() {
   const stuckReflexIds = new Set(
     (payload.remediation_efficacy?.stuck_remediations ?? []).map(s => s.reflex_id)
   )
-  const reflexProps = { dismissed, onDismiss: dismiss, onSelect: openReflex, dojoProps, stuckReflexIds, lastAutoRemediationPillar: dojoProps.lastAutoRemediationPillar }
+  const reflexProps = { dismissed, onDismiss: dismiss, onSelect: openReflex, dojoProps, stuckReflexIds, lastAutoRemediationPillar: dojoProps.lastAutoRemediationPillar, isDemo }
 
   // Payload freshness: age at the moment we fetched it (refreshed by the 60s
   // poll — keeps render pure, no Date.now() during render)
