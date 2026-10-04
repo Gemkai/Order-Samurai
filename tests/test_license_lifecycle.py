@@ -499,6 +499,48 @@ def test_status_masks_license_key_end_to_end(tmp_path, monkeypatch):
     assert st["license_key"].endswith(FAKE_KEY[-4:])
 
 
+@pytest.mark.parametrize("email, shown", [
+    ("buyer@example.com", "b***@example.com"),
+    ("x@example.com", "x***@example.com"),
+    ("not-an-email", "****"),
+    ("@example.com", "****"),
+    ("buyer@", "****"),
+    ("a@b@example.com", "a***@example.com"),
+    ("  buyer@example.com ", "b***@example.com"),
+    (5, "****"),
+    (["buyer@example.com"], "****"),
+    (None, None),
+])
+def test_status_masks_customer_email(tmp_path, monkeypatch, email, shown):
+    monkeypatch.setenv("SAMURAI_HOME", str(tmp_path))
+    entitlement = {
+        "tier": "pro", "valid": True, "status": "active",
+        "license_key": FAKE_KEY, "customer_email": email,
+    }
+    (tmp_path / "license.json").write_text(json.dumps(entitlement))
+
+    st = licensing.status()
+    assert st["customer_email"] == shown
+    if isinstance(email, str) and "@" in email:
+        assert email.strip() not in json.dumps(st)
+
+
+def test_samurai_license_cli_never_prints_full_email(tmp_path):
+    entitlement = {
+        "tier": "pro", "valid": True, "status": "active",
+        "license_key": FAKE_KEY, "customer_email": "buyer@example.com",
+    }
+    (tmp_path / "license.json").write_text(json.dumps(entitlement))
+    res = subprocess.run(
+        [sys.executable, str(SAMURAI_BIN), "license"],
+        capture_output=True, text=True, timeout=30,
+        env={**os.environ, "SAMURAI_HOME": str(tmp_path)},
+    )
+    assert res.returncode == 0, res.stderr
+    assert "buyer@example.com" not in res.stdout + res.stderr
+    assert "b***@example.com" in res.stdout
+
+
 def test_payload_schema_accepts_tier_only_license_block():
     import jsonschema
     from agentica_core import aggregate

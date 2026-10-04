@@ -290,11 +290,15 @@ def _mask_key(key: str) -> str:
 
 
 def _mask_email(email: Any) -> str | None:
-    """b***@example.com — enough to recognize, not enough to harvest."""
+    """b***@example.com — enough to recognize, not enough to harvest. Splits at
+    the last @ so no part of the local part leaks; anything that is not a usable
+    address string shows as ****."""
     if not email:
         return None
-    local, sep, domain = str(email).partition("@")
-    if not sep or not local:
+    if not isinstance(email, str):
+        return "****"
+    local, sep, domain = email.strip().rpartition("@")
+    if not sep or not local or not domain:
         return "****"
     return f"{local[0]}***@{domain}"
 
