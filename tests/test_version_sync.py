@@ -33,7 +33,7 @@ def test_versions_are_synchronized():
     assert execution_version_match, "__version__ not found in execution/cli.py"
     execution_version = execution_version_match.group(1)
 
-    expected = "2.1.0"
+    expected = "2.1.1"
     assert root_pkg.get("version") == expected
     assert root_lock.get("version") == expected
     assert root_lock.get("packages", {}).get("", {}).get("version") == expected
