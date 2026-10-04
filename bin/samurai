@@ -161,6 +161,10 @@ def cmd_deactivate(args):
 
 def cmd_license(args):
     licensing = _licensing_module()
+    if getattr(args, "refresh", False):
+        # Re-check with the payment provider now (no seat used). Offline never revokes.
+        res = licensing.revalidate(force=True)
+        print(f"Re-check: {res.get('result')} (tier {str(res.get('tier', 'free')).upper()})")
     st = licensing.status()
     print(f"Tier: {st.get('tier', 'free').upper()}")
     if st.get("activated"):
@@ -463,7 +467,9 @@ def main():
     act_parser.add_argument("--instance-name", default=None, help="Name for this machine (defaults to hostname)")
 
     subparsers.add_parser("deactivate", help="Deactivate Pro on this machine (revert to Free)")
-    subparsers.add_parser("license", help="Show the current license tier and entitlement status")
+    lic_parser = subparsers.add_parser("license", help="Show the current license tier and entitlement status")
+    lic_parser.add_argument("--refresh", action="store_true",
+                            help="Re-check the license with the payment provider now (detects refunds)")
 
     args = parser.parse_args()
     if not args.command or args.command == "doctor":
