@@ -286,8 +286,10 @@ def cmd_install(args):
     paths["home"].mkdir(parents=True, exist_ok=True)
     paths["backups"].mkdir(parents=True, exist_ok=True)
 
-    guard_script = str(paths["root"] / "hooks" / "prompt_injection_guard.py")
-    scrubber_script = str(paths["root"] / "hooks" / "secret_scrubber_realtime.py")
+    # The hook scripts ship in bin/. A path that does not exist makes python3 exit 2,
+    # which Claude Code reads as "block": every guarded tool call would be refused.
+    guard_script = str(paths["root"] / "bin" / "prompt_injection_guard.py")
+    scrubber_script = str(paths["root"] / "bin" / "secret_scrubber_realtime.py")
 
     # Agent-agnostic record for non-Claude harnesses.
     _register_hooks_in_file(paths["samurai_settings"], guard_script, scrubber_script, paths["backups"])
@@ -346,12 +348,23 @@ def cmd_doctor(args):
     claude_settings = paths["claude_settings"]
     pre = _load_json(claude_settings).get("hooks", {}).get("PreToolUse", []) or []
     registered = any(_entry_targets(e, GUARD_MARKER) for e in pre)
-    detail = (
-        f"PreToolUse guard registered in {claude_settings}"
-        if registered
-        else f"NOT registered in {claude_settings} -- run 'samurai install'"
-    )
-    check("Claude Code Hook Registration", registered, detail)
+    missing = []
+    for entries in (_load_json(claude_settings).get("hooks", {}) or {}).values():
+        for entry in entries or []:
+            if not (_entry_targets(entry, GUARD_MARKER) or _entry_targets(entry, SCRUBBER_MARKER)):
+                continue
+            for hook in entry.get("hooks") or []:
+                parts = str(hook.get("command", "")).split()
+                if parts and not Path(parts[-1]).is_file():
+                    missing.append(parts[-1])
+    if not registered:
+        detail = f"NOT registered in {claude_settings} -- run 'samurai install'"
+    elif missing:
+        detail = (f"hook script missing: {', '.join(sorted(set(missing)))} -- Claude Code will block "
+                  f"tool calls; run 'samurai install' again")
+    else:
+        detail = f"PreToolUse guard registered in {claude_settings}"
+    check("Claude Code Hook Registration", registered and not missing, detail)
 
     # Check 5: Path Authority
     agentica_core_dir = paths["root"] / "agentica_core"
