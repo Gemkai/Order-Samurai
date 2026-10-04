@@ -64,3 +64,24 @@ def test_doctor_fails_when_a_registered_hook_script_is_missing(tmp_path):
                        capture_output=True, text=True, timeout=60)
     assert r.returncode != 0
     assert "missing" in r.stdout.lower()
+
+
+def test_hooks_work_from_a_path_with_spaces(tmp_path):
+    """The owner's own clone lives in 'Order Samurai(product)'."""
+    import shutil
+    root = tmp_path / "Order Samurai(product)"
+    shutil.copytree(ROOT / "bin", root / "bin")
+    for d in ("agentica_core", "state", "execution", "config"):
+        if (ROOT / d).exists():
+            shutil.copytree(ROOT / d, root / d, ignore=shutil.ignore_patterns("__pycache__"))
+    env = dict(os.environ, HOME=str(tmp_path), SAMURAI_HOME=str(tmp_path / ".samurai"),
+               SAMURAI_NO_PROMPT="1")
+    r = subprocess.run([sys.executable, str(root / "bin" / "samurai"), "install"], env=env,
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    (cmd,) = [c for e, c in _commands(settings) if e == "PreToolUse"]
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}})
+    r = subprocess.run(cmd, shell=True, input=payload, capture_output=True, text=True,
+                       env=env, timeout=30)
+    assert r.returncode == 0, f"{cmd!r} -> exit {r.returncode}: {r.stderr[:200]}"

@@ -268,7 +268,7 @@ def _register_claude_hooks(settings_path: Path, guard_script: str, scrubber_scri
             "matcher": matcher,
             "hooks": [{
                 "type": "command",
-                "command": f"python3 {script}",
+                "command": f"python3 {shlex.quote(script)}",
                 "timeout": 5000,
             }],
         })
@@ -358,7 +358,10 @@ def cmd_doctor(args):
             if not (_entry_targets(entry, GUARD_MARKER) or _entry_targets(entry, SCRUBBER_MARKER)):
                 continue
             for hook in entry.get("hooks") or []:
-                parts = str(hook.get("command", "")).split()
+                try:
+                    parts = shlex.split(str(hook.get("command", "")))
+                except ValueError:
+                    parts = [str(hook.get("command", ""))]
                 if parts and not Path(parts[-1]).is_file():
                     missing.append(parts[-1])
     if not registered:
