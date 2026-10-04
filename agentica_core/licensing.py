@@ -10,8 +10,10 @@ Refund window, then offline forever (TERMS.md §1-§2, EULA §3): refunds are al
 re-verifies with the provider at most once per RECHECK_INTERVAL_HOURS, and only until
 purchase + REFUND_WINDOW_DAYS (14-day window + 7 days for refund processing). The re-check
 never consumes a seat (Gumroad increment_uses_count=false) and uses a short timeout.
-- An affirmative refunded / chargebacked / dispute-lost answer revokes: the file is
-  rewritten as refunded and every gate reads Free from then on.
+- An affirmative refunded / chargebacked / dispute-lost answer, or a key the seller
+  disabled in Gumroad (the lever for partial refunds, which verify does not report),
+  revokes: the file is rewritten as revoked
+  (status refunded or disabled) and every gate reads Free from then on.
 - A network failure or an inconclusive answer never revokes: offline users keep Pro and
   the check is retried after the interval. This is deliberately fail-OPEN on the network
   so the offline-perpetual promise holds; it is fail-CLOSED on a provider's revocation.
@@ -137,7 +139,8 @@ def revalidate(force: bool = False, now: datetime | None = None) -> dict[str, An
       skipped      — nothing to check (no Pro, simulated, settled, or checked < interval)
       active       — provider confirms the purchase; still inside the refund window
       settled      — provider confirms it past the window; never re-checked again
-      revoked      — provider reports refunded/chargebacked/dispute lost => Free
+      revoked      — provider reports refunded/chargebacked/dispute lost, or the seller
+                     disabled the key in Gumroad => Free
       unreachable  — network failure; Pro kept, retried after the interval
       inconclusive — any other non-answer (e.g. key unknown); Pro kept
       error        — the provider module cannot be imported (broken install); Pro kept
@@ -186,9 +189,11 @@ def _ask_provider(ent: dict[str, Any], key: str) -> Any:
 def _apply_answer(ent: dict[str, Any], val: dict[str, Any], now: datetime) -> dict[str, Any]:
     stamp = now.isoformat()
     ident = (ent.get("license_key"), ent.get("instance_id"))
-    if _is_refunded(val):
+    if _is_refunded(val) or val.get("disabled"):
+        # A refund/chargeback/lost dispute, or the seller disabling the key in Gumroad.
+        status = "refunded" if _is_refunded(val) else "disabled"
         _commit(ident, lambda cur: cur.update(
-            status="refunded", refunded=True, valid=False,
+            status=status, refunded=_is_refunded(val), valid=False,
             last_checked_at=stamp, revoked_at=stamp))
         return {"tier": "free", "result": "revoked"}
     if val.get("valid"):
@@ -336,6 +341,9 @@ def activate(license_key: str, instance_name: str | None = None) -> dict[str, An
 
     if val.get("refunded") or val.get("status") == "refunded":
         return {"ok": False, "message": "this license key has been refunded/revoked"}
+
+    if val.get("disabled"):
+        return {"ok": False, "message": "this license key has been disabled by the seller"}
 
     if not val.get("valid"):
         # Only a key Gumroad has never seen may be a legacy Lemon Squeezy key; any other
