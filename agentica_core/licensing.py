@@ -82,7 +82,7 @@ def status() -> dict[str, Any]:
         "status": ent.get("status"),
         "license_key": _mask_key(ent.get("license_key", "")),
         "instance_name": ent.get("instance_name"),
-        "customer_email": ent.get("customer_email"),
+        "customer_email": _mask_email(ent.get("customer_email")),
         "activated_at": ent.get("activated_at"),
         **({"reason": "license present but not active (refunded/inactive)"}
            if not is_pro() else {}),
@@ -104,6 +104,17 @@ def _mask_key(key: str) -> str:
     if not key or len(key) < 8:
         return "****"
     return f"****{key[-4:]}"
+
+
+def _mask_email(email: str | None) -> str | None:
+    """Show only the first character and the domain, so the CLI still identifies the
+    purchase without printing the buyer's full address."""
+    if not email:
+        return None
+    local, sep, domain = email.partition("@")
+    if not sep or not local or not domain:
+        return "****"
+    return f"{local[0]}****@{domain}"
 
 
 def activate(license_key: str, instance_name: str | None = None) -> dict[str, Any]:
