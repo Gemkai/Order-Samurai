@@ -7,9 +7,11 @@ Provides samurai install, samurai doctor, and samurai uninstall capabilities.
 import os
 import sys
 import json
+import shlex
 import shutil
 import datetime
 import argparse
+import getpass
 from pathlib import Path
 
 SAMURAI_VERSION = "2.0.1"
@@ -40,11 +42,114 @@ def _licensing_module():
     sys.exit(1)
 
 
+def _is_interactive():
+    """A person is at a terminal: stdout is a TTY and /dev/tty can be opened. Under
+    `curl ... | bash` stdin is the script, but /dev/tty still reaches the person."""
+    if not sys.stdout.isatty():
+        return False
+    try:
+        import termios  # noqa: PLC0415
+        fd = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
+    except (ImportError, OSError):
+        return False
+    try:
+        termios.tcgetattr(fd)  # getpass would otherwise fall back to reading stdin
+        return True
+    except termios.error:
+        return False
+    finally:
+        os.close(fd)
+
+
+def _read_hidden(prompt_text):
+    """Read a secret without echo. getpass reads /dev/tty, not stdin."""
+    return getpass.getpass(prompt_text)
+
+
+def _self_cmd():
+    """How to run this CLI again: `samurai` if that is on PATH, else its full path."""
+    me = Path(__file__).resolve()
+    found = shutil.which("samurai")
+    if found and Path(found).resolve() == me:
+        return "samurai"
+    return f"python3 {shlex.quote(str(me))}"
+
+
+def _mask(key):
+    return f"****{key[-4:]}" if key and len(key) >= 8 else "****"
+
+
+def _key_from_sources(positional):
+    """Positional arg > SAMURAI_LICENSE_KEY > hidden prompt > one line of stdin."""
+    if positional:
+        return positional.strip()
+    env_key = os.environ.get("SAMURAI_LICENSE_KEY", "").strip()
+    if env_key:
+        return env_key
+    if _is_interactive() or sys.stdin.isatty():
+        return (_read_hidden("Paste your Order Samurai Pro license key (input hidden): ") or "").strip()
+    return (sys.stdin.readline() or "").strip()
+
+
 def cmd_activate(args):
+    key = _key_from_sources(getattr(args, "license_key", None))
+    if not key:
+        print("❌ no license key provided. Paste it when asked, or: "
+              "printf %s \"$KEY\" | samurai activate", file=sys.stderr)
+        return 1
     licensing = _licensing_module()
-    result = licensing.activate(args.license_key, instance_name=args.instance_name)
-    print(("⚔️  " if result.get("ok") else "❌ ") + result.get("message", ""))
-    return 0 if result.get("ok") else 1
+    result = licensing.activate(key, instance_name=getattr(args, "instance_name", None))
+    msg = result.get("message", "").replace(key, _mask(key))
+    if result.get("ok"):
+        print(f"⚔️  {msg} (key {_mask(key)})")
+        return 0
+    print(f"❌ {msg}")
+    return 1
+
+
+_ACTIVATION_ATTEMPTS = 3
+
+
+def _offer_pro_activation(args):
+    """End of `samurai install`: turn install + upgrade into one command.
+
+    Never fails the install: a Free install is still a successful install."""
+    licensing = _licensing_module()
+    env_key = os.environ.get("SAMURAI_LICENSE_KEY", "").strip()
+    if not env_key:
+        if licensing.is_pro():
+            print("⚔️  Order Samurai Pro is already active on this machine.")
+            return
+        if getattr(args, "no_activate", False) or os.environ.get("SAMURAI_NO_PROMPT") == "1":
+            return
+        if not _is_interactive():
+            print(f"   Have a Pro license key? Run: {_self_cmd()} activate")
+            return
+        print("")
+        print("⚔️  Order Samurai Pro: paste the license key from your Gumroad receipt,")
+        print("   or press Enter to stay on the Free tier.")
+
+    for attempt in range(1, _ACTIVATION_ATTEMPTS + 1):
+        key = env_key or (_read_hidden("   License key (input hidden): ") or "").strip()
+        if not key:
+            print("   Staying on Free. Upgrade any time with: " + _self_cmd() + " activate")
+            return
+        result = licensing.activate(key, instance_name=None)
+        msg = str(result.get("message", "")).replace(key, _mask(key))
+        if result.get("ok"):
+            print(f"⚔️  Order Samurai Pro activated (key {_mask(key)}).")
+            return
+        print(f"❌ {msg}")
+        retryable = msg.startswith("license key invalid") and not env_key
+        if not retryable:
+            if msg.startswith("network error"):
+                print(f"   Couldn't reach Gumroad. Activate later with: {_self_cmd()} activate")
+            else:
+                print(f"   Activate later with: {_self_cmd()} activate")
+            return
+        if attempt < _ACTIVATION_ATTEMPTS:
+            print("   Check the key on your Gumroad receipt and paste it again (or press Enter to skip).")
+    print(f"   Staying on Free. Activate later with: {_self_cmd()} activate")
 
 
 def cmd_deactivate(args):
@@ -192,6 +297,12 @@ def cmd_install(args):
     _register_claude_hooks(paths["claude_settings"], guard_script, scrubber_script, paths["backups"])
 
     print(f"⚔️  Installation complete! Run 'samurai doctor' to verify system health.")
+    try:
+        _offer_pro_activation(args)
+    except (KeyboardInterrupt, EOFError):
+        print(f"\n   Skipped. Activate later with: {_self_cmd()} activate")
+    except (Exception, SystemExit) as e:  # activation must never fail the install
+        print(f"   Pro activation skipped ({type(e).__name__}). Activate later with: {_self_cmd()} activate")
     return 0
 
 def cmd_doctor(args):
@@ -321,7 +432,9 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
 
     # install
-    subparsers.add_parser("install", help="Install & register Order Samurai hooks")
+    inst_parser = subparsers.add_parser("install", help="Install & register Order Samurai hooks")
+    inst_parser.add_argument("--no-activate", action="store_true",
+                             help="Do not offer to activate a Pro license key")
 
     # doctor
     subparsers.add_parser("doctor", help="Run diagnostic health checks")
@@ -332,7 +445,8 @@ def main():
 
     # activate / deactivate / license
     act_parser = subparsers.add_parser("activate", help="Activate an Order Samurai Pro license key")
-    act_parser.add_argument("license_key", help="Pro license key (Gumroad or Lemon Squeezy)")
+    act_parser.add_argument("license_key", nargs="?", default=None,
+                            help="Optional; omit it to paste the key hidden (keeps it out of shell history)")
     act_parser.add_argument("--instance-name", default=None, help="Name for this machine (defaults to hostname)")
 
     subparsers.add_parser("deactivate", help="Deactivate Pro on this machine (revert to Free)")

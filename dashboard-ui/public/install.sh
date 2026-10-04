@@ -5,6 +5,14 @@ set -euo pipefail
 # Usage: curl -fsSL https://www.ordersamurai.ai/install.sh | bash
 # Or from cloned repo: ./install.sh
 
+if ! command -v python3 >/dev/null 2>&1 || \
+   ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo "❌ Order Samurai needs Python 3.11 or newer." >&2
+  echo "   Install it from https://www.python.org/downloads/ (macOS: the 'macOS 64-bit universal2 installer')," >&2
+  echo "   then open a NEW Terminal window and run this command again." >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" 2>/dev/null && pwd || echo "" )"
 SAMURAI_BIN="${SCRIPT_DIR}/bin/samurai"
 
