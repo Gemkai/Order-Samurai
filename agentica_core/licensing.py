@@ -111,7 +111,9 @@ def _mask_email(email: str | None) -> str | None:
     purchase without printing the buyer's full address."""
     if not email:
         return None
-    local, sep, domain = email.partition("@")
+    if not isinstance(email, str):
+        return "****"
+    local, sep, domain = email.strip().rpartition("@")
     if not sep or not local or not domain:
         return "****"
     return f"{local[0]}****@{domain}"

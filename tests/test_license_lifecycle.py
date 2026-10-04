@@ -492,6 +492,12 @@ def test_status_masks_license_key_end_to_end(tmp_path, monkeypatch):
     ("buyer@example.com", "b****@example.com"),
     ("x@example.com", "x****@example.com"),
     ("not-an-email", "****"),
+    ("@example.com", "****"),
+    ("buyer@", "****"),
+    ("a@b@example.com", "a****@example.com"),
+    ("  buyer@example.com ", "b****@example.com"),
+    (5, "****"),
+    (["buyer@example.com"], "****"),
     (None, None),
 ])
 def test_status_masks_customer_email(tmp_path, monkeypatch, email, shown):
@@ -504,8 +510,8 @@ def test_status_masks_customer_email(tmp_path, monkeypatch, email, shown):
 
     st = licensing.status()
     assert st["customer_email"] == shown
-    if email and "@" in email:
-        assert email not in json.dumps(st)
+    if isinstance(email, str) and "@" in email:
+        assert email.strip() not in json.dumps(st)
 
 
 def test_samurai_license_cli_never_prints_full_email(tmp_path):
