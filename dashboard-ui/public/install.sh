@@ -20,8 +20,8 @@ if [ -n "${SCRIPT_DIR}" ] && [ -f "${SAMURAI_BIN}" ]; then
   echo "⚔️  Order Samurai Local Installer"
   echo "--------------------------------------------------------"
   chmod +x "${SAMURAI_BIN}"
-  python3 "${SAMURAI_BIN}" install
-  python3 "${SAMURAI_BIN}" doctor
+  python3 "${SAMURAI_BIN}" install </dev/null
+  python3 "${SAMURAI_BIN}" doctor </dev/null
   echo "--------------------------------------------------------"
   echo "✅ Order Samurai installed and verified successfully!"
 else
@@ -46,8 +46,9 @@ else
   unzip -q -o "${TMP_DIR}/order-samurai-core.zip" -d "${TARGET_DIR}"
 
   chmod +x "${TARGET_DIR}/bin/samurai"
-  python3 "${TARGET_DIR}/bin/samurai" install
-  python3 "${TARGET_DIR}/bin/samurai" doctor
+  # </dev/null: under curl | bash stdin is this script; the key prompt reads /dev/tty.
+  python3 "${TARGET_DIR}/bin/samurai" install </dev/null
+  python3 "${TARGET_DIR}/bin/samurai" doctor </dev/null
   echo "--------------------------------------------------------"
   echo "✅ Order Samurai installed and verified successfully!"
 fi
