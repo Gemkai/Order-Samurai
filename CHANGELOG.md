@@ -5,6 +5,22 @@ All notable changes to **Order Samurai** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-10-04
+
+### Added
+- One-command Pro install: after installing, `install.sh` asks for the license key from the Gumroad receipt (input hidden) and activates it, or keeps the Free tier when you press Enter. The key never goes on a command line or into shell history.
+
+### Fixed
+- Revoke Pro after a refund: an activated license is re-checked online at most once per 24 hours during the refund window (purchase + 21 days). Only a confirmed refund, chargeback or lost dispute revokes. A network failure never does, so offline activation keeps working.
+- `samurai license` masks the buyer's email (`b****@example.com`) as well as the key.
+- Installer: hooks are registered at `bin/`, where the scripts ship; hook script paths are quoted so installs under folders with spaces work; installer child processes no longer read stdin.
+- The secret scanner applies directory exclusions only below the scan root. A checkout under a directory with an excluded name was previously skipped entirely.
+- The HITL alert digest ages proposed backlog items by creation time.
+- The demo dashboard no longer renders blank when repair history is empty.
+
+### Security
+- Lockfile bump clears two critical npm advisories (`shell-quote` 1.9.0, `concurrently` 9.2.4).
+
 ## [2.0.1] - 2026-10-02
 
 ### Fixed
