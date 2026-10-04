@@ -17,6 +17,21 @@ GUMROAD_PRODUCT_ID = os.environ.get("GUMROAD_PRODUCT_ID", "AePROIWPGu9a6k-dm9W4w
 GUMROAD_PERMALINK = os.environ.get("GUMROAD_PRODUCT_PERMALINK", "sqwomh")
 
 
+# The seller disabled this key in Gumroad (Sales -> sale -> License key -> Disable).
+# Gumroad answers HTTP 404 {"success": false, "message": "This license key has been
+# disabled."}. That is an explicit revocation, distinct from an unknown key (not_found).
+_DISABLED = {"valid": False, "disabled": True, "status": "disabled",
+             "error": "license key has been disabled by the seller"}
+
+
+def _says_disabled(err) -> bool:
+    try:
+        body = json.loads(err.read().decode("utf-8") or "{}")
+    except Exception:
+        return False
+    return "disabled" in str(body.get("message", "")).lower()
+
+
 def validate_license_key(license_key: str, product_id: str = None, increment_uses_count: bool = False, timeout: int = 15) -> dict:
     """Validate a Gumroad license key for Order Samurai Pro ($199)."""
     key = (license_key or "").strip()
@@ -47,6 +62,8 @@ def validate_license_key(license_key: str, product_id: str = None, increment_use
             refunded = bool(purchase.get("refunded") or purchase.get("chargebacked")
                             or (purchase.get("disputed") and not purchase.get("dispute_won")))
             if not success:
+                if "disabled" in str(res_data.get("message", "")).lower():
+                    return dict(_DISABLED)
                 return {"valid": False, "not_found": True, "error": "license key not recognized by Gumroad"}
             return {
                 "valid": success and not refunded,
@@ -60,6 +77,8 @@ def validate_license_key(license_key: str, product_id: str = None, increment_use
             }
     except urllib.error.HTTPError as err:
         if err.code == 404:
+            if _says_disabled(err):
+                return dict(_DISABLED)
             return {"valid": False, "not_found": True, "error": "license key not recognized by Gumroad"}
         if err.code >= 500:
             return {"valid": False, "error": f"Could not reach Gumroad (HTTP {err.code}). Try again shortly."}
