@@ -5,6 +5,14 @@ set -euo pipefail
 # Usage: curl -fsSL https://www.ordersamurai.ai/install.sh | bash
 # Or from cloned repo: ./install.sh
 
+if ! command -v python3 >/dev/null 2>&1 || \
+   ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo "❌ Order Samurai needs Python 3.11 or newer." >&2
+  echo "   Install it from https://www.python.org/downloads/ (macOS: the 'macOS 64-bit universal2 installer')," >&2
+  echo "   then open a NEW Terminal window and run this command again." >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" 2>/dev/null && pwd || echo "" )"
 SAMURAI_BIN="${SCRIPT_DIR}/bin/samurai"
 
@@ -12,8 +20,8 @@ if [ -n "${SCRIPT_DIR}" ] && [ -f "${SAMURAI_BIN}" ]; then
   echo "⚔️  Order Samurai Local Installer"
   echo "--------------------------------------------------------"
   chmod +x "${SAMURAI_BIN}"
-  python3 "${SAMURAI_BIN}" install
-  python3 "${SAMURAI_BIN}" doctor
+  python3 "${SAMURAI_BIN}" install </dev/null
+  python3 "${SAMURAI_BIN}" doctor </dev/null
   echo "--------------------------------------------------------"
   echo "✅ Order Samurai installed and verified successfully!"
 else
@@ -38,8 +46,9 @@ else
   unzip -q -o "${TMP_DIR}/order-samurai-core.zip" -d "${TARGET_DIR}"
 
   chmod +x "${TARGET_DIR}/bin/samurai"
-  python3 "${TARGET_DIR}/bin/samurai" install
-  python3 "${TARGET_DIR}/bin/samurai" doctor
+  # </dev/null: under curl | bash stdin is this script; the key prompt reads /dev/tty.
+  python3 "${TARGET_DIR}/bin/samurai" install </dev/null
+  python3 "${TARGET_DIR}/bin/samurai" doctor </dev/null
   echo "--------------------------------------------------------"
   echo "✅ Order Samurai installed and verified successfully!"
 fi

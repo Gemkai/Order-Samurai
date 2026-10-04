@@ -29,6 +29,10 @@ def healthy_paths(tmp_path: Path) -> dict[str, Path]:
         encoding="utf-8",
     )
     (root / "agentica_core").mkdir()
+    # A healthy install's hook command points at a script that exists (doctor checks it).
+    guard = root / "bin" / "prompt_injection_guard.py"
+    guard.parent.mkdir(parents=True, exist_ok=True)
+    guard.write_text("", encoding="utf-8")
 
     samurai_home = tmp_path / ".samurai"
     claude_settings = tmp_path / ".claude" / "settings.json"
@@ -42,7 +46,7 @@ def healthy_paths(tmp_path: Path) -> dict[str, Path]:
                             "hooks": [
                                 {
                                     "type": "command",
-                                    "command": "python3 hooks/prompt_injection_guard.py",
+                                    "command": f"python3 {guard}",
                                 }
                             ]
                         }

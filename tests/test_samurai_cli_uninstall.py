@@ -79,8 +79,8 @@ def test_uninstall_keep_data_deregisters_hooks_from_samurai_settings_too(tmp_pat
     paths = _fake_paths(tmp_path)
     monkeypatch.setattr(samurai_cli, "get_paths", lambda: paths)
 
-    guard_script = str(paths["root"] / "hooks" / "prompt_injection_guard.py")
-    scrubber_script = str(paths["root"] / "hooks" / "secret_scrubber_realtime.py")
+    guard_script = str(paths["root"] / "bin" / "prompt_injection_guard.py")
+    scrubber_script = str(paths["root"] / "bin" / "secret_scrubber_realtime.py")
     samurai_cli._register_hooks_in_file(
         paths["samurai_settings"], guard_script, scrubber_script, paths["backups"], "samurai_settings"
     )
