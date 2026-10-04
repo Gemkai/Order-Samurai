@@ -107,14 +107,33 @@ You receive a license key immediately on your receipt and by email.
 
 ### 2. Activate
 
+**New install: one command does both.** Run the installer. When it finishes it asks for
+your key. Paste it (nothing appears while you paste; that is intentional) and press Enter:
+
 ```bash
-samurai activate <your-license-key>
+curl -fsSL https://raw.githubusercontent.com/Gemkai/order-samurai/main/install.sh | bash
 ```
 
-This validates the key online **once** via Gumroad, registers this machine, and
-writes your entitlement to `~/.samurai/license.json`. After that it is an **offline
-perpetual** license — the Pro features work with no network connection, forever, on this
-machine.
+You should see `Order Samurai Pro activated (key ****ABCD)`. Press Enter instead to stay
+on Free. A mistyped key is asked for again, up to three times.
+
+**Already installed?** Run this and paste the key when asked (installed with the curl
+one-liner: `python3 ~/.samurai/core/bin/samurai activate`; from a clone: `bin/samurai activate`):
+
+```bash
+samurai activate
+```
+
+(`samurai activate <key>` still works, but leaves the key in your shell history. For
+scripts, set `SAMURAI_LICENSE_KEY`, or pipe it: `printf %s "$KEY" | samurai activate`.)
+
+Headless installs (CI, Docker): the installer only asks when a terminal is attached. Set
+`SAMURAI_LICENSE_KEY` to activate during install, or `SAMURAI_NO_PROMPT=1` (or
+`samurai install --no-activate`) to skip the question, e.g. with `docker run -t` and no `-i`.
+
+This validates the key online via Gumroad, registers this machine, and writes your
+entitlement to `~/.samurai/license.json`. After that it is an **offline perpetual**
+license: the Pro features work with no network connection on this machine.
 
 Confirm it took:
 
@@ -168,8 +187,10 @@ to Free. The single source of truth is `agentica_core/licensing.py` (Python) and
 |---|---|
 | `samurai: command not found` | Run from the repo: `./bin/samurai <cmd>`, or add `bin/` to your `PATH`. |
 | `samurai doctor` shows *Hook Registration* FAIL | Run `samurai install` (registers the hooks); re-run doctor. |
-| `samurai activate` says "license key invalid" | Check for typos/whitespace; copy the key from your Gumroad receipt. Refunded keys are rejected. |
-| Dojo says *"is an Order Samurai Pro feature"* | You are on Free. Run `samurai activate <key>` (or buy one) to unlock. |
+| `samurai activate` says "license key invalid" | Copy the key again from your Gumroad receipt (the Copy button avoids stray spaces) and paste it when asked. Refunded keys are rejected. |
+| The key prompt shows nothing when I paste | Expected: input is hidden. Paste once and press Enter. |
+| Installer did not ask for a key | It only asks in a terminal. Run `samurai activate` afterwards. |
+| Dojo says *"is an Order Samurai Pro feature"* | You are on Free. Run `samurai activate` and paste your key (or buy one) to unlock. |
 | Legacy `REFLEX_AUTO_APPLY=true` setting | Remove it. Auto-apply is retired on both tiers; review staged patches before explicitly approving a repair. |
 | Want to remove everything | `samurai uninstall` (add `--keep-data` to preserve `~/.samurai`). |
 
