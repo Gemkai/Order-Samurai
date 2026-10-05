@@ -1,5 +1,5 @@
 import { useState, type MouseEvent, type CSSProperties } from "react"
-import { X, Zap, Swords, AlertTriangle } from "lucide-react"
+import { X, Zap, Swords, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react"
 import type { Reflex, NeedsAttention } from "@/types"
 import { REFLEX_TIER } from "@/components/reflex-values"
 import type { DojoProps } from "@/hooks/useDojo"
@@ -32,12 +32,26 @@ export type ReflexProps = {
 function ReflexDeck({ group, items, onSelect, onDismiss, dojoProps, stuckReflexIds, isDemo = false }: {
   group: string; items: Reflex[]; onSelect: (r: Reflex) => void; onDismiss: (id: string) => void; dojoProps?: DojoProps; stuckReflexIds?: Set<string>; isDemo?: boolean
 }) {
-  const [top, setTop] = useState(0)
+  const [selected, setSelected] = useState({ id: items[0].id, index: 0 })
   const n = items.length
-  // Clamp derived position when the underlying list shrinks (e.g. after a
-  // dismiss) — deriving in render avoids a setState-in-effect cascade.
-  const idx = n > 0 ? Math.min(top, n - 1) % n : 0
+  const selectedIndex = items.findIndex(item => item.id === selected.id)
+  const idx = selectedIndex >= 0 ? selectedIndex : Math.min(selected.index, n - 1)
   const r = items[idx]
+  // Keep the current card when earlier cards disappear; replace a removed card in place.
+  if (selected.id !== r.id || selected.index !== idx) {
+    setSelected({ id: r.id, index: idx })
+  }
+  const navigate = (event: MouseEvent, step: number) => {
+    event.stopPropagation()
+    const index = (idx + step + n) % n
+    setSelected({ id: items[index].id, index })
+  }
+  const navigationStyle: CSSProperties = {
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    minWidth: 44, minHeight: 44, color: "var(--muted-foreground)",
+    background: "rgba(255,255,255,0.05)", border: "1px solid var(--card-border)",
+    borderRadius: 5, cursor: "pointer",
+  }
   const t = REFLEX_TIER[r.tier] ?? REFLEX_TIER.INFO
 
   const isActiveExec = dojoProps?.execCommand === r.command && r.command != null
@@ -55,7 +69,7 @@ function ReflexDeck({ group, items, onSelect, onDismiss, dojoProps, stuckReflexI
   const RESERVE = 2 * OFF
 
   return (
-    <div style={{ position: "relative", marginBottom: RESERVE, marginRight: RESERVE }}>
+    <div data-testid="reflex-stack" data-category={group} style={{ position: "relative", marginBottom: RESERVE, marginRight: RESERVE }}>
       {Array.from({ length: behind }).map((_, k) => {
         const i = behind - 1 - k
         const behindIdx = (idx + i + 1) % n
@@ -114,13 +128,22 @@ function ReflexDeck({ group, items, onSelect, onDismiss, dojoProps, stuckReflexI
               ⏳ approval pending — cancel?
             </button>
           )}
-          {n > 1 && (
-            <button onClick={(e) => { e.stopPropagation(); setTop((idx + 1) % n) }} className="mono"
-              title="next reflex in stack"
-              style={{ fontSize: "var(--text-caption)", color: "var(--muted-foreground)", background: "rgba(255,255,255,0.05)", border: "1px solid var(--card-border)", borderRadius: 5, padding: "1px 5px", cursor: "pointer" }}>
-              ↻ {idx + 1}/{n}
-            </button>
-          )}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            {n > 1 && (
+              <button type="button" onClick={(e) => navigate(e, -1)}
+                aria-label={`Previous reflex in ${group}`} title="Previous reflex in stack" style={navigationStyle}>
+                <ChevronLeft size={14} />
+              </button>
+            )}
+            <span className="mono" data-testid="reflex-stack-position" role="status" aria-atomic="true"
+              style={{ fontSize: "var(--text-caption)", color: "var(--muted-foreground)" }}>{`${idx + 1}/${n}`}</span>
+            {n > 1 && (
+              <button type="button" onClick={(e) => navigate(e, 1)}
+                aria-label={`Next reflex in ${group}`} title="Next reflex in stack" style={navigationStyle}>
+                <ChevronRight size={14} />
+              </button>
+            )}
+          </div>
           <span className="mono" style={{ marginLeft: "auto", fontSize: "var(--text-caption)", color: r.source === "metric" ? t.color : "var(--muted-foreground)" }}>{r.source === "metric" ? (isDemo ? "● sample" : "● live") : r.status}</span>
           <button onClick={(e) => { e.stopPropagation(); onDismiss(r.id) }} title="dismiss reflex"
             style={{ display: "flex", alignItems: "center", gap: 3, background: "rgba(255,255,255,0.06)", border: "1px solid var(--card-border)", borderRadius: 5, cursor: "pointer", color: "var(--muted-foreground)", padding: "1px 5px", fontSize: "var(--text-caption)" }}
@@ -270,7 +293,7 @@ export function ReflexPanel({ reflexes, dismissed, onDismiss, onSelect, dojoProp
         )}
       </div>
       {live.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))", gap: 14, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 330px), 1fr))", gap: 14, alignItems: "start" }}>
           {groups.map((g) => (
             <ReflexDeck key={g.key} group={g.key} items={g.items} onSelect={onSelect} onDismiss={onDismiss} dojoProps={dojoProps} stuckReflexIds={stuckReflexIds} isDemo={isDemo} />
           ))}
