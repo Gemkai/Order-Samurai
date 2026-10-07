@@ -150,3 +150,56 @@ def test_uninstall_removes_guard_but_keeps_user_hooks(home):
     ]
     assert not any(GUARD_MARKER in c for c in cmds), "guard survived uninstall"
     assert any("user-hook" in c for c in cmds), "uninstall destroyed the user's own hook"
+
+
+SCRUBBER_MARKER = "secret_scrubber_realtime"
+# Claude Code hook `timeout` is in SECONDS (default 600):
+# https://code.claude.com/docs/en/hooks.md
+MAX_HOOK_TIMEOUT_S = 30
+
+
+def _samurai_hooks(path):
+    """(event, entry, hook) for every hook entry that runs one of our scripts."""
+    cfg = json.loads(path.read_text()).get("hooks", {})
+    return [
+        (event, entry, hook)
+        for event in ("PreToolUse", "PostToolUse")
+        for entry in cfg.get(event, [])
+        for hook in entry.get("hooks", []) or []
+        if any(m in hook.get("command", "") for m in (GUARD_MARKER, SCRUBBER_MARKER))
+    ]
+
+
+def test_registered_timeouts_are_seconds_not_milliseconds(home):
+    """v2.1.x wrote 5000, which Claude Code reads as ~83 minutes."""
+    _run(["install"], home)
+    found = _samurai_hooks(_claude_settings(home))
+    assert {e for e, _, _ in found} == {"PreToolUse", "PostToolUse"}
+    for event, _, hook in found:
+        t = hook.get("timeout")
+        assert isinstance(t, int) and 0 < t <= MAX_HOOK_TIMEOUT_S, (
+            f"{event} timeout={t!r}; Claude Code hook timeouts are in seconds"
+        )
+
+
+def test_reinstall_upgrades_legacy_millisecond_timeout(home):
+    """An existing v2.1.x install must be corrected in place, not duplicated."""
+    target = _claude_settings(home)
+    legacy = lambda script: {"type": "command", "command": f"python3 /old/bin/{script}.py", "timeout": 5000}
+    target.write_text(json.dumps({"hooks": {
+        "PreToolUse": [{"matcher": "Bash", "hooks": [legacy(GUARD_MARKER)]}],
+        "PostToolUse": [{"matcher": "Bash", "hooks": [legacy(SCRUBBER_MARKER)]}],
+    }}))
+
+    _run(["install"], home)
+    found = _samurai_hooks(target)
+    assert len(found) == 2, f"expected one entry per event, got {len(found)}"
+    assert all(h["timeout"] <= MAX_HOOK_TIMEOUT_S for _, _, h in found)
+    assert not any("/old/bin/" in h["command"] for _, _, h in found)
+
+
+def test_scrubber_matcher_excludes_tools_post_mode_ignores(home):
+    """Post-mode returns early for WebFetch, so matching it only spawns a no-op."""
+    _run(["install"], home)
+    post = [e for ev, e, _ in _samurai_hooks(_claude_settings(home)) if ev == "PostToolUse"]
+    assert post and "WebFetch" not in post[0]["matcher"].split("|")
