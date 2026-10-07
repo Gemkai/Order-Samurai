@@ -51,24 +51,17 @@ EXFILTRATION_PATTERNS = [
 ]
 
 def _build_patterns():
+    # Secret patterns ship beside this hook; SAMURAI_ROOT may point at a state-only dir.
     standard = []
     try:
-        sys.path.insert(0, str(CLAUDE_ROOT / "scripts"))
-        import secret_scrubber  # type: ignore
-        for name, rx in secret_scrubber.PATTERNS:
-            standard.append({"name": name, "pattern": rx})
+        code_root = str(Path(__file__).resolve().parent.parent)
+        if code_root not in sys.path:
+            sys.path.insert(0, code_root)
+        from agentica_core.verify_secrets import SECRET_PATTERNS
+        for rx, name in SECRET_PATTERNS:
+            standard.append({"name": name, "pattern": re.compile(rx)})
     except Exception:
         pass
-    if not standard:
-        # Clean install: use the secret patterns shipped with this pack.
-        try:
-            if str(_REPO_ROOT) not in sys.path:
-                sys.path.insert(0, str(_REPO_ROOT))
-            from agentica_core.verify_secrets import SECRET_PATTERNS
-            for rx, name in SECRET_PATTERNS:
-                standard.append({"name": name, "pattern": re.compile(rx)})
-        except Exception:
-            pass
     return EXFILTRATION_PATTERNS + standard
 
 PATTERNS = _build_patterns()
@@ -392,18 +385,6 @@ def main() -> None:
         }
         
         atomic_jsonl_append(event_log, event_entry)
-
-    try:
-        sys.path.insert(0, str(CLAUDE_ROOT / "scripts"))
-        from notify_critical import send_notification  # type: ignore
-        labels = ", ".join(sorted(set(f["label"] for f in findings)))
-        send_notification(
-            title="Claude Code: secret/exfiltration detected (auto-redacted/logged)",
-            body=f"{source_name}: {len(findings)} match(es), types: {labels}.",
-            level="critical",
-        )
-    except Exception:
-        pass
 
     sys.stderr.write(
         f"[secret_scrubber_realtime] detected {len(findings)} matches in {source_name} "
