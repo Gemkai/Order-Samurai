@@ -400,8 +400,14 @@ def cmd_install(args):
     _register_hooks_in_file(paths["samurai_settings"], guard_script, scrubber_script, paths["backups"])
 
     # The one that actually enforces anything: Claude Code's own config. Always
-    # written -- if Claude Code is installed later, the guard is already wired.
-    _register_claude_hooks(paths["claude_settings"], guard_script, scrubber_script, paths["backups"])
+    # written -- if Claude Code is installed later, the guard is already wired --
+    # unless the Claude hook registry registers both hooks: its dispatcher already
+    # runs the guard and the scrubber, so a direct registration would run them twice.
+    if _dispatcher_covers_hooks(paths["claude_settings"]):
+        print("  [i] Claude hook registry found: its dispatcher already covers the guard and "
+              "scrubber; leaving the Claude settings untouched.")
+    else:
+        _register_claude_hooks(paths["claude_settings"], guard_script, scrubber_script, paths["backups"])
 
     # install.sh runs `install` on every upgrade, and the zip never ships these
     # logs, so this is where rows from older guards get cleaned up.
@@ -427,6 +433,34 @@ def cmd_install(args):
     except (Exception, SystemExit) as e:  # activation must never fail the install
         print(f"   Pro activation skipped ({type(e).__name__}). Activate later with: {_self_cmd()} activate")
     return 0
+
+def _dispatcher_covers_hooks(claude_settings: Path) -> bool:
+    """True when the Claude hook registry beside claude_settings registers both our hooks.
+
+    Parses the registry (no import, no execution) and requires each hook id as a dict key whose
+    value names a script and the event that hook needs; ids that appear only in comments or
+    strings do not count.
+    """
+    import ast
+
+    try:
+        registry = claude_settings.parent / "scripts" / "hook_registry.py"
+        tree = ast.parse(registry.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError, RecursionError, MemoryError):
+        return False
+    found = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values):
+            if not (isinstance(key, ast.Constant) and isinstance(value, ast.Dict)):
+                continue
+            fields = {k.value: v.value for k, v in zip(value.keys, value.values)
+                      if isinstance(k, ast.Constant) and isinstance(v, ast.Constant)}
+            if isinstance(fields.get("script"), str):
+                found.add((key.value, fields.get("event")))
+    return {("prompt-injection-guard", "PreToolUse"), ("secret-scrubber-realtime", "PostToolUse")} <= found
+
 
 _HOOK_PROBES = {
     "PreToolUse": {"tool_name": "Bash", "tool_input": {"command": "true"}},
@@ -486,9 +520,10 @@ def cmd_doctor(args):
     check("Security Posture", not fail_open, f"BUSHIDO_FAIL_OPEN={fail_open} (Fail-closed enforced)")
 
     # Check 4: Hook Registration.
-    # Asserted ONLY against ~/.claude/settings.json in Claude Code's own schema.
-    # v1.0.0 accepted ~/.samurai/settings.json as proof and reported PASS while
-    # the guard was wired nowhere Claude Code would ever load it.
+    # Asserted against ~/.claude/settings.json in Claude Code's own schema, or a Claude hook
+    # registry whose dispatcher runs both hooks. Never ~/.samurai/settings.json: v1.0.0
+    # accepted that as proof and reported PASS while the guard was wired nowhere Claude Code
+    # would ever load it.
     claude_settings = paths["claude_settings"]
     pre = _load_json(claude_settings).get("hooks", {}).get("PreToolUse", []) or []
     registered = any(_entry_targets(e, GUARD_MARKER) for e in pre)
@@ -507,14 +542,29 @@ def cmd_doctor(args):
                     missing.append(parts[-1])
                 elif parts:
                     probes.append((event, parts))
-    if not registered:
-        detail = f"NOT registered in {claude_settings} -- run 'samurai install'"
-    elif missing:
+    # When the Claude hook registry registers both hooks, 'samurai install' leaves the Claude
+    # settings alone and the registry's dispatcher runs them, so that also counts. Both at once
+    # (an install from before that rule) runs every hook twice.
+    covered = _dispatcher_covers_hooks(claude_settings)
+    duplicated = registered and covered
+    dispatched = covered and not registered
+    if dispatched:
+        # Nothing is registered in the Claude settings to probe; Check 5 runs the bundled scripts.
+        probes = [("PreToolUse", ["python3", str(paths["root"] / "bin" / "prompt_injection_guard.py")]),
+                  ("PostToolUse", ["python3", str(paths["root"] / "bin" / "secret_scrubber_realtime.py")])]
+    if missing:
         detail = (f"hook script missing: {', '.join(sorted(set(missing)))} -- Claude Code will block "
                   f"tool calls; run 'samurai install' again")
-    else:
+    elif duplicated:
+        detail = (f"registered in {claude_settings} AND by the Claude hook registry, so each hook "
+                  f"runs twice -- remove the Order Samurai entries from {claude_settings}")
+    elif registered:
         detail = f"PreToolUse guard registered in {claude_settings}"
-    check("Claude Code Hook Registration", registered and not missing, detail)
+    elif dispatched:
+        detail = "guard and scrubber run through the Claude hook registry dispatcher"
+    else:
+        detail = f"NOT registered in {claude_settings} -- run 'samurai install'"
+    check("Claude Code Hook Registration", (registered or dispatched) and not (missing or duplicated), detail)
 
     # Check 5: Hook Execution. A registered, present script can still crash on import
     # (v2.1.2's scrubber needed a module only the author's machine had), and a crashing
@@ -525,7 +575,8 @@ def cmd_doctor(args):
     elif failures:
         detail = "; ".join(failures)
     else:
-        detail = f"{len(probes)} registered hook(s) ran cleanly on a benign tool call"
+        kind = "bundled hook script(s) the registry dispatches" if dispatched else "registered hook(s)"
+        detail = f"{len(probes)} {kind} ran cleanly on a benign tool call"
     check("Hook Execution", bool(probes) and not failures, detail)
 
     # Check 6: Path Authority

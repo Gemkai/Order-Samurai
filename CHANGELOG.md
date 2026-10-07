@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `bin/install.sh` no longer fails on Homebrew and other PEP 668 "externally managed" Pythons, which refuse `pip install --user`: it installs the report dependencies into a private virtualenv (`~/.samurai/venv`) so the first cost report runs. Other Pythons keep the `--user` install, and an interpreter that is already a virtualenv is used directly. Hooks stay on the system `python3`.
+- `samurai install` no longer adds its two hooks to `~/.claude/settings.json` on a machine whose Claude hook registry (`~/.claude/scripts/hook_registry.py`) registers both hooks. That registry's dispatcher already runs the guard and the scrubber, so the direct entries ran each hook twice. `~/.samurai/settings.json` is still written, and machines without such a registry are unchanged. `samurai doctor` passes its hook-registration check when the registry registers both hooks (its hook-execution check then runs the bundled scripts), and fails it when the hooks are registered both ways, since each would run twice.
 
 ## [2.1.3] - 2026-10-06
 
