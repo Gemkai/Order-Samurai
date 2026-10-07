@@ -240,15 +240,55 @@ def evaluate_input(input_str: str) -> tuple[float, str]:
             
     return 0.0, "Clean"
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--test", action="store_true", help="Run self-test suite")
-    args, unknown = parser.parse_known_args()
+# Cursor hook events the guard answers. A Cursor payload is recognised by its event
+# name or its conversation_id; Claude and Codex payloads carry neither.
+_CURSOR_EVENTS = frozenset({"beforeShellExecution", "beforeMCPExecution", "preToolUse"})
 
-    if args.test:
-        return run_self_tests()
 
-    payload = _read_payload()
+def _is_cursor(payload: dict) -> bool:
+    return payload.get("hook_event_name") in _CURSOR_EVENTS or "conversation_id" in payload
+
+
+def _json_strings(text: str) -> str:
+    """Every string (and key) inside a JSON document, space-joined; "" when text is not
+    JSON. beforeMCPExecution passes tool_input as a JSON-encoded string, where an escape
+    such as backslash-u006a hides a letter from the raw-text patterns."""
+    try:
+        document = json.loads(text)
+    except (ValueError, RecursionError):
+        return ""
+    found: list[str] = []
+
+    def walk(value) -> None:
+        if isinstance(value, str):
+            found.append(value)
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                found.append(str(key))
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(document)
+    return " ".join(found)
+
+
+def _emit_cursor_verdict(blocked: bool, detail: str) -> None:
+    """Cursor reads stdout as JSON (anything else blocks the action) and exit code 2 as
+    a block. Exit codes other than 0 and 2 fail OPEN in Cursor, so every outcome here
+    is an explicit verdict."""
+    if blocked:
+        message = f"Order Samurai blocked this call: {detail}"
+        verdict = {"permission": "deny", "user_message": message, "agent_message": message}
+    else:
+        verdict = {"permission": "allow"}
+    sys.stdout.write(json.dumps(verdict) + "\n")
+    sys.stdout.flush()
+
+
+def _scan(payload: dict, cursor: bool) -> tuple[int, str]:
+    """(exit code, reason) for one hook payload; 2 blocks."""
     tool_name = payload.get("tool_name") or payload.get("toolName") or ""
     tool_input = payload.get("tool_input") or payload.get("toolInput") or {}
 
@@ -262,12 +302,15 @@ def main() -> int:
         # Scan all values of the dict
         input_str = " ".join(str(v) for v in tool_input.values())
     elif isinstance(tool_input, str):
-        input_str = tool_input
+        input_str = tool_input + (" " + _json_strings(tool_input) if cursor else "")
     else:
         input_str = str(tool_input)
+    if cursor and isinstance(payload.get("command"), str):
+        # beforeShellExecution's command (and a stdio MCP server's launch command)
+        input_str += " " + payload["command"]
 
     if not input_str.strip():
-        return 0
+        return 0, ""
 
     confidence, detail = evaluate_input(input_str)
 
@@ -275,7 +318,7 @@ def main() -> int:
     # nothing. Logging it buried the real events (2026-07-03) and persisted raw
     # Bash/Write input — keys, tokens, connection strings — in plaintext.
     if confidence <= 0:
-        return 0
+        return 0, ""
 
     # Hub-pinned output: never derive from session CWD
     event_log = _HUB_ROOT / "state" / "kill_chain_events.jsonl"
@@ -299,11 +342,33 @@ def main() -> int:
         _append_jsonl(event_log, event_entry)
         if confidence == 1.0:
             sys.stderr.write(f"\n[PROMPT INJECTION GUARD] Blocked attempt: {detail}\n")
-            return 2
+            return 2, detail
     else:
         _append_jsonl(unmatched_log, event_entry)
 
-    return 0
+    return 0, ""
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--test", action="store_true", help="Run self-test suite")
+    args, unknown = parser.parse_known_args()
+
+    if args.test:
+        return run_self_tests()
+
+    payload = _read_payload()
+    cursor = _is_cursor(payload)
+    try:
+        code, detail = _scan(payload, cursor)
+    except Exception as error:
+        if not cursor:
+            raise
+        sys.stderr.write(f"\n[PROMPT INJECTION GUARD] Internal error, failing closed: {type(error).__name__}\n")
+        code, detail = 2, "guard internal error (failing closed)"
+    if cursor:
+        _emit_cursor_verdict(code == 2, detail)
+    return code
 
 def run_self_tests() -> int:
     test_cases = [

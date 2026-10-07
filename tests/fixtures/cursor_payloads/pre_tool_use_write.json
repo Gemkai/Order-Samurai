@@ -1,0 +1,17 @@
+{
+  "conversation_id": "00000000-0000-4000-8000-000000000001",
+  "generation_id": "00000000-0000-4000-8000-000000000002",
+  "model": "fixture-model",
+  "hook_event_name": "preToolUse",
+  "cursor_version": "0.0.0-fixture",
+  "workspace_roots": ["/tmp/cursor-fixture-project"],
+  "user_email": null,
+  "transcript_path": null,
+  "cwd": "/tmp/cursor-fixture-project",
+  "tool_name": "Write",
+  "tool_use_id": "call_fixture_write",
+  "tool_input": {
+    "file_path": "/tmp/cursor-fixture-project/notes.txt",
+    "contents": "hello"
+  }
+}
