@@ -56,10 +56,14 @@ python bin/samurai doctor
 Python **3.11+** is required. `bin/install.sh` installs dependencies and generates the
 first report; `samurai install` separately registers hooks. Stop if either command
 fails. Keep the virtual environment activated in future sessions, and add this
-checkout's `bin/` to your PATH for the `samurai` shorthand. Launch Claude Code from
-that activated shell: the hooks invoke `python3` and need those dependencies on its
-interpreter path. The current hook command requires a permanent checkout path
-without spaces.
+checkout's `bin/` to your PATH for the `samurai` shorthand. Launch the dashboard and
+Pro scripts from that activated shell: they run `python3` and need those dependencies
+on its interpreter path. The hooks do not: they use only the Python standard library.
+The current hook command requires a permanent checkout path without spaces.
+
+Homebrew and Linux distribution Pythons refuse `pip install` (PEP 668). Run on one of
+them without a virtual environment, `bin/install.sh` puts the dependencies in a private
+environment at `~/.samurai/venv` instead.
 
 `samurai install` registers the security hooks into `~/.claude/settings.json` (it backs up
 any existing settings to `~/.samurai/backups/` first) and writes an install marker to

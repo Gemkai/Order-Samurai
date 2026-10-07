@@ -5,6 +5,12 @@ All notable changes to **Order Samurai** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `bin/install.sh` no longer fails on Homebrew and other PEP 668 "externally managed" Pythons, which refuse `pip install --user`: it installs the report dependencies into a private virtualenv (`~/.samurai/venv`) so the first cost report runs. Other Pythons keep the `--user` install, and an interpreter that is already a virtualenv is used directly. Hooks stay on the system `python3`.
+
 ## [2.1.3] - 2026-10-06
 
 ### Fixed

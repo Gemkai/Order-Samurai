@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # install.sh -- one-command install + first blood.
 #
-# Checks the Python version, installs the runtime dependencies, then runs
+# Checks the Python version, installs the runtime dependencies (into a private
+# ~/.samurai/venv when the Python is PEP 668 externally managed), then runs
 # first_blood.py against your existing Claude Code session logs so the first cost report
 # appears in this same command -- no daemon, no account, no separate onboarding step.
 #
@@ -26,10 +27,35 @@ if [ "$PY_OK" != "1" ]; then
   exit 1
 fi
 
+# Where the dependencies go. An interpreter that is already a virtualenv (e.g.
+# PYTHON=.venv/bin/python) installs into itself. One that is "externally managed"
+# (PEP 668: Homebrew, Debian/Ubuntu) refuses pip installs, --user included, so it gets
+# a private venv under ~/.samurai. Any other Python keeps the --user install that the
+# dashboard API and Dojo rely on when they run plain python3. The hooks never need
+# these packages: they are stdlib-only and run on python3, so a venv broken by a
+# Python upgrade cannot make Claude Code block tool calls.
 PIP_INSTALL_ARGS=(--quiet)
 if ! "$PY" -c 'import sys; raise SystemExit(0 if sys.prefix != sys.base_prefix else 1)' \
     >/dev/null 2>&1; then
-  PIP_INSTALL_ARGS+=(--user)
+  if "$PY" -c 'import os, sysconfig
+marker = os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED")
+raise SystemExit(0 if os.path.isfile(marker) else 1)' >/dev/null 2>&1; then
+    VENV="${SAMURAI_HOME:-${HOME:?install.sh: HOME is not set}/.samurai}/venv"
+    # Rebuild a venv that no longer runs (e.g. after `brew upgrade python`) or has no
+    # pip (a venv creation that failed at ensurepip).
+    if ! "$VENV/bin/python" -c 'import sys, pip; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
+        >/dev/null 2>&1; then
+      echo "install.sh: $PY is externally managed; creating the private environment ${VENV}..."
+      if ! "$PY" -m venv --clear "$VENV"; then
+        echo "install.sh: could not create ${VENV} with $PY -m venv" \
+          "(Debian/Ubuntu: install the python3-venv package and re-run)." >&2
+        exit 1
+      fi
+    fi
+    PY="$VENV/bin/python"
+  else
+    PIP_INSTALL_ARGS+=(--user)
+  fi
 fi
 
 ensure_dependency() {
