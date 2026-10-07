@@ -284,6 +284,49 @@ def _register_hooks_in_file(settings_path: Path, guard_script: str, scrubber_scr
     """Use the same hook schema in the agent-agnostic settings record."""
     _register_claude_hooks(settings_path, guard_script, scrubber_script, backups_dir, target_label)
 
+
+_GUARD_CLEAN_SOURCE = "prompt_injection_guard: Clean"
+
+
+def _is_clean_guard_row(line: bytes) -> bool:
+    try:
+        row = json.loads(line)
+    except (ValueError, RecursionError):  # unparseable/pathological: keep it
+        return False
+    return isinstance(row, dict) and row.get("source") == _GUARD_CLEAN_SOURCE
+
+
+def _purge_clean_guard_rows(state_dir: Path) -> int:
+    """Remove the "Clean" rows guards before v2.1.4 logged for every tool call,
+    each holding up to 200 chars of raw tool input (keys, tokens) in plaintext.
+    Covers the live log and the copies log rotation archived. Idempotent: a file
+    with nothing to remove is not rewritten. Byte-level so other rows survive
+    exactly. A row the guard appends between read and replace is lost -- the
+    fixed guard writes only rare suspicious rows, so that window is tiny."""
+    targets = [state_dir / "kill_chain_unmatched.jsonl",
+               *sorted((state_dir / "logs" / "rotated").glob("kill_chain_unmatched-rotated-*.jsonl"))]
+    removed = 0
+    for path in targets:
+        # A symlink would be replaced by a plain file, leaving the target's rows.
+        if path.is_symlink() or not path.is_file():
+            continue
+        lines = path.read_bytes().splitlines(keepends=True)
+        kept = [line for line in lines if not _is_clean_guard_row(line)]
+        if len(kept) == len(lines):
+            continue
+        tmp = path.with_name(path.name + ".purge.tmp")
+        try:
+            # Owner-only until copymode: the kept rows are still sensitive.
+            with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb") as fh:
+                fh.write(b"".join(kept))
+            shutil.copymode(path, tmp)
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
+        removed += len(lines) - len(kept)
+    return removed
+
+
 def cmd_install(args):
     paths = get_paths()
     print(f"⚔️  Installing Order Samurai v{SAMURAI_VERSION}...")
@@ -302,6 +345,15 @@ def cmd_install(args):
     # The one that actually enforces anything: Claude Code's own config. Always
     # written -- if Claude Code is installed later, the guard is already wired.
     _register_claude_hooks(paths["claude_settings"], guard_script, scrubber_script, paths["backups"])
+
+    # install.sh runs `install` on every upgrade, and the zip never ships these
+    # logs, so this is where rows from older guards get cleaned up.
+    try:
+        purged = _purge_clean_guard_rows(paths["state"])
+        if purged:
+            print(f"  [✓] Removed {purged} logged clean tool calls (raw tool input) from kill-chain logs")
+    except Exception as e:  # cleanup must never fail the install
+        print(f"  [!] Could not clean old kill-chain log rows ({e}); remove {paths['state'] / 'kill_chain_unmatched.jsonl'} by hand")
 
     print(f"⚔️  Installation complete! Run 'samurai doctor' to verify system health.")
     try:
