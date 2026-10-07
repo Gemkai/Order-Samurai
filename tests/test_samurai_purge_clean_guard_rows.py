@@ -85,8 +85,10 @@ def test_install_purges_clean_rows(tmp_path):
     (root / "state").mkdir(parents=True)
     live, archive = _seed(root / "state")
     home = tmp_path / "home"
-    home.mkdir()
-    env = {"PATH": os.environ.get("PATH", ""), "HOME": str(home), "SAMURAI_ROOT": str(root)}
+    (home / ".claude").mkdir(parents=True)  # Claude Code evidence: install targets detected harnesses
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(home), "SAMURAI_ROOT": str(root),
+           "CODEX_HOME": str(tmp_path / "codex-state"),
+           "SAMURAI_CODEX_APP_BIN": str(tmp_path / "absent-app" / "codex")}
     res = subprocess.run([sys.executable, str(SAMURAI_PATH), "install"], input="",
                          capture_output=True, text=True, env=env, timeout=60)
     assert res.returncode == 0, res.stderr
@@ -131,6 +133,10 @@ def test_install_survives_a_failing_purge(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("SAMURAI_ROOT", str(tmp_path / "install"))
     monkeypatch.setenv("SAMURAI_HOME", str(tmp_path / "home" / ".samurai"))
+    (tmp_path / "home" / ".claude").mkdir(parents=True)  # Claude Code evidence
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex-state"))
+    monkeypatch.setenv("SAMURAI_CODEX_APP_BIN", str(tmp_path / "absent-app" / "codex"))
 
     def boom(*_args):
         raise RuntimeError("unexpected")
@@ -215,8 +221,10 @@ def test_install_redacts_old_alert_rows(tmp_path):
     (state / "kill_chain_events.jsonl").write_text(
         _row(BLOCK_SOURCE, f"{BLOCK_WORDS} {FAKE_KEY}", 1.0, chain_id=13), encoding="utf-8")
     home = tmp_path / "home"
-    home.mkdir()
-    env = {"PATH": os.environ.get("PATH", ""), "HOME": str(home), "SAMURAI_ROOT": str(root)}
+    (home / ".claude").mkdir(parents=True)  # Claude Code evidence: install targets detected harnesses
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(home), "SAMURAI_ROOT": str(root),
+           "CODEX_HOME": str(tmp_path / "codex-state"),
+           "SAMURAI_CODEX_APP_BIN": str(tmp_path / "absent-app" / "codex")}
     res = subprocess.run([sys.executable, str(SAMURAI_PATH), "install"], input="",
                          capture_output=True, text=True, env=env, timeout=60)
     assert res.returncode == 0, res.stderr
