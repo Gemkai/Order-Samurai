@@ -575,7 +575,8 @@ def _recover_entry(entry, installing):
     try:
         data = _hooks_doc(Path(entry["config_path"]))
         hooks = data.get("hooks", {})
-        present = all(r["definition"] in hooks.get(r["event"], []) for r in entry.get("groups", []))
+        found = [r["definition"] in hooks.get(r["event"], []) for r in entry.get("groups", [])]
+        present = all(found)
     except (OSError, ValueError, UnsafeFile):
         return entry  # leave it for the user; the harness step will fail and explain
     if state == "pending":
@@ -583,10 +584,13 @@ def _recover_entry(entry, installing):
             return {**entry, "state": "installed"}
         prior = entry.get("prior")
         return dict(prior, state="installed") if prior else None
-    if state == "removing" and present:
-        # install keeps the hook it found; uninstall finishes removing it.
-        return dict(entry, state="installed") if installing else entry
-    return None if state == "removing" else entry
+    if state == "removing":
+        # install keeps a hook it found whole (and re-adopts a partial one); uninstall
+        # resumes while ANY recorded group is left, so none is forgotten.
+        if installing:
+            return dict(entry, state="installed") if present else None
+        return entry if any(found) else None
+    return entry
 
 
 def _install_harness(harness, paths, manifest):
@@ -1031,20 +1035,10 @@ def _uninstall_harness(harness, entry, paths, manifest, force):
             _locate(groups, record, config)
             remove.append(record)
         except MissingHook:
-            # --force may forget a group the user already deleted, never one that an
-            # edited copy still runs: deleting ~/.samurai would leave it pointing at
-            # scripts that are gone, and a missing script blocks every tool call.
-            scripts = _script_paths([record["definition"], *record.get("previous", [])])
-            if not force:
+            # --force (or a removal this command already started) may forget a group
+            # that is gone. The check below refuses if an edited copy still runs it.
+            if not (force or entry.get("state") == "removing"):
                 raise
-            if any(_runs_any(g, scripts) for g in groups):
-                raise Refusal(f"refusing: an edited copy of the Order Samurai {record['event']} hook in "
-                              f"{config} still runs a Samurai script; remove it by hand, then re-run") from None
-    if not remove:
-        del manifest["harnesses"][harness]
-        _save_manifest(paths, manifest)
-        return "removed (the hook was already gone)"
-
     shifted = {}
 
     def mutate(current):
@@ -1063,7 +1057,19 @@ def _uninstall_harness(harness, entry, paths, manifest, force):
             del groups[index]
         return current
 
-    mutate(copy.deepcopy(_hooks_doc(config)))  # refuse before recording any state change
+    # Refuse before recording any state change: after removal, nothing in this config may
+    # still run a Samurai script (an edited copy would). Deleting ~/.samurai would leave
+    # it pointing at scripts that are gone, and a missing script blocks every tool call.
+    scripts = _script_paths([d for r in entry.get("groups", []) for d in (r["definition"], *r.get("previous", []))])
+    remaining = mutate(copy.deepcopy(_hooks_doc(config))) if remove else _hooks_doc(config)
+    for event, groups in remaining.get("hooks", {}).items():
+        if any(_runs_any(g, scripts) for g in groups):
+            raise Refusal(f"refusing: an edited copy of the Order Samurai {event} hook in {config} still "
+                          f"runs a Samurai script; remove it by hand, then re-run")
+    if not remove:
+        del manifest["harnesses"][harness]
+        _save_manifest(paths, manifest)
+        return "removed (the hook was already gone)"
     manifest["harnesses"][harness] = dict(entry, state="removing")
     _save_manifest(paths, manifest)
     _checkpoint("manifest_removing", harness=harness, path=config)
