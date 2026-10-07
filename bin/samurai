@@ -15,7 +15,7 @@ import argparse
 import getpass
 from pathlib import Path
 
-SAMURAI_VERSION = "2.1.2"
+SAMURAI_VERSION = "2.1.3"
 
 GUARD_MARKER = "prompt_injection_guard"
 SCRUBBER_MARKER = "secret_scrubber_realtime"

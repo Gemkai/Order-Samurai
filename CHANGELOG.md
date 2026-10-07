@@ -5,6 +5,13 @@ All notable changes to **Order Samurai** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.3] - 2026-10-06
+
+### Fixed
+
+- Real-time secret scrubbing now runs on a standard install. The scrubber hook depended on a helper module that a standard install does not include, so it exited with an error on every tool call and scrubbed nothing. It now uses the secret patterns shipped with Order Samurai.
+- `samurai doctor` now runs each registered hook on a harmless tool call and fails if one errors or hangs. Previously it only checked that the hook files existed, so it reported every check as passing while the scrubber was failing. Doctor now runs 6 checks.
+
 ## [2.1.2] - 2026-10-04
 
 ### Fixed
