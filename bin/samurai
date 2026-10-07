@@ -7,11 +7,13 @@ Provides samurai install, samurai doctor, and samurai uninstall capabilities.
 import os
 import sys
 import json
+import re
 import shlex
 import shutil
 import datetime
 import subprocess
 import argparse
+import importlib.util
 import getpass
 from pathlib import Path
 
@@ -288,6 +290,100 @@ def _register_hooks_in_file(settings_path: Path, guard_script: str, scrubber_scr
     """Use the same hook schema in the agent-agnostic settings record."""
     _register_claude_hooks(settings_path, guard_script, scrubber_script, backups_dir, target_label)
 
+
+_GUARD_CLEAN_SOURCE = "prompt_injection_guard: Clean"
+_GUARD_SOURCE_PREFIX = "prompt_injection_guard:"
+# Older guards cut raw input at 200 chars BEFORE any redaction, so a key could
+# end mid-way at the cut, too short for any secret pattern to match.
+_GUARD_DETAIL_LIMIT = 200
+_TRAILING_FRAGMENT = re.compile(r"[A-Za-z0-9_+/=.-]{12,}$")
+_WITHHELD = "[withheld:"
+
+
+def _load_guard_redactor(root: Path):
+    """The guard's own _redact_secrets, so old rows get the masking new rows get."""
+    spec = importlib.util.spec_from_file_location(
+        "samurai_prompt_injection_guard", root / "bin" / "prompt_injection_guard.py")
+    module = importlib.util.module_from_spec(spec)
+    saved_path = list(sys.path)  # the guard prepends ~/.claude/scripts at import
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = saved_path
+    return module._redact_secrets
+
+
+def _clean_guard_line(line: bytes, redact):
+    """None drops the line (a Clean row). Otherwise returns the line, rewritten
+    only when a guard row's detail needed masking; anything else is kept verbatim."""
+    try:
+        row = json.loads(line)
+    except (ValueError, RecursionError):  # unparseable/pathological: keep it
+        return line
+    if not isinstance(row, dict):
+        return line
+    source, detail = row.get("source"), row.get("detail")
+    if source == _GUARD_CLEAN_SOURCE:
+        return None
+    if not (isinstance(source, str) and source.startswith(_GUARD_SOURCE_PREFIX)
+            and isinstance(detail, str)) or detail.startswith(_WITHHELD):
+        return line
+    masked = detail
+    # Only a raw old detail sits at exactly the cut; one already carrying a marker
+    # was redacted (by the fixed guard or a previous install) and is left alone.
+    if len(detail) == _GUARD_DETAIL_LIMIT and "[REDACTED:" not in detail:
+        masked = _TRAILING_FRAGMENT.sub("[REDACTED:truncated_token]", masked)
+    masked = redact(masked)
+    if masked is None:
+        masked = f"{_WITHHELD} {len(detail)} chars, redaction unavailable]"
+    if masked == detail:
+        return line
+    row["detail"] = masked
+    ending = line[len(line.rstrip(b"\r\n")):]
+    return json.dumps(row, ensure_ascii=False).encode("utf-8") + ending
+
+
+def _clean_guard_rows(state_dir: Path, redact) -> tuple[int, int]:
+    """Clean up what guards before v2.1.4 left in the kill-chain logs: drop the
+    "Clean" rows logged for every tool call, and mask secrets in the detail of
+    the guard's suspicious/blocked rows. Both held up to 200 chars of raw tool
+    input. Covers the live logs and the copies rotation archived. Returns
+    (rows removed, rows redacted). Idempotent: a file with nothing to change is
+    not rewritten, and other producers' rows are kept byte for byte. A row the
+    guard appends between read and replace is lost -- the fixed guard writes
+    only rare suspicious rows, so that window is tiny."""
+    rotated = state_dir / "logs" / "rotated"
+    targets = []
+    for name in ("kill_chain_unmatched", "kill_chain_events"):
+        targets += [state_dir / f"{name}.jsonl", *sorted(rotated.glob(f"{name}-rotated-*.jsonl"))]
+    removed = redacted = 0
+    for path in targets:
+        # A symlink would be replaced by a plain file, leaving the target's rows.
+        if path.is_symlink() or not path.is_file():
+            continue
+        lines = path.read_bytes().splitlines(keepends=True)
+        kept = []
+        for line in lines:
+            cleaned = _clean_guard_line(line, redact)
+            if cleaned is None:
+                removed += 1
+            else:
+                redacted += cleaned != line
+                kept.append(cleaned)
+        if kept == lines:
+            continue
+        tmp = path.with_name(path.name + ".purge.tmp")
+        try:
+            # Owner-only until copymode: the kept rows are still sensitive.
+            with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb") as fh:
+                fh.write(b"".join(kept))
+            shutil.copymode(path, tmp)
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
+    return removed, redacted
+
+
 def cmd_install(args):
     paths = get_paths()
     print(f"⚔️  Installing Order Samurai v{SAMURAI_VERSION}...")
@@ -306,6 +402,22 @@ def cmd_install(args):
     # The one that actually enforces anything: Claude Code's own config. Always
     # written -- if Claude Code is installed later, the guard is already wired.
     _register_claude_hooks(paths["claude_settings"], guard_script, scrubber_script, paths["backups"])
+
+    # install.sh runs `install` on every upgrade, and the zip never ships these
+    # logs, so this is where rows from older guards get cleaned up.
+    try:
+        try:
+            # The guard shipped beside this script, not SAMURAI_ROOT's copy.
+            redact = _load_guard_redactor(Path(__file__).resolve().parent.parent)
+        except Exception:
+            redact = lambda _text: None  # noqa: E731 -- withhold rather than keep raw
+        removed, redacted = _clean_guard_rows(paths["state"], redact)
+        if removed:
+            print(f"  [✓] Removed {removed} logged clean tool calls (raw tool input) from kill-chain logs")
+        if redacted:
+            print(f"  [✓] Redacted secrets in {redacted} older prompt-injection alert rows")
+    except Exception as e:  # cleanup must never fail the install
+        print(f"  [!] Could not clean old kill-chain log rows ({e}); remove the kill_chain_*.jsonl files in {paths['state']} by hand")
 
     print(f"⚔️  Installation complete! Run 'samurai doctor' to verify system health.")
     try:
