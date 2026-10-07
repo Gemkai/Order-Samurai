@@ -63,6 +63,23 @@ def test_scrubber_detects_a_secret_without_claude_scripts(tmp_path):
     assert "anthropic_key" in r.stderr, f"secret not detected on a clean machine: {r.stderr!r}"
 
 
+def test_scrubber_never_writes_into_the_users_project(tmp_path):
+    """The exfil event log is pinned to Order Samurai's own state/, never the session cwd:
+    a cwd-relative write dropped untracked state/ folders into customers' repos."""
+    cmd = _hook_command(_install(tmp_path), "PostToolUse")
+    project, core = tmp_path / "project", tmp_path / "core"
+    project.mkdir()
+    env = dict(_env(tmp_path), SAMURAI_ROOT=str(core))
+    payload = {"tool_name": "Bash", "tool_input": {"command": "ifconfig"}, "cwd": str(project),
+               "tool_response": {"stdout": "inet 192.168.1.23 netmask 0xffffff00", "stderr": ""}}
+    r = subprocess.run(shlex.split(cmd), input=json.dumps(payload), capture_output=True,
+                       text=True, env=env, timeout=30)
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "internal_ip" in r.stderr, r.stderr
+    assert not (project / "state").exists(), "scrubber wrote into the user's project"
+    assert (core / "state" / "kill_chain_events.jsonl").is_file()
+
+
 def test_doctor_fails_when_a_registered_hook_crashes(tmp_path):
     settings = _install(tmp_path)
     broken = tmp_path / "broken" / "secret_scrubber_realtime.py"

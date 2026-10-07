@@ -329,7 +329,6 @@ def main() -> None:
 
     text_to_scan = ""
     source_name = ""
-    cwd = payload.get("cwd") or payload.get("directory") or ""
     
     if is_write:
         fp = (payload.get("tool_input") or {}).get("file_path", "")
@@ -387,8 +386,9 @@ def main() -> None:
     exfil_findings = [f for f in findings if f["label"] in exfil_labels]
     
     if exfil_findings:
-        repo_root = Path(cwd) if cwd else _REPO_ROOT
-        event_log = repo_root / "state" / "kill_chain_events.jsonl"
+        # Pinned to Order Samurai's own state/, as _emit_chain14_pre is: a cwd-relative
+        # path dropped untracked state/ folders into the user's project.
+        event_log = _REPO_ROOT / "state" / "kill_chain_events.jsonl"
         timestamp = datetime.utcnow().isoformat().replace("+00:00", "Z")
         if not timestamp.endswith("Z"):
             timestamp += "Z"
