@@ -9,6 +9,7 @@ import path from 'path'
 import { DojoStateManager, PILLAR_SLUGS, ORDER_SAMURAI_ROOT, GOVERNANCE_ROOT, WID_PAYLOAD_PATH, VERDICT_RECORD_SCHEMA_PATH } from './state.js'
 import { AutoRemediationEngine } from './dojo.js'
 import { ReflexEngine, REFLEX_MAX_TURNS, checkWarnOnly, type ReflexEntry } from './reflex-engine.js'
+import { resolvePythonBin } from './python-bin.js'
 import type { PillarSlug, RoninStatus, ServerMsg, ClientMsg, DojoState, VerdictRecord } from './types.js'
 
 const PORT = 3001
@@ -215,7 +216,7 @@ function spawnExec(command: string, scope?: string): void {
 
       // 2. Regenerate wid_payload.json so the dashboard picks up the new efficacy entry
       try {
-        spawn(process.platform === 'win32' ? 'python' : 'python3',
+        spawn(resolvePythonBin(),
           [path.join(GOVERNANCE_ROOT, 'refresh_dashboard.py')],
           { detached: true, stdio: 'ignore', cwd: GOVERNANCE_ROOT, env: { ...process.env } }
         ).unref()
@@ -267,7 +268,7 @@ function boot(): void {
   if (DASHBOARD_REFRESH_MS > 0) {
     const periodicRefresh = setInterval(() => {
       try {
-        spawn(process.platform === 'win32' ? 'python' : 'python3',
+        spawn(resolvePythonBin(),
           [path.join(GOVERNANCE_ROOT, 'refresh_dashboard.py')],
           { detached: true, stdio: 'ignore', cwd: GOVERNANCE_ROOT, env: { ...process.env } }
         ).unref()

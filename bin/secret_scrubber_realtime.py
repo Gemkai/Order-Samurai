@@ -11,33 +11,21 @@ Pre-mode:  blocks Bash/WebFetch commands that carry db_connection_string or
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-CLAUDE_ROOT = Path.home() / ".claude"
-if str(CLAUDE_ROOT / "scripts") not in sys.path:
-    sys.path.insert(0, str(CLAUDE_ROOT / "scripts"))
-
 import argparse
 import json
 import os
 import re
 import shutil
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
-# ~/.claude/scripts exists only on a configured workstation. A customer install has
-# no cli_io, and a hard import here crashed this hook on every call.
-try:
-    from cli_io import configure_utf8_stdio
-except ImportError:
-    def configure_utf8_stdio() -> None:
-        for stream in (sys.stdin, sys.stdout, sys.stderr):
-            try:
-                stream.reconfigure(encoding="utf-8", errors="replace")
-            except (AttributeError, ValueError):
-                pass
-
-configure_utf8_stdio()
+# Stdlib only: this hook ships to customers, whose machines have no ~/.claude/scripts.
+for _stream in (sys.stdin, sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
 
 _REPO_ROOT     = Path(os.environ.get("SAMURAI_ROOT") or os.environ.get("ORDER_SAMURAI_ROOT") or Path(__file__).resolve().parent.parent)
 CLAUDE_ROOT    = Path.home() / ".claude"
@@ -63,24 +51,17 @@ EXFILTRATION_PATTERNS = [
 ]
 
 def _build_patterns():
+    # Secret patterns ship beside this hook; SAMURAI_ROOT may point at a state-only dir.
     standard = []
     try:
-        sys.path.insert(0, str(CLAUDE_ROOT / "scripts"))
-        import secret_scrubber  # type: ignore
-        for name, rx in secret_scrubber.PATTERNS:
-            standard.append({"name": name, "pattern": rx})
+        code_root = str(Path(__file__).resolve().parent.parent)
+        if code_root not in sys.path:
+            sys.path.insert(0, code_root)
+        from agentica_core.verify_secrets import SECRET_PATTERNS
+        for rx, name in SECRET_PATTERNS:
+            standard.append({"name": name, "pattern": re.compile(rx)})
     except Exception:
         pass
-    if not standard:
-        # Clean install: use the secret patterns shipped with this pack.
-        try:
-            if str(_REPO_ROOT) not in sys.path:
-                sys.path.insert(0, str(_REPO_ROOT))
-            from agentica_core.verify_secrets import SECRET_PATTERNS
-            for rx, name in SECRET_PATTERNS:
-                standard.append({"name": name, "pattern": re.compile(rx)})
-        except Exception:
-            pass
     return EXFILTRATION_PATTERNS + standard
 
 PATTERNS = _build_patterns()
@@ -404,18 +385,6 @@ def main() -> None:
         }
         
         atomic_jsonl_append(event_log, event_entry)
-
-    try:
-        sys.path.insert(0, str(CLAUDE_ROOT / "scripts"))
-        from notify_critical import send_notification  # type: ignore
-        labels = ", ".join(sorted(set(f["label"] for f in findings)))
-        send_notification(
-            title="Claude Code: secret/exfiltration detected (auto-redacted/logged)",
-            body=f"{source_name}: {len(findings)} match(es), types: {labels}.",
-            level="critical",
-        )
-    except Exception:
-        pass
 
     sys.stderr.write(
         f"[secret_scrubber_realtime] detected {len(findings)} matches in {source_name} "

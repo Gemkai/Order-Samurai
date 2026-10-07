@@ -5,6 +5,7 @@ import { EventEmitter } from 'events'
 import chokidar, { type FSWatcher } from 'chokidar'
 import Ajv from 'ajv'
 import { WID_PAYLOAD_PATH, WID_PAYLOAD_SCHEMA_PATH, ORDER_SAMURAI_ROOT, GOVERNANCE_ROOT } from './state.js'
+import { resolvePythonBin } from './python-bin.js'
 import type { VerdictRecord, VerdictMapEntry } from './types.js'
 
 // ---------------------------------------------------------------------------
@@ -749,7 +750,7 @@ export class ReflexEngine extends EventEmitter {
       // Unexpected cached value — fall through and re-query.
     }
 
-    const pythonBin = process.platform === 'win32' ? 'python' : 'python3'
+    const pythonBin = resolvePythonBin()
     const script = path.join(ORDER_SAMURAI_ROOT, 'bin', 'bushido_check.py')
     const args = [script, '--skill', skillName, '--source', 'reflex', '--metric', entry.id]
     if (pillar) args.push('--pillar', pillar)
@@ -1158,7 +1159,7 @@ export class ReflexEngine extends EventEmitter {
       fs.writeFileSync(patchFile, patchContent, 'utf8')
 
       // 2. Maker-Checker Audit
-      const pythonBin = process.platform === 'win32' ? 'python' : 'python3'
+      const pythonBin = resolvePythonBin()
       const auditScript = path.join(ORDER_SAMURAI_ROOT, 'execution', 'audit_remediation_patch.py')
       
       this.emit('auto_reflex_output', {
@@ -1261,7 +1262,7 @@ export class ReflexEngine extends EventEmitter {
     // refresh completes (≤60 s), which is acceptable because _isRunning=true already
     // serializes all skill execution during this window.
     if (finalStatus === 'done') {
-      const pythonBin = process.platform === 'win32' ? 'python' : 'python3'
+      const pythonBin = resolvePythonBin()
       try {
         spawnSync(pythonBin, [path.join(GOVERNANCE_ROOT, 'refresh_dashboard.py')], {
           cwd: GOVERNANCE_ROOT,
@@ -1420,7 +1421,7 @@ export class ReflexEngine extends EventEmitter {
       this._bushidoQueueIds.delete(key)
       const failed = finalStatus !== 'done'
       try {
-        const pythonBin = process.platform === 'win32' ? 'python' : 'python3'
+        const pythonBin = resolvePythonBin()
         const script = path.join(ORDER_SAMURAI_ROOT, 'bin', 'bushido_check.py')
         const args = [script, '--complete', bushidoId]
         if (failed) args.push('--failed')
@@ -1519,7 +1520,7 @@ export class ReflexEngine extends EventEmitter {
   private _runMechanism(entry: ReflexEntry, runCwd?: string): Promise<'done' | 'error' | 'timeout'> {
     return new Promise((resolve) => {
       const mech = entry.mechanism!
-      const pythonBin = process.platform === 'win32' ? 'python' : 'python3'
+      const pythonBin = resolvePythonBin()
       const targetCwd = runCwd || ORDER_SAMURAI_ROOT
       const scriptPath = path.join(targetCwd, 'bin', mech.script)
       const MECH_TIMEOUT_MS = (mech.timeout_s ?? 120) * 1_000
@@ -1766,7 +1767,7 @@ export class ReflexEngine extends EventEmitter {
     entry: ReflexEntry,
     metricName: string,
   ): { exit: number | null; value: number | null; stderr: string } {
-    const pythonBin = process.platform === 'win32' ? 'python' : 'python3'
+    const pythonBin = resolvePythonBin()
     const script = path.join(ORDER_SAMURAI_ROOT, 'bin', 'remeasure_gate.py')
     let result: ReturnType<typeof spawnSync>
     try {

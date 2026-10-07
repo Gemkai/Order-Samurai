@@ -9,11 +9,14 @@ script file existed.
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMURAI = ROOT / "bin" / "samurai"
@@ -163,3 +166,67 @@ def test_doctor_uses_its_python_for_packaged_probes(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     lines = [line for line in r.stdout.splitlines() if "Hook Execution" in line]
     assert lines and all("PASS" in line for line in lines), r.stdout
+
+
+
+
+SCRUBBER = ROOT / "bin" / "secret_scrubber_realtime.py"
+
+
+def _bare_env(home: Path) -> dict:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
+    env["HOME"] = str(home)
+    for key in ("SAMURAI_ROOT", "ORDER_SAMURAI_ROOT"):
+        env.pop(key, None)
+    return env
+
+
+def _run_bare(home: Path, payload: dict) -> subprocess.CompletedProcess:
+    # -S: no site-packages, so anything beyond the stdlib and the shipped tree fails.
+    return subprocess.run([sys.executable, "-S", str(SCRUBBER)], input=json.dumps(payload),
+                          capture_output=True, text=True, env=_bare_env(home),
+                          cwd=str(home), timeout=30)
+
+
+def test_scrubber_runs_on_a_bare_interpreter(tmp_path):
+    r = _run_bare(tmp_path, {"tool_name": "Bash", "tool_input": {"command": "cat .env"},
+                             "tool_response": {"stdout": f"KEY={FAKE_KEY}", "stderr": ""}})
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "anthropic_key" in r.stderr, r.stderr
+
+
+def test_scrubber_does_not_load_stdio_helper_from_claude_scripts(tmp_path):
+    """The hook ships to customers; a developer-only helper must not change how it runs."""
+    scripts = tmp_path / ".claude" / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "cli_io.py").write_text(
+        "def configure_utf8_stdio():\n    raise RuntimeError('developer helper loaded')\n")
+    r = _run_bare(tmp_path, {"tool_name": "Bash", "tool_input": {"command": "ls"},
+                             "tool_response": {"stdout": "README.md", "stderr": ""}})
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "developer helper loaded" not in r.stderr, r.stderr[-400:]
+
+
+@pytest.mark.parametrize("module", ["secret_scrubber", "notify_critical"])
+def test_scrubber_does_not_import_developer_modules(tmp_path, module):
+    """Patterns and alerts come from the shipped tree only, never ~/.claude/scripts."""
+    scripts = tmp_path / ".claude" / "scripts"
+    scripts.mkdir(parents=True)
+    marker = tmp_path / f"{module}.imported"
+    (scripts / f"{module}.py").write_text(f"open({str(marker)!r}, 'w').close()\n")
+    r = _run_bare(tmp_path, {"tool_name": "Bash", "tool_input": {"command": "cat .env"},
+                             "tool_response": {"stdout": f"KEY={FAKE_KEY}", "stderr": ""}})
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "anthropic_key" in r.stderr, r.stderr
+    assert not marker.exists(), f"hook imported ~/.claude/scripts/{module}.py"
+
+
+def test_scrubber_detects_secrets_when_samurai_root_is_a_state_dir(tmp_path):
+    """SAMURAI_ROOT relocates state; the shipped secret patterns still load from the hook's tree."""
+    env = dict(_bare_env(tmp_path), SAMURAI_ROOT=str(tmp_path / "state-only"))
+    payload = {"tool_name": "Bash", "tool_input": {"command": "cat .env"},
+               "tool_response": {"stdout": f"KEY={FAKE_KEY}", "stderr": ""}}
+    r = subprocess.run([sys.executable, "-S", str(SCRUBBER)], input=json.dumps(payload),
+                       capture_output=True, text=True, env=env, cwd=str(tmp_path), timeout=30)
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "anthropic_key" in r.stderr, r.stderr
