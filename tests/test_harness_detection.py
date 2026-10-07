@@ -146,6 +146,8 @@ def test_detect_harnesses_reads_only_allowed_locations(machine, monkeypatch, kin
     allowed = {
         machine.claude.parent, machine.codex.parent, machine.path,
         machine.path / "claude", machine.path / "codex", machine.app,
+        machine.home / ".cursor", machine.path / "cursor", machine.path / "cursor-agent",
+        machine.cwd / "Applications" / "Cursor.app",
     }
     touched = []
 
@@ -170,6 +172,7 @@ def test_detect_harnesses_reads_only_allowed_locations(machine, monkeypatch, kin
     assert result["claude"]["present"] is claude
     assert result["codex"]["present"] is codex
     assert result["codex"]["config_only"] is config_only
+    assert result["cursor"] == {"present": False, "evidence": result["cursor"]["evidence"], "config_only": False}
     assert isinstance(result["claude"]["evidence"], str)
     assert isinstance(result["codex"]["evidence"], str)
 
@@ -381,9 +384,9 @@ UNPROTECTED_NOTE = "not protected by Order Samurai"
 
 
 def _add_other_agents(machine):
-    """Gemini CLI on PATH, a Cursor config dir and a Windsurf app bundle."""
+    """Gemini CLI on PATH, a Goose config dir and a Windsurf app bundle."""
     _runtime(machine.path / "gemini")
-    (machine.home / ".cursor").mkdir()
+    (machine.home / ".config" / "goose").mkdir(parents=True)
     (machine.cwd / "Applications" / "Windsurf.app").mkdir(parents=True)
 
 
@@ -395,8 +398,9 @@ def test_install_and_doctor_name_detected_agents_they_cannot_protect(machine):
     doctor = _run(machine, "doctor")
     for result in (install, doctor):
         line = next((l for l in result.stdout.splitlines() if UNPROTECTED_NOTE in l), "")
-        for label in ("Gemini CLI", "Cursor", "Windsurf"):
+        for label in ("Gemini CLI", "Goose", "Windsurf"):
             assert label in line, result.stdout
+        assert "Cursor" not in line.split(". It protects")[0], "Cursor is protected now"
 
 
 def test_no_unprotected_note_when_only_supported_harnesses_exist(machine):
@@ -407,10 +411,10 @@ def test_no_unprotected_note_when_only_supported_harnesses_exist(machine):
 
 
 def test_unprotected_agents_named_when_no_supported_harness_exists(machine):
-    (machine.home / ".cursor").mkdir()
+    (machine.home / ".gemini").mkdir()
     result = _run(machine, "install")
     assert result.returncode == 1, result.stdout + result.stderr
-    assert "Cursor" in next(l for l in result.stdout.splitlines() if UNPROTECTED_NOTE in l)
+    assert "Gemini CLI" in next(l for l in result.stdout.splitlines() if UNPROTECTED_NOTE in l)
 
 
 @pytest.mark.parametrize("evidence", ["cn-on-path", "continue-dir"])

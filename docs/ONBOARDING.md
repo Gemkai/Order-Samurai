@@ -76,8 +76,16 @@ one result line per harness:
   Codex, run `/hooks` and approve the Order Samurai hook. Your existing Codex hooks keep
   their content, order and approvals.
 
-To choose harnesses yourself, run `samurai install --harness claude`, `--harness codex` or
-`--harness claude,codex` (or set `SAMURAI_HARNESS`). The choice is remembered on later
+- **Cursor** (found when `cursor` or `cursor-agent` is on your PATH or `Cursor.app` is in
+  `/Applications`): the prompt-injection guard is added to `~/.cursor/hooks.json` for
+  `beforeShellExecution`, `beforeMCPExecution` and `preToolUse` (file writes), marked
+  `failClosed` so a crashed or timed-out guard blocks instead of letting the action through.
+  A `~/.cursor` folder alone does not count as an install and is skipped. Restart Cursor
+  (or reload the window) so it re-reads the file. Your other Cursor hooks keep their
+  content and order.
+
+To choose harnesses yourself, run `samurai install --harness claude`, `--harness codex`,
+`--harness cursor` or a comma list such as `--harness claude,cursor` (or set `SAMURAI_HARNESS`). The choice is remembered on later
 installs. Existing configs are backed up to `~/.samurai/backups/` before any change, and
 `~/.samurai/install.json` records exactly what was written so uninstall removes only that.
 
@@ -87,6 +95,15 @@ does **not** cover input written with `write_stdin` to an already-running shell,
 other tool routes, or anything at all while hooks are disabled in Codex
 (`[features] hooks = false` or a managed policy). The secret scrubber is not mirrored to
 Codex.
+
+**What the Cursor guard covers.** It scans shell commands (`beforeShellExecution`), MCP tool
+calls (`beforeMCPExecution`) and `Write` tool calls (`preToolUse`) that the Cursor desktop app
+sends to hooks. It does **not** cover file reads, other tools, Tab completions, or any hook
+level above or beside the user file (enterprise, team and project `hooks.json` are never
+touched). Cursor documents hooks for its desktop app; whether the `cursor-agent` command-line
+tool runs all of these events is not confirmed, and community reports say it wires fewer of
+them, so do not assume the CLI is covered until you have tested it. The secret scrubber is
+not mirrored to Cursor.
 
 ### 2. Verify
 
@@ -101,6 +118,9 @@ directly; verify supported hooks in your actual agent workflow before relying on
 For Codex, doctor reports "guard installed and working when run directly; Codex enforcement
 not verified by doctor" plus what it can read about your `/hooks` approval: it cannot prove
 Codex will run the hook.
+For Cursor, doctor reports "guard installed and working when run directly; Cursor enforcement
+not verified by doctor": it checks that the entries are present and unmodified and that the
+guard answers Cursor-shaped payloads, but cannot prove Cursor runs the hook.
 
 ### 3. Launch the dashboard (optional)
 

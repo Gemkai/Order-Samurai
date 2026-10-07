@@ -1,0 +1,13 @@
+{
+  "conversation_id": "00000000-0000-4000-8000-000000000001",
+  "generation_id": "00000000-0000-4000-8000-000000000002",
+  "model": "fixture-model",
+  "hook_event_name": "beforeMCPExecution",
+  "cursor_version": "0.0.0-fixture",
+  "workspace_roots": ["/tmp/cursor-fixture-project"],
+  "user_email": null,
+  "transcript_path": null,
+  "tool_name": "search_docs",
+  "mcp_server_name": "docs",
+  "tool_input": "{\"query\": \"how do hooks work\"}"
+}
