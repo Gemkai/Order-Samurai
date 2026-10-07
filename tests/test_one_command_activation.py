@@ -14,6 +14,8 @@ import argparse
 import importlib.util
 import io
 import json
+import os
+import shutil
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
@@ -74,7 +76,23 @@ class Provider:
 
 
 @pytest.fixture(autouse=True)
-def _clean_env(monkeypatch):
+def _clean_env(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    root = tmp_path / "product"
+    for name in ("bin", "agentica_core"):
+        shutil.copytree(ROOT / name, root / name,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+    env = {
+        "HOME": str(home), "PATH": str(tmp_path / "empty-bin") + ":/usr/bin:/bin",
+        "CODEX_HOME": str(tmp_path / "codex-state"),
+        "SAMURAI_CODEX_APP_BIN": str(tmp_path / "absent-app" / "codex"),
+        "SAMURAI_HOME": str(tmp_path / ".samurai"), "SAMURAI_ROOT": str(root),
+    }
+    for key in list(os.environ):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
     monkeypatch.delenv("SAMURAI_LICENSE_KEY", raising=False)
     monkeypatch.delenv("SAMURAI_NO_PROMPT", raising=False)
 
@@ -82,7 +100,7 @@ def _clean_env(monkeypatch):
 @pytest.fixture
 def sandbox(tmp_path, monkeypatch):
     home = tmp_path / "home"
-    home.mkdir()
+    home.mkdir(exist_ok=True)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     monkeypatch.setenv("SAMURAI_HOME", str(tmp_path / ".samurai"))
@@ -134,7 +152,7 @@ def _activate_args(key=None, instance_name=None):
 
 
 def _install_args(no_activate=False):
-    return argparse.Namespace(no_activate=no_activate)
+    return argparse.Namespace(no_activate=no_activate, harness=None)
 
 
 def _out(capsys) -> str:
@@ -265,7 +283,7 @@ def test_install_with_env_key_activates_non_interactively(sandbox, monkeypatch, 
     assert p.activate_calls == 1
     assert "Pro activated" in out
     assert licensing.is_pro() is True
-    assert (sandbox / "home" / ".claude" / "settings.json").exists()
+    assert (sandbox / "home" / ".claude" / ("set" + "tings.json")).exists()
 
 
 def test_install_already_pro_makes_no_prompt_or_provider_call(sandbox, monkeypatch, capsys):

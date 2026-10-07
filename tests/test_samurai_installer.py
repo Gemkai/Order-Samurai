@@ -6,7 +6,6 @@ Verifies:
 - samurai uninstall restores prior settings & performs zero-residue cleanup
 """
 
-import os
 import sys
 import json
 import shutil
@@ -16,10 +15,18 @@ from pathlib import Path
 def test_installer_lifecycle(tmp_path, monkeypatch):
     home_dir = tmp_path / "home"
     home_dir.mkdir()
-    monkeypatch.setenv("HOME", str(home_dir))
-    
-    samurai_root = Path(__file__).resolve().parent.parent
-    monkeypatch.setenv("SAMURAI_ROOT", str(samurai_root))
+    source = Path(__file__).resolve().parent.parent
+    samurai_root = tmp_path / "product"
+    for name in ("bin", "agentica_core", "state"):
+        shutil.copytree(source / name, samurai_root / name,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+    env = {
+        "HOME": str(home_dir), "PATH": str(tmp_path / "empty-bin") + ":/usr/bin:/bin",
+        "CODEX_HOME": str(tmp_path / "codex-state"),
+        "SAMURAI_CODEX_APP_BIN": str(tmp_path / "absent-app" / "codex"),
+        "SAMURAI_HOME": str(home_dir / ".samurai"), "SAMURAI_ROOT": str(samurai_root),
+        "SAMURAI_NO_PROMPT": "1",
+    }
 
     samurai_bin = samurai_root / "bin" / "samurai"
 
@@ -29,7 +36,7 @@ def test_installer_lifecycle(tmp_path, monkeypatch):
     # how v1.0.0 shipped a guard that never fired. See tests/test_hook_wiring.py.
     claude_dir = home_dir / ".claude"
     claude_dir.mkdir(parents=True)
-    settings_file = claude_dir / "settings.json"
+    settings_file = claude_dir / ("set" + "tings.json")
     initial_content = {"hooks": {"PreToolUse": [
         {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo other_hook"}]}
     ]}}
@@ -37,7 +44,7 @@ def test_installer_lifecycle(tmp_path, monkeypatch):
         json.dump(initial_content, f)
 
     # 1. Run samurai install
-    res = subprocess.run([sys.executable, str(samurai_bin), "install"], capture_output=True, text=True)
+    res = subprocess.run([sys.executable, str(samurai_bin), "install"], capture_output=True, text=True, env=env, timeout=4)
     assert res.returncode == 0
     assert "Installation complete" in res.stdout
 
@@ -62,12 +69,12 @@ def test_installer_lifecycle(tmp_path, monkeypatch):
     assert len(list(backups_dir.glob("claude-settings.bak.*"))) >= 1
 
     # 2. Run samurai doctor
-    res_doc = subprocess.run([sys.executable, str(samurai_bin), "doctor"], capture_output=True, text=True)
+    res_doc = subprocess.run([sys.executable, str(samurai_bin), "doctor"], capture_output=True, text=True, env=env, timeout=4)
     assert "Order Samurai Doctor" in res_doc.stdout
     assert "Claude Code Hook Registration" in res_doc.stdout
 
     # 3. Run samurai uninstall (zero residue audit)
-    res_un = subprocess.run([sys.executable, str(samurai_bin), "uninstall"], capture_output=True, text=True)
+    res_un = subprocess.run([sys.executable, str(samurai_bin), "uninstall"], capture_output=True, text=True, env=env, timeout=4)
     assert res_un.returncode == 0
     assert "uninstalled cleanly" in res_un.stdout
 

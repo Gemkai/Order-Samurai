@@ -65,9 +65,28 @@ Homebrew and Linux distribution Pythons refuse `pip install` (PEP 668). Run on o
 them without a virtual environment, `bin/install.sh` puts the dependencies in a private
 environment at `~/.samurai/venv` instead.
 
-`samurai install` registers the security hooks into `~/.claude/settings.json` (it backs up
-any existing settings to `~/.samurai/backups/` first) and writes an install marker to
-`~/.samurai/install.json`.
+`samurai install` registers the security hooks for every agent harness it finds and prints
+one result line per harness:
+
+- **Claude Code** (found when `~/.claude` exists or `claude` is on your PATH): the
+  prompt-injection guard and the secret scrubber go into `~/.claude/settings.json`.
+- **Codex** (found when `codex` is on your PATH or the ChatGPT app's bundled Codex is
+  installed): the prompt-injection guard is appended to `$CODEX_HOME/hooks.json`
+  (default `~/.codex/hooks.json`). Codex skips a new hook until you approve it: open
+  Codex, run `/hooks` and approve the Order Samurai hook. Your existing Codex hooks keep
+  their content, order and approvals.
+
+To choose harnesses yourself, run `samurai install --harness claude`, `--harness codex` or
+`--harness claude,codex` (or set `SAMURAI_HARNESS`). The choice is remembered on later
+installs. Existing configs are backed up to `~/.samurai/backups/` before any change, and
+`~/.samurai/install.json` records exactly what was written so uninstall removes only that.
+
+**What the Codex guard covers.** It scans the `Bash` and `apply_patch` calls Codex sends to
+`PreToolUse` hooks (for `apply_patch`, only the lines a patch adds and its file names). It
+does **not** cover input written with `write_stdin` to an already-running shell, MCP tools,
+other tool routes, or anything at all while hooks are disabled in Codex
+(`[features] hooks = false` or a managed policy). The secret scrubber is not mirrored to
+Codex.
 
 ### 2. Verify
 
@@ -77,8 +96,11 @@ samurai doctor
 
 Require `samurai doctor` to exit successfully and show registered hooks plus
 `License Tier: FREE`. Missing hook registration is a failed installation, not an
-expected healthy state. Doctor checks configuration; verify supported hooks in your
-actual agent workflow before relying on protection.
+expected healthy state. Doctor checks configuration and runs the packaged hook scripts
+directly; verify supported hooks in your actual agent workflow before relying on protection.
+For Codex, doctor reports "guard installed and working when run directly; Codex enforcement
+not verified by doctor" plus what it can read about your `/hooks` approval: it cannot prove
+Codex will run the hook.
 
 ### 3. Launch the dashboard (optional)
 
@@ -191,6 +213,9 @@ to Free. The single source of truth is `agentica_core/licensing.py` (Python) and
 |---|---|
 | `samurai: command not found` | Run from the repo: `./bin/samurai <cmd>`, or add `bin/` to your `PATH`. |
 | `samurai doctor` shows *Hook Registration* FAIL | Run `samurai install` (registers the hooks); re-run doctor. |
+| Doctor says *registration mismatch* | The hook in your config no longer matches what `samurai install` wrote (edited, moved ambiguously or removed). Doctor did not run it. Restore it or run `samurai install`. |
+| Doctor says *no trust record — approve in Codex /hooks* | Open Codex, run `/hooks` and approve the Order Samurai hook. Codex skips it until you do. |
+| `samurai uninstall` refuses to remove the Codex hook | Removing it would shift the hooks after it, and Codex would ask you to re-approve them. Run `samurai uninstall --force` to remove it anyway. |
 | `samurai activate` says "license key invalid" | Copy the key again from your Gumroad receipt (the Copy button avoids stray spaces) and paste it when asked. Refunded keys are rejected. |
 | The key prompt shows nothing when I paste | Expected: input is hidden. Paste once and press Enter. |
 | Installer did not ask for a key | It only asks in a terminal. Run `samurai activate` afterwards. |

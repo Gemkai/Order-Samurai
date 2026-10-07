@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import os
 import subprocess
 import sys
@@ -52,7 +53,8 @@ def _install(tmp_path: Path, with_registry: bool, seed: bool, registry_text: str
         for rel in SEEDED_CLAUDE_FILES:
             (home / rel).parent.mkdir(parents=True, exist_ok=True)
             (home / rel).write_text(json.dumps(PRIOR, indent=2))
-    env = {**os.environ, "HOME": str(home), "SAMURAI_HOME": str(home / ".samurai"),
+    env = {"PATH": "/usr/bin:/bin", "CODEX_HOME": str(home / "codex-state"),
+           "SAMURAI_CODEX_APP_BIN": str(home / "absent-app" / "codex"), "HOME": str(home), "SAMURAI_HOME": str(home / ".samurai"),
            "SAMURAI_ROOT": str(root), "SAMURAI_NO_PROMPT": "1"}
     proc = subprocess.run([sys.executable, str(SAMURAI), "install", *INSTALL_ARGS],
                           env=env, capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL, check=False)
@@ -94,16 +96,25 @@ def test_no_registry_still_registers_both_hooks(tmp_path):
 IDS_ONLY_IN_COMMENT = '# "prompt-injection-guard" "secret-scrubber-realtime"\nHOOKS = {}\n'
 
 
+def _packaged_root(root: Path) -> None:
+    # Doctor probes the packaged guard with a blocking payload, so a stand-in empty script
+    # would (correctly) fail as "not protecting". Use the real shipped scripts.
+    repo = SAMURAI.parents[1]
+    for name in (HOOK_SUBDIR, "agentica_core"):
+        shutil.copytree(repo / name, root / name, ignore=shutil.ignore_patterns("__pycache__"))
+
+
 def _doctor(tmp_path: Path, registry_text: str | None, scrubber_body: str = "") -> str:
     home = tmp_path / "home"
     root = tmp_path / "root"
-    (root / HOOK_SUBDIR).mkdir(parents=True)
-    (root / HOOK_SUBDIR / "prompt_injection_guard.py").write_text("")
-    (root / HOOK_SUBDIR / "secret_scrubber_realtime.py").write_text(scrubber_body)
+    _packaged_root(root)
+    if scrubber_body:
+        (root / HOOK_SUBDIR / "secret_scrubber_realtime.py").write_text(scrubber_body)
     (home / ".claude" / "scripts").mkdir(parents=True)
     if registry_text is not None:
         (home / ".claude" / "scripts" / "hook_registry.py").write_text(registry_text)
-    env = {**os.environ, "HOME": str(home), "SAMURAI_HOME": str(home / ".samurai"),
+    env = {"PATH": "/usr/bin:/bin", "CODEX_HOME": str(home / "codex-state"),
+           "SAMURAI_CODEX_APP_BIN": str(home / "absent-app" / "codex"), "HOME": str(home), "SAMURAI_HOME": str(home / ".samurai"),
            "SAMURAI_ROOT": str(root), "SAMURAI_NO_PROMPT": "1"}
     proc = subprocess.run([sys.executable, str(SAMURAI), "doctor"], env=env, capture_output=True,
                           text=True, timeout=60, stdin=subprocess.DEVNULL, check=False)
@@ -173,15 +184,14 @@ def test_doctor_fails_when_the_guard_is_registered_on_the_wrong_event(tmp_path):
 def test_doctor_flags_direct_registration_plus_registry_as_a_double_run(tmp_path):
     home = tmp_path / "home"
     root = tmp_path / "root"
-    (root / HOOK_SUBDIR).mkdir(parents=True)
-    for name in ("prompt_injection_guard.py", "secret_scrubber_realtime.py"):
-        (root / HOOK_SUBDIR / name).write_text("")
+    _packaged_root(root)
     guard = root / HOOK_SUBDIR / "prompt_injection_guard.py"
     (home / ".claude" / "scripts").mkdir(parents=True)
     (home / ".claude" / "scripts" / "hook_registry.py").write_text(REGISTRY_IDS)
     (home / CLAUDE_SETTINGS_REL).write_text(json.dumps({"hooks": {"PreToolUse": [
         {"matcher": "Bash", "hooks": [{"type": "command", "command": f"python3 {guard}"}]}]}}))
-    env = {**os.environ, "HOME": str(home), "SAMURAI_HOME": str(home / ".samurai"),
+    env = {"PATH": "/usr/bin:/bin", "CODEX_HOME": str(home / "codex-state"),
+           "SAMURAI_CODEX_APP_BIN": str(home / "absent-app" / "codex"), "HOME": str(home), "SAMURAI_HOME": str(home / ".samurai"),
            "SAMURAI_ROOT": str(root), "SAMURAI_NO_PROMPT": "1"}
     proc = subprocess.run([sys.executable, str(SAMURAI), "doctor"], env=env, capture_output=True,
                           text=True, timeout=60, stdin=subprocess.DEVNULL, check=False)

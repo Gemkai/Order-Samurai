@@ -11,7 +11,8 @@ actually parses ({"matcher": ..., "hooks": [{"type": "command", ...}]}).
 """
 
 import json
-import os
+import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -25,13 +26,21 @@ GUARD_MARKER = "prompt_injection_guard"
 
 
 def _run(cmd, home):
-    env = dict(os.environ)
-    env["HOME"] = str(home)
-    env["SAMURAI_ROOT"] = str(REPO_ROOT)
-    env["SAMURAI_HOME"] = str(Path(home) / ".samurai")
+    root = Path(home) / "product"
+    if not root.exists():
+        for name in ("bin", "agentica_core", "state"):
+            shutil.copytree(REPO_ROOT / name, root / name,
+                            ignore=shutil.ignore_patterns("__pycache__"))
+    env = {
+        "HOME": str(home), "PATH": str(Path(home) / "empty-bin") + ":/usr/bin:/bin",
+        "CODEX_HOME": str(Path(home) / "codex-state"),
+        "SAMURAI_CODEX_APP_BIN": str(Path(home) / "absent-app" / "codex"),
+        "SAMURAI_ROOT": str(root), "SAMURAI_HOME": str(Path(home) / ".samurai"),
+        "SAMURAI_NO_PROMPT": "1",
+    }
     return subprocess.run(
         [sys.executable, str(SAMURAI_BIN), *cmd],
-        env=env, capture_output=True, text=True, timeout=120,
+        env=env, capture_output=True, text=True, timeout=4,
     )
 
 
@@ -185,17 +194,19 @@ def test_registered_timeouts_are_seconds_not_milliseconds(home):
 def test_reinstall_upgrades_legacy_millisecond_timeout(home):
     """An existing v2.1.x install must be corrected in place, not duplicated."""
     target = _claude_settings(home)
-    legacy = lambda script: {"type": "command", "command": f"python3 /old/bin/{script}.py", "timeout": 5000}
+    old_root = Path(home) / ".samurai" / "core"
+    (old_root / "bin").mkdir(parents=True)
+    legacy = lambda script: {"type": "command", "command": "python3 " + shlex.quote(str(old_root / "bin" / f"{script}.py")), "timeout": 5000}
     target.write_text(json.dumps({"hooks": {
-        "PreToolUse": [{"matcher": "Bash", "hooks": [legacy(GUARD_MARKER)]}],
-        "PostToolUse": [{"matcher": "Bash", "hooks": [legacy(SCRUBBER_MARKER)]}],
+        "PreToolUse": [{"matcher": "Bash|Write|Edit|MultiEdit|WebFetch", "hooks": [legacy(GUARD_MARKER)]}],
+        "PostToolUse": [{"matcher": "Bash|Read|WebFetch", "hooks": [legacy(SCRUBBER_MARKER)]}],
     }}))
 
     _run(["install"], home)
     found = _samurai_hooks(target)
     assert len(found) == 2, f"expected one entry per event, got {len(found)}"
     assert all(h["timeout"] <= MAX_HOOK_TIMEOUT_S for _, _, h in found)
-    assert not any("/old/bin/" in h["command"] for _, _, h in found)
+    assert not any(str(old_root) in h["command"] for _, _, h in found)
 
 
 def test_scrubber_matcher_excludes_tools_post_mode_ignores(home):

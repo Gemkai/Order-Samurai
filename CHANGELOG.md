@@ -7,8 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `samurai install` now also installs the prompt-injection guard for **Codex**. It detects which agent harnesses are installed (Claude Code and Codex) and registers the prompt-injection guard for each, printing one result line per harness. Choose harnesses with `--harness claude,codex` or `SAMURAI_HARNESS`; the choice is remembered.
+- On Codex the guard scans the `Bash` and `apply_patch` calls Codex sends to `PreToolUse` hooks; for `apply_patch` it scans only the lines a patch adds and its file names. It does not cover `write_stdin` to an already-running shell, MCP tools, other tool routes, or anything while Codex hooks are disabled. Codex runs the hook only after you approve it in `/hooks`; Order Samurai never approves it for you. The secret scrubber is not mirrored to Codex.
+
+### Changed
+
+- Install records exactly what it wrote in `~/.samurai/install.json` and treats only an exact match as its own. A hook that merely mentions an Order Samurai script is never modified or removed.
+- Re-installing leaves an unchanged hook untouched and updates a changed one in place, so Codex asks you to re-approve that hook only. `samurai uninstall` will not shift later Codex hooks (which would make Codex ask to re-approve them) unless you pass `--force`.
+- Config writes are atomic, keep the file's permissions, refuse symlinked or special files and abort if another program changed the file mid-write.
+- `samurai doctor` no longer runs commands read from your config. It runs the packaged guard and scrubber directly and reports a changed registration as "registration mismatch". For Codex it never claims enforcement, and it shows what it can read about your `/hooks` approval.
+- The guard's local-model check is bounded to 3.5 seconds in total, and its endpoint can be set with `PIG_LMSTUDIO_URL` (this machine only: a non-local URL is ignored, so tool input never leaves it).
+
 ### Fixed
 
+- `samurai uninstall` kept reporting success and deleted `~/.samurai` when it could not deregister a hook. It now keeps the state and exits non-zero.
+- Install no longer replaces an unreadable `~/.claude/settings.json` with a new file.
 - `bin/install.sh` no longer fails on Homebrew and other PEP 668 "externally managed" Pythons, which refuse `pip install --user`: it installs the report dependencies into a private virtualenv (`~/.samurai/venv`) so the first cost report runs. Other Pythons keep the `--user` install, and an interpreter that is already a virtualenv is used directly. Hooks stay on the system `python3`.
 - `samurai install` no longer adds its two hooks to `~/.claude/settings.json` on a machine whose Claude hook registry (`~/.claude/scripts/hook_registry.py`) registers both hooks. That registry's dispatcher already runs the guard and the scrubber, so the direct entries ran each hook twice. `~/.samurai/settings.json` is still written, and machines without such a registry are unchanged. `samurai doctor` passes its hook-registration check when the registry registers both hooks (its hook-execution check then runs the bundled scripts), and fails it when the hooks are registered both ways, since each would run twice.
 
