@@ -992,48 +992,79 @@ def cmd_doctor(args):
 
 # --- Uninstall --------------------------------------------------------------------
 
+def _script_paths(definitions):
+    """Script paths our definitions run (the last word of each handler command)."""
+    found = set()
+    for definition in definitions:
+        for hook in definition.get("hooks", []):
+            try:
+                parts = shlex.split(str(hook.get("command", "")))
+            except ValueError:
+                continue
+            if parts:
+                found.add(parts[-1])
+    return found
+
+
+def _runs_any(group, scripts):
+    return bool(_script_paths([group]) & scripts) if isinstance(group, dict) else False
+
+
 def _uninstall_harness(harness, entry, paths, manifest, force):
     """Remove our recorded groups from one harness config. Returns status text;
     raises Refusal / ValueError / UnsafeFile on anything it will not do."""
     config = Path(entry["config_path"])
-    data = _hooks_doc(config)
-    hooks = data.get("hooks", {})
-    note = ""
-    try:
-        indices = {r["event"]: _locate(hooks.get(r["event"], []), r, config) for r in entry.get("groups", [])}
-    except MissingHook:
-        if not force:
-            raise
-        # --force when the user already removed our hook: just forget the record.
+    hooks = _hooks_doc(config).get("hooks", {})
+    remove = []
+    for record in entry.get("groups", []):
+        groups = hooks.get(record["event"], [])
+        try:
+            _locate(groups, record, config)
+            remove.append(record)
+        except MissingHook:
+            # --force may forget a group the user already deleted, never one that an
+            # edited copy still runs: deleting ~/.samurai would leave it pointing at
+            # scripts that are gone, and a missing script blocks every tool call.
+            scripts = _script_paths([record["definition"], *record.get("previous", [])])
+            if not force:
+                raise
+            if any(_runs_any(g, scripts) for g in groups):
+                raise Refusal(f"refusing: an edited copy of the Order Samurai {record['event']} hook in "
+                              f"{config} still runs a Samurai script; remove it by hand, then re-run") from None
+    if not remove:
         del manifest["harnesses"][harness]
         _save_manifest(paths, manifest)
         return "removed (the hook was already gone)"
-    if harness == "codex":
-        later = len(hooks.get("PreToolUse", [])) - indices.get("PreToolUse", 0) - 1
-        if later > 0 and not force:
-            raise Refusal(f"refusing: removing the Order Samurai hook would make Codex re-ask approval for "
-                          f"{later} later hook(s) in {config}; re-run 'samurai uninstall --force' to remove it anyway")
-        if later > 0:
-            note = f" — Codex will re-ask approval for {later} later hook(s)"
 
+    shifted = {}
+
+    def mutate(current):
+        # Re-checked on every attempt: a hook appended since the first read would
+        # otherwise lose its Codex approval without --force.
+        _validate_hooks_doc(current, config)
+        current_hooks = current.get("hooks", {})
+        for record in remove:
+            groups = current_hooks.get(record["event"], [])
+            index = _locate(groups, record, config)
+            later = len(groups) - index - 1
+            if harness == "codex" and later and not force:
+                raise Refusal(f"refusing: removing the Order Samurai hook would make Codex re-ask approval for "
+                              f"{later} later hook(s) in {config}; re-run 'samurai uninstall --force' to remove it anyway")
+            shifted[record["event"]] = later
+            del groups[index]
+        return current
+
+    mutate(copy.deepcopy(_hooks_doc(config)))  # refuse before recording any state change
     manifest["harnesses"][harness] = dict(entry, state="removing")
     _save_manifest(paths, manifest)
     _checkpoint("manifest_removing", harness=harness, path=config)
-
-    def mutate(current):
-        _validate_hooks_doc(current, config)
-        current_hooks = current.get("hooks", {})
-        for record in entry.get("groups", []):
-            groups = current_hooks.get(record["event"], [])
-            del groups[_locate(groups, record, config)]
-        return current
-
     _update_json_file(config, mutate, backup=(paths["backups"], CONFIG_BACKUP_LABELS[harness]))
     _checkpoint("config_removed", harness=harness, path=config)
     del manifest["harnesses"][harness]
     _save_manifest(paths, manifest)
     _checkpoint("manifest_deleted", harness=harness, path=config)
-    return "removed" + note
+    later = shifted.get("PreToolUse", 0) if harness == "codex" else 0
+    return "removed" + (f" — Codex will re-ask approval for {later} later hook(s)" if later else "")
 
 
 def _legacy_claude_entry(paths, manifest):

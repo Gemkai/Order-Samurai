@@ -94,18 +94,25 @@ _PATCH_HEADERS = ("*** Add File: ", "*** Update File: ", "*** Delete File: ", "*
 
 
 def _patch_scan_text(patch: str) -> str | None:
-    """Text a Codex apply_patch would ADD: file headers and "+" lines. Removed and
-    context lines are not new content, so a patch that deletes an injection string
-    is allowed. None when the text is not a patch envelope (scan it whole)."""
-    lines = patch.strip().splitlines()
+    """Patch text minus what a Codex apply_patch would NOT add: removed ("-"),
+    context (" ") and hunk-header ("@@") lines. Everything else, added lines and file
+    headers included, is scanned, so a patch that deletes an injection string is
+    allowed. Splits on "\\n" only, as apply_patch does: splitlines() would also break
+    at Unicode separators and drop the rest of an added line. None when the text is
+    not a patch envelope (scan it whole)."""
+    lines = [line.rstrip("\r") for line in patch.strip().split("\n")]
     if len(lines) < 2 or lines[0].strip() != "*** Begin Patch" or lines[-1].strip() != "*** End Patch":
         return None
     kept = []
     for line in lines[1:-1]:
+        if line.startswith(("-", " ", "@@")):
+            continue
         if line.startswith(_PATCH_HEADERS):
             kept.append(line.split(": ", 1)[1])
         elif line.startswith("+"):
             kept.append(line[1:])
+        else:
+            kept.append(line)
     return "\n".join(kept)
 
 
