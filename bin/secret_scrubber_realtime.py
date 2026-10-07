@@ -18,13 +18,24 @@ CLAUDE_ROOT = Path.home() / ".claude"
 if str(CLAUDE_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(CLAUDE_ROOT / "scripts"))
 
-from cli_io import configure_utf8_stdio
 import argparse
 import json
 import os
 import re
 import shutil
 from datetime import datetime
+
+# ~/.claude/scripts exists only on a configured workstation. A customer install has
+# no cli_io, and a hard import here crashed this hook on every call.
+try:
+    from cli_io import configure_utf8_stdio
+except ImportError:
+    def configure_utf8_stdio() -> None:
+        for stream in (sys.stdin, sys.stdout, sys.stderr):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (AttributeError, ValueError):
+                pass
 
 configure_utf8_stdio()
 
@@ -60,6 +71,16 @@ def _build_patterns():
             standard.append({"name": name, "pattern": rx})
     except Exception:
         pass
+    if not standard:
+        # Clean install: use the secret patterns shipped with this pack.
+        try:
+            if str(_REPO_ROOT) not in sys.path:
+                sys.path.insert(0, str(_REPO_ROOT))
+            from agentica_core.verify_secrets import SECRET_PATTERNS
+            for rx, name in SECRET_PATTERNS:
+                standard.append({"name": name, "pattern": re.compile(rx)})
+        except Exception:
+            pass
     return EXFILTRATION_PATTERNS + standard
 
 PATTERNS = _build_patterns()
