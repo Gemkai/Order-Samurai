@@ -411,3 +411,17 @@ def test_unprotected_agents_named_when_no_supported_harness_exists(machine):
     result = _run(machine, "install")
     assert result.returncode == 1, result.stdout + result.stderr
     assert "Cursor" in next(l for l in result.stdout.splitlines() if UNPROTECTED_NOTE in l)
+
+
+@pytest.mark.parametrize("evidence", ["cn-on-path", "continue-dir"])
+def test_continue_is_named_as_unprotected(machine, evidence):
+    """Continue loads ~/.claude/settings.json but never fires PreToolUse/PostToolUse
+    (continuedev/continue#11029 wired no tool-execution call), so it is not protected."""
+    _prepare(machine, "claude-dir")
+    if evidence == "cn-on-path":
+        _runtime(machine.path / "cn")
+    else:
+        (machine.home / ".continue").mkdir()
+    result = _run(machine, "install")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Continue" in next((l for l in result.stdout.splitlines() if UNPROTECTED_NOTE in l), ""), result.stdout

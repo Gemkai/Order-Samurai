@@ -300,8 +300,8 @@ def detect_harnesses() -> dict:
 
 
 # Agents Order Samurai cannot protect yet: (label, commands on PATH, dirs under HOME,
-# macOS app bundles). Continue CLI is left out on purpose: it reads ~/.claude/settings.json,
-# so it may already run the Claude Code hooks.
+# macOS app bundles). Continue is listed although it reads ~/.claude/settings.json: it never
+# fires PreToolUse/PostToolUse (continuedev/continue#11029 wired no tool-execution call).
 UNPROTECTED_AGENTS = (
     ("Gemini CLI", ("gemini",), (".gemini",), ()),
     ("Cursor", ("cursor", "cursor-agent"), (".cursor",), ("Cursor.app",)),
@@ -310,6 +310,7 @@ UNPROTECTED_AGENTS = (
     ("Cline", ("cline",), (".cline",), ()),
     ("OpenCode", ("opencode",), (".config/opencode",), ()),
     ("Aider", ("aider",), (), ()),
+    ("Continue", ("cn",), (".continue",), ()),
 )
 
 
