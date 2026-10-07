@@ -23,7 +23,7 @@ import json
 import os
 import re
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 
 # ~/.claude/scripts exists only on a configured workstation. A customer install has
 # no cli_io, and a hard import here crashed this hook on every call.
@@ -221,7 +221,7 @@ def _log_pre_event(tool_name: str, findings: list[str], action: str) -> None:
 def _emit_chain14_pre(tool_name: str, labels: str, action: str) -> None:
     repo_root = _REPO_ROOT
     event_log = repo_root / "state" / "kill_chain_events.jsonl"
-    timestamp = datetime.utcnow().isoformat()
+    timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     if not timestamp.endswith("Z"):
         timestamp += "Z"
     event_entry = {
@@ -389,7 +389,7 @@ def main() -> None:
         # Pinned to Order Samurai's own state/, as _emit_chain14_pre is: a cwd-relative
         # path dropped untracked state/ folders into the user's project.
         event_log = _REPO_ROOT / "state" / "kill_chain_events.jsonl"
-        timestamp = datetime.utcnow().isoformat().replace("+00:00", "Z")
+        timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         if not timestamp.endswith("Z"):
             timestamp += "Z"
             

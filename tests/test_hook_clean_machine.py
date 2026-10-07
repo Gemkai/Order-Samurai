@@ -76,8 +76,10 @@ def test_scrubber_never_writes_into_the_users_project(tmp_path):
                        text=True, env=env, timeout=30)
     assert r.returncode == 0, r.stderr[-400:]
     assert "internal_ip" in r.stderr, r.stderr
+    assert "DeprecationWarning" not in r.stderr, r.stderr
     assert not (project / "state").exists(), "scrubber wrote into the user's project"
-    assert (core / "state" / "kill_chain_events.jsonl").is_file()
+    event = json.loads((core / "state" / "kill_chain_events.jsonl").read_text().splitlines()[-1])
+    assert event["ts"].endswith("Z") and "+00:00" not in event["ts"], event["ts"]
 
 
 def test_doctor_fails_when_a_registered_hook_crashes(tmp_path):
