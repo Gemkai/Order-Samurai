@@ -116,3 +116,43 @@ def test_claude_and_codex_payloads_keep_silent_stdout(run_guard):
     ):
         result = run_guard(payload)
         assert (result.returncode, result.stdout) == (code, ""), result.stderr
+
+
+def _escape_first_char(word):
+    """The word inside a JSON string with its first letter as a unicode escape."""
+    return json.dumps({"query": word}).replace(word, f"\\u{ord(word[0]):04x}{word[1:]}")
+
+
+def test_mcp_tool_input_with_json_unicode_escapes_is_decoded_and_scanned(run_guard):
+    raw = _escape_first_char(INJ)
+    assert INJ not in raw and json.loads(raw)["query"] == INJ
+    result = run_guard(_fixture("before_mcp_execution", tool_input=raw))
+    assert result.returncode == 2, result.stderr
+    assert _verdict(result)["permission"] == "deny"
+
+
+def test_benign_escaped_mcp_input_still_allowed(run_guard):
+    raw = json.dumps({"query": "café menu"})
+    assert "\\u00e9" in raw
+    result = run_guard(_fixture("before_mcp_execution", tool_input=raw))
+    assert result.returncode == 0, result.stderr
+    assert _verdict(result) == {"permission": "allow"}
+
+
+def test_non_json_string_tool_input_is_still_scanned_raw(run_guard):
+    result = run_guard(_fixture("before_mcp_execution", tool_input="not json " + INJ))
+    assert result.returncode == 2, result.stderr
+
+
+def test_top_level_command_scanned_even_with_a_benign_tool_input(run_guard):
+    payload = _fixture("before_shell_execution", command=f"echo {INJ}", tool_input={"note": "fine"})
+    result = run_guard(payload)
+    assert result.returncode == 2, result.stderr
+    assert _verdict(result)["permission"] == "deny"
+
+
+def test_before_read_file_is_not_a_handled_cursor_event(run_guard):
+    """It is never installed and its content is never scanned: do not answer as if covered."""
+    payload = {"hook_event_name": "beforeReadFile", "file_path": "/tmp/x", "content": INJ}
+    result = run_guard(payload)
+    assert (result.returncode, result.stdout) == (0, ""), result.stderr

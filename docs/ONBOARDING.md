@@ -102,8 +102,24 @@ sends to hooks. It does **not** cover file reads, other tools, Tab completions, 
 level above or beside the user file (enterprise, team and project `hooks.json` are never
 touched). Cursor documents hooks for its desktop app; whether the `cursor-agent` command-line
 tool runs all of these events is not confirmed, and community reports say it wires fewer of
-them, so do not assume the CLI is covered until you have tested it. The secret scrubber is
-not mirrored to Cursor.
+them, so do not assume the CLI is covered until you have tested it. Order Samurai writes no
+secret-scrubber hook for Cursor.
+
+**Cursor also runs your Claude Code hooks.** Cursor's third-party-hooks import
+(Cursor Settings, Agents, Third-Party Imports, "Include Third-Party Plugins, Skills, and Other
+Configs", on by default) loads `~/.claude/settings.json`, mapping `PreToolUse` and
+`PostToolUse` to `preToolUse` and `postToolUse`. With Claude Code installed, Cursor therefore
+also runs the Claude guard (not `failClosed`: a crash there lets the call through) and the
+Claude secret scrubber, so a write can be scanned twice. That is harmless, but it means the
+`failClosed` entries above are the ones Cursor enforces strictly. Switching that setting off
+leaves only the entries in `~/.cursor/hooks.json`.
+
+**Before relying on Cursor protection.** The registered command is `python3 '<path>'`, resolved
+from the environment Cursor itself was launched with: on macOS a GUI app often has a shorter
+`PATH` than your shell, and `/usr/bin/python3` is a stub that does nothing without the Command
+Line Tools. Because the entries are `failClosed`, a `python3` Cursor cannot find blocks every
+shell, MCP and `Write` call. Run a harmless command in Cursor after installing and confirm it
+still works, then confirm a command containing a known injection phrase is refused.
 
 ### 2. Verify
 

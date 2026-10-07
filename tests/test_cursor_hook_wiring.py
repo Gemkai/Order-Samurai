@@ -157,6 +157,25 @@ def test_install_adds_version_only_when_absent(machine):
     assert read_json(machine.hooks)["version"] == 1
 
 
+def test_reinstall_adds_missing_version_to_otherwise_unchanged_file(machine):
+    machine.install()
+    data = read_json(machine.hooks)
+    del data["version"]
+    write_json(machine.hooks, data)
+    result = machine.run("install")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert read_json(machine.hooks) == {"version": 1, "hooks": data["hooks"]}
+
+
+def test_reinstall_leaves_an_existing_version_alone(machine):
+    machine.install()
+    data = read_json(machine.hooks)
+    data["version"] = 3
+    write_json(machine.hooks, data)
+    assert "Cursor: unchanged" in machine.run("install").stdout
+    assert read_json(machine.hooks)["version"] == 3
+
+
 def test_manifest_records_every_event(machine):
     machine.install()
     entry = read_json(machine.manifest)["harnesses"]["cursor"]

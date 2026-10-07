@@ -242,11 +242,36 @@ def evaluate_input(input_str: str) -> tuple[float, str]:
 
 # Cursor hook events the guard answers. A Cursor payload is recognised by its event
 # name or its conversation_id; Claude and Codex payloads carry neither.
-_CURSOR_EVENTS = frozenset({"beforeShellExecution", "beforeMCPExecution", "beforeReadFile", "preToolUse"})
+_CURSOR_EVENTS = frozenset({"beforeShellExecution", "beforeMCPExecution", "preToolUse"})
 
 
 def _is_cursor(payload: dict) -> bool:
     return payload.get("hook_event_name") in _CURSOR_EVENTS or "conversation_id" in payload
+
+
+def _json_strings(text: str) -> str:
+    """Every string (and key) inside a JSON document, space-joined; "" when text is not
+    JSON. beforeMCPExecution passes tool_input as a JSON-encoded string, where an escape
+    such as backslash-u006a hides a letter from the raw-text patterns."""
+    try:
+        document = json.loads(text)
+    except (ValueError, RecursionError):
+        return ""
+    found: list[str] = []
+
+    def walk(value) -> None:
+        if isinstance(value, str):
+            found.append(value)
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                found.append(str(key))
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(document)
+    return " ".join(found)
 
 
 def _emit_cursor_verdict(blocked: bool, detail: str) -> None:
@@ -266,8 +291,6 @@ def _scan(payload: dict, cursor: bool) -> tuple[int, str]:
     """(exit code, reason) for one hook payload; 2 blocks."""
     tool_name = payload.get("tool_name") or payload.get("toolName") or ""
     tool_input = payload.get("tool_input") or payload.get("toolInput") or {}
-    if cursor and not tool_input and isinstance(payload.get("command"), str):
-        tool_input = payload["command"]  # beforeShellExecution has no tool_input
 
     # Extract string representation of input
     input_str = ""
@@ -279,9 +302,12 @@ def _scan(payload: dict, cursor: bool) -> tuple[int, str]:
         # Scan all values of the dict
         input_str = " ".join(str(v) for v in tool_input.values())
     elif isinstance(tool_input, str):
-        input_str = tool_input
+        input_str = tool_input + (" " + _json_strings(tool_input) if cursor else "")
     else:
         input_str = str(tool_input)
+    if cursor and isinstance(payload.get("command"), str):
+        # beforeShellExecution's command (and a stdio MCP server's launch command)
+        input_str += " " + payload["command"]
 
     if not input_str.strip():
         return 0, ""

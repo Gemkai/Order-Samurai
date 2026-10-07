@@ -663,7 +663,9 @@ def _install_harness(harness, paths, manifest):
     config = Path(entry["config_path"]) if entry else _config_path(harness, paths)
     data = _hooks_doc(config)
     plan = _plan_install(harness, data, entry, paths, manifest, config)
-    if all(i is not None and data["hooks"][e][i] == d for e, i, d, _ in plan):
+    # Cursor files carry "version": 1; an otherwise unchanged file without it is rewritten.
+    if (all(i is not None and data["hooks"][e][i] == d for e, i, d, _ in plan)
+            and not (harness == "cursor" and "version" not in data)):
         _, records = _apply_plan(copy.deepcopy(data), plan)
         manifest["harnesses"][harness] = {"state": "installed", "config_path": str(config), "groups": records}
         _save_manifest(paths, manifest)
