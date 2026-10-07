@@ -5,6 +5,26 @@ All notable changes to **Order Samurai** will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `samurai install` now also protects **Codex**. It detects which agent harnesses are installed (Claude Code and Codex) and registers the prompt-injection guard for each, printing one result line per harness. Choose harnesses with `--harness claude,codex` or `SAMURAI_HARNESS`; the choice is remembered.
+- On Codex the guard scans the `Bash` and `apply_patch` calls Codex sends to `PreToolUse` hooks; for `apply_patch` it scans only the lines a patch adds and its file names. It does not cover `write_stdin` to an already-running shell, MCP tools, other tool routes, or anything while Codex hooks are disabled. Codex runs the hook only after you approve it in `/hooks`; Order Samurai never approves it for you. The secret scrubber is not mirrored to Codex.
+
+### Changed
+
+- Install records exactly what it wrote in `~/.samurai/install.json` and treats only an exact match as its own. A hook that merely mentions an Order Samurai script is never modified or removed.
+- Re-installing leaves an unchanged hook untouched and updates a changed one in place, so Codex asks you to re-approve that hook only. `samurai uninstall` will not shift later Codex hooks (which would make Codex ask to re-approve them) unless you pass `--force`.
+- Config writes are atomic, keep the file's permissions, refuse symlinked or special files and abort if another program changed the file mid-write.
+- `samurai doctor` no longer runs commands read from your config. It runs the packaged guard and scrubber directly and reports a changed registration as "registration mismatch". For Codex it never claims enforcement, and it shows what it can read about your `/hooks` approval.
+- The guard's local-model check is bounded to 3.5 seconds in total, and its endpoint can be set with `PIG_LMSTUDIO_URL`.
+
+### Fixed
+
+- `samurai uninstall` kept reporting success and deleted `~/.samurai` when it could not deregister a hook. It now keeps the state and exits non-zero.
+- Install no longer replaces an unreadable `~/.claude/settings.json` with a new file.
+
 ## [2.1.3] - 2026-10-06
 
 ### Fixed
