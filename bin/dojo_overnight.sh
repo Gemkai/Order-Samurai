@@ -27,12 +27,23 @@ MAX_TURNS="${MAX_TURNS:-80}"
 CYCLE_TIMEOUT="${CYCLE_TIMEOUT:-2400}"
 COOLDOWN="${COOLDOWN:-15}"
 ENABLED_RONINS="${ENABLED_RONINS:-bow,sword,brush,arts}"
-VALIDATE_CMD="${VALIDATE_CMD:-python execution/doctor.py && python agentica_core/aggregate.py}"
 MAX_BUDGET_USD="${MAX_BUDGET_USD:-}"
 DOJO_DRYRUN="${DOJO_DRYRUN:-0}"
 
 cd "$REPO_DIR"
 [ -f dojo.env ] && set -a && . ./dojo.env && set +a
+
+# After dojo.env, so a SAMURAI_HOME set there is honoured. aggregate.py needs jsonschema,
+# which install.sh puts in a private venv when the system Python is PEP 668 "externally
+# managed" (Homebrew, Debian/Ubuntu); prefer that venv's python when it runs, else python3.
+# %q keeps the path one shell word.
+DOJO_PY="${SAMURAI_HOME:-${HOME:-}/.samurai}/venv/bin/python"
+if "$DOJO_PY" -c '' >/dev/null 2>&1; then DOJO_PY="$(printf '%q' "$DOJO_PY")"; else DOJO_PY=python3; fi
+VALIDATE_CMD="${VALIDATE_CMD:-$DOJO_PY execution/doctor.py && $DOJO_PY agentica_core/aggregate.py}"
+# Let the cycle agent run that interpreter. An escaped path cannot be matched literally by
+# an --allowedTools rule (and a comma would split the list), so only a plain path gets one.
+DOJO_PY_ALLOW=""
+case "$DOJO_PY" in *[!A-Za-z0-9/._-]*) ;; *) DOJO_PY_ALLOW=",Bash(${DOJO_PY}:*)" ;; esac
 
 DATE="$(date +%F)"
 BRANCH="ronin/overnight/${DATE}"
@@ -54,7 +65,7 @@ fi
 git switch -c "$BRANCH" 2>/dev/null || git switch "$BRANCH"
 log "DOJO start: branch=$BRANCH enabled=${ENABLED_RONINS}"
 
-ALLOWED='Read,Edit,Write,Grep,Glob,Task,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git checkout -- :*),Bash(./bin/ronin-local:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(node:*),Bash(jq:*)'
+ALLOWED='Read,Edit,Write,Grep,Glob,Task,Bash(git add:*),Bash(git commit:*),Bash(git status:*),Bash(git diff:*),Bash(git checkout -- :*),Bash(./bin/ronin-local:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(node:*),Bash(jq:*)'"$DOJO_PY_ALLOW"
 
 BUDGET_FLAG=()
 [ -n "$MAX_BUDGET_USD" ] && BUDGET_FLAG=(--max-budget-usd "$MAX_BUDGET_USD")
