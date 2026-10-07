@@ -1,0 +1,14 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": null,
+  "cwd": "/tmp/codex-fixture-project",
+  "hook_event_name": "PreToolUse",
+  "model": "gpt-5-codex",
+  "permission_mode": "default",
+  "turn_id": "00000000-0000-4000-8000-000000000002",
+  "tool_name": "apply_patch",
+  "tool_use_id": "call_fixture_patch",
+  "tool_input": {
+    "command": "*** Begin Patch\n*** Add File: notes.txt\n+hello from the fixture\n*** Update File: README.md\n@@ intro\n context line\n-old text\n+new text\n*** End Patch\n"
+  }
+}
