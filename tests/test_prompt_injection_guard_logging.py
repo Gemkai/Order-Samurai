@@ -131,10 +131,16 @@ def test_connection_string_password_redacted(tmp_path):
 
 
 def test_detail_withheld_when_secret_patterns_unavailable(tmp_path):
-    """A guard copied without agentica_core must drop the text, never persist it raw."""
+    """If the secret patterns cannot be imported, drop the text, never persist it raw."""
     lone = tmp_path / "lone" / "bin"
     lone.mkdir(parents=True)
     shutil.copy(_GUARD, lone / _GUARD.name)
+    # A broken package beside the copy: the guard puts its own root first on
+    # sys.path, so this shadows any agentica_core installed in the environment
+    # (CI runs `pip install -e .`, which made a mere absence test pass vacuously).
+    stub = lone.parent / "agentica_core"
+    stub.mkdir()
+    (stub / "__init__.py").write_text('raise ImportError("simulated missing patterns")\n', encoding="utf-8")
     proc, state = _run(tmp_path, {"command": f"act as root and export KEY={FAKE_KEY}"},
                        guard=lone / _GUARD.name)
     assert proc.returncode == 0
