@@ -82,6 +82,48 @@ SUSPICIOUS_PATTERNS = [
     re.compile(r"constraint bypass", re.IGNORECASE),
 ]
 
+# Only the first 200 chars are persisted; redacting a bounded window keeps the
+# hook fast on huge Write payloads (whole-input regexes took 5.9s on 80KB).
+_REDACT_WINDOW = 1024
+
+# Formats the shared scanner patterns miss but tool input routinely carries.
+# Applied after SECRET_PATTERNS, so its named markers win. Over-redaction is
+# acceptable here: this text only feeds alert clustering.
+_EXTRA_SECRET_PATTERNS = [
+    (re.compile(r"://[^/\s@]{1,256}@"), "://[REDACTED:url_credentials]@"),
+    (re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]+"), r"\1 [REDACTED:auth_header]"),
+    (re.compile(r"(?i)\b([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PWD|CREDENTIALS?)[A-Z0-9_]*\s*[=:]\s*)"
+                r"(?!\[REDACTED)[\"']?[^\s\"']+"), r"\1[REDACTED:assignment]"),
+    (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), "[REDACTED:aws_access_key]"),
+    (re.compile(r"[A-Za-z0-9_+=-]{32,}"), "[REDACTED:long_token]"),
+]
+
+
+def _redact_secrets(text: str) -> str | None:
+    """Mask secrets in the persisted window. Patterns are imported lazily: only
+    suspicious/blocked rows are persisted, so clean calls never pay for it.
+    Returns None on any failure — the caller then drops the text rather than
+    persisting it unredacted (and the hook never crashes on redaction)."""
+    try:
+        root = str(Path(__file__).resolve().parent.parent)
+        if root not in sys.path:
+            sys.path.insert(0, root)
+        from agentica_core.verify_secrets import SECRET_PATTERNS
+
+        text = text[:_REDACT_WINDOW]
+        for pattern, name in SECRET_PATTERNS:
+            marker = f"[REDACTED:{name}]"
+            if name == "generic_hardcoded_secret":  # only the value (group 2) is secret
+                text = re.sub(pattern, lambda m: m.group(0).replace(m.group(2), marker), text)
+            else:
+                text = re.sub(pattern, marker, text)
+        for pattern, replacement in _EXTRA_SECRET_PATTERNS:
+            text = pattern.sub(replacement, text)
+        return text
+    except Exception:
+        return None
+
+
 def _read_payload() -> dict:
     try:
         raw = sys.stdin.read()
@@ -228,17 +270,25 @@ def main() -> int:
         return 0
 
     confidence, detail = evaluate_input(input_str)
-    
+
+    # Clean is the base-rate outcome of every tool call, not an alert: log
+    # nothing. Logging it buried the real events (2026-07-03) and persisted raw
+    # Bash/Write input — keys, tokens, connection strings — in plaintext.
+    if confidence <= 0:
+        return 0
+
     # Hub-pinned output: never derive from session CWD
     event_log = _HUB_ROOT / "state" / "kill_chain_events.jsonl"
     unmatched_log = _HUB_ROOT / "state" / "kill_chain_unmatched.jsonl"
-    
+
     timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    
+
+    # Redact before truncating: a key cut at char 200 would no longer match.
+    redacted = _redact_secrets(input_str)
     event_entry = {
         "ts": timestamp,
         "event_type": "prompt_injection",
-        "detail": input_str[:200],
+        "detail": redacted[:200] if redacted is not None else f"[withheld: {len(input_str)} chars, redaction unavailable]",
         "source": f"prompt_injection_guard: {detail}",
         "remediation_action": "blocked" if confidence == 1.0 else "logged",
         "confidence": confidence
