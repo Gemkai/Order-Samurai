@@ -22,7 +22,11 @@ SCRUBBER_MARKER = "secret_scrubber_realtime"
 # Tool patterns the guard and scrubber are scoped to. Claude Code matches these
 # against the tool name for each PreToolUse/PostToolUse event.
 GUARD_MATCHER = "Bash|Write|Edit|MultiEdit|WebFetch"
-SCRUBBER_MATCHER = "Bash|Read|WebFetch"
+SCRUBBER_MATCHER = "Bash|Read"  # post-mode ignores WebFetch output
+# Claude Code hook `timeout` is in seconds (https://code.claude.com/docs/en/hooks.md).
+# The guard makes one 3s local-LLM call and fails open, so 10s is ample.
+GUARD_TIMEOUT_S = 10
+SCRUBBER_TIMEOUT_S = 10
 
 def _licensing_module():
     """Import agentica_core.licensing, resolving its sibling-vs-child location the
@@ -258,9 +262,9 @@ def _register_claude_hooks(settings_path: Path, guard_script: str, scrubber_scri
 
     hooks = settings.get("hooks") if isinstance(settings.get("hooks"), dict) else {}
 
-    for event, marker, matcher, script in (
-        ("PreToolUse", GUARD_MARKER, GUARD_MATCHER, guard_script),
-        ("PostToolUse", SCRUBBER_MARKER, SCRUBBER_MATCHER, scrubber_script),
+    for event, marker, matcher, script, timeout in (
+        ("PreToolUse", GUARD_MARKER, GUARD_MATCHER, guard_script, GUARD_TIMEOUT_S),
+        ("PostToolUse", SCRUBBER_MARKER, SCRUBBER_MATCHER, scrubber_script, SCRUBBER_TIMEOUT_S),
     ):
         script_marker = Path(script).name
         entries = [e for e in (hooks.get(event) or []) if not (_entry_targets(e, marker) or _entry_targets(e, script_marker))]
@@ -269,7 +273,7 @@ def _register_claude_hooks(settings_path: Path, guard_script: str, scrubber_scri
             "hooks": [{
                 "type": "command",
                 "command": f"python3 {shlex.quote(script)}",
-                "timeout": 5000,
+                "timeout": timeout,
             }],
         })
         hooks[event] = entries
