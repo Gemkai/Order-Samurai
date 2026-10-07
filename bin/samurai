@@ -814,7 +814,10 @@ def cmd_install(args):
     if failed:
         print("⚠️  Installation finished with errors (see FAILED above). Fix them and re-run 'samurai install'.")
     elif not targets:
-        print("   No supported harness found (Claude Code or Codex). Install one, then re-run 'samurai install'.")
+        # Nothing is protected, so this is a failure: the installers stop here instead of
+        # reporting success.
+        print("⚠️  No supported harness found (Claude Code or Codex), so nothing was installed. "
+              f"Install one, then re-run: {_self_cmd()} install")
     else:
         print("⚔️  Installation complete! Run 'samurai doctor' to verify system health.")
     try:
@@ -823,7 +826,7 @@ def cmd_install(args):
         print(f"\n   Skipped. Activate later with: {_self_cmd()} activate")
     except (Exception, SystemExit) as e:  # activation must never fail the install
         print(f"   Pro activation skipped ({type(e).__name__}). Activate later with: {_self_cmd()} activate")
-    return 1 if failed else 0
+    return 1 if failed or not targets else 0
 
 
 def _dispatcher_covers_hooks(claude_settings: Path) -> bool:

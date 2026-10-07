@@ -175,10 +175,11 @@ def test_detect_harnesses_reads_only_allowed_locations(machine, monkeypatch, kin
 
 @pytest.mark.parametrize("kind,claude,codex,config_only", DETECTION_CASES)
 def test_install_auto_detects_harnesses(machine, kind, claude, codex, config_only):
-    """Cases 1, 12: Auto-install only detected harnesses and report both outcomes."""
+    """Cases 1, 12: Auto-install only detected harnesses and report both outcomes.
+    Installing nothing is a failure: scripts and installers must not read it as success."""
     _prepare(machine, kind)
     result = _run(machine, "install")
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == (0 if claude or codex else 1), result.stdout + result.stderr
     _assert_selected(machine, {h for h, present in (("claude", claude), ("codex", codex)) if present})
     lines = _lines(result)
     assert ("installed" if claude else "skipped (not detected)") in lines["claude"]
