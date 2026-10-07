@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `samurai install` now exits 1 when it finds no supported harness (neither Claude Code nor Codex) and so installs nothing. It used to exit 0, so the `curl | bash` installers reported success on a machine with no protection; they now stop at that message, which names the command to re-run once a harness is installed.
 - Install records exactly what it wrote in `~/.samurai/install.json` and treats only an exact match as its own. A hook that merely mentions an Order Samurai script is never modified or removed.
 - Re-installing leaves an unchanged hook untouched and updates a changed one in place, so Codex asks you to re-approve that hook only. `samurai uninstall` will not shift later Codex hooks (which would make Codex ask to re-approve them) unless you pass `--force`.
 - Config writes are atomic, keep the file's permissions, refuse symlinked or special files and abort if another program changed the file mid-write.
