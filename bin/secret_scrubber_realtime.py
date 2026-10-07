@@ -18,13 +18,24 @@ CLAUDE_ROOT = Path.home() / ".claude"
 if str(CLAUDE_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(CLAUDE_ROOT / "scripts"))
 
-from cli_io import configure_utf8_stdio
 import argparse
 import json
 import os
 import re
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
+
+# ~/.claude/scripts exists only on a configured workstation. A customer install has
+# no cli_io, and a hard import here crashed this hook on every call.
+try:
+    from cli_io import configure_utf8_stdio
+except ImportError:
+    def configure_utf8_stdio() -> None:
+        for stream in (sys.stdin, sys.stdout, sys.stderr):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (AttributeError, ValueError):
+                pass
 
 configure_utf8_stdio()
 
@@ -60,6 +71,16 @@ def _build_patterns():
             standard.append({"name": name, "pattern": rx})
     except Exception:
         pass
+    if not standard:
+        # Clean install: use the secret patterns shipped with this pack.
+        try:
+            if str(_REPO_ROOT) not in sys.path:
+                sys.path.insert(0, str(_REPO_ROOT))
+            from agentica_core.verify_secrets import SECRET_PATTERNS
+            for rx, name in SECRET_PATTERNS:
+                standard.append({"name": name, "pattern": re.compile(rx)})
+        except Exception:
+            pass
     return EXFILTRATION_PATTERNS + standard
 
 PATTERNS = _build_patterns()
@@ -200,7 +221,7 @@ def _log_pre_event(tool_name: str, findings: list[str], action: str) -> None:
 def _emit_chain14_pre(tool_name: str, labels: str, action: str) -> None:
     repo_root = _REPO_ROOT
     event_log = repo_root / "state" / "kill_chain_events.jsonl"
-    timestamp = datetime.utcnow().isoformat()
+    timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     if not timestamp.endswith("Z"):
         timestamp += "Z"
     event_entry = {
@@ -308,7 +329,6 @@ def main() -> None:
 
     text_to_scan = ""
     source_name = ""
-    cwd = payload.get("cwd") or payload.get("directory") or ""
     
     if is_write:
         fp = (payload.get("tool_input") or {}).get("file_path", "")
@@ -366,9 +386,10 @@ def main() -> None:
     exfil_findings = [f for f in findings if f["label"] in exfil_labels]
     
     if exfil_findings:
-        repo_root = Path(cwd) if cwd else _REPO_ROOT
-        event_log = repo_root / "state" / "kill_chain_events.jsonl"
-        timestamp = datetime.utcnow().isoformat().replace("+00:00", "Z")
+        # Pinned to Order Samurai's own state/, as _emit_chain14_pre is: a cwd-relative
+        # path dropped untracked state/ folders into the user's project.
+        event_log = _REPO_ROOT / "state" / "kill_chain_events.jsonl"
+        timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         if not timestamp.endswith("Z"):
             timestamp += "Z"
             
