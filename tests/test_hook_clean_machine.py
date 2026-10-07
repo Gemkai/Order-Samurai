@@ -15,6 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 SAMURAI = ROOT / "bin" / "samurai"
 # Test fixture: shaped like an Anthropic key so the vendored pattern matches; not a credential.
@@ -142,3 +144,28 @@ def test_scrubber_does_not_load_stdio_helper_from_claude_scripts(tmp_path):
                              "tool_response": {"stdout": "README.md", "stderr": ""}})
     assert r.returncode == 0, r.stderr[-400:]
     assert "developer helper loaded" not in r.stderr, r.stderr[-400:]
+
+
+@pytest.mark.parametrize("module", ["secret_scrubber", "notify_critical"])
+def test_scrubber_does_not_import_developer_modules(tmp_path, module):
+    """Patterns and alerts come from the shipped tree only, never ~/.claude/scripts."""
+    scripts = tmp_path / ".claude" / "scripts"
+    scripts.mkdir(parents=True)
+    marker = tmp_path / f"{module}.imported"
+    (scripts / f"{module}.py").write_text(f"open({str(marker)!r}, 'w').close()\n")
+    r = _run_bare(tmp_path, {"tool_name": "Bash", "tool_input": {"command": "cat .env"},
+                             "tool_response": {"stdout": f"KEY={FAKE_KEY}", "stderr": ""}})
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "anthropic_key" in r.stderr, r.stderr
+    assert not marker.exists(), f"hook imported ~/.claude/scripts/{module}.py"
+
+
+def test_scrubber_detects_secrets_when_samurai_root_is_a_state_dir(tmp_path):
+    """SAMURAI_ROOT relocates state; the shipped secret patterns still load from the hook's tree."""
+    env = dict(_bare_env(tmp_path), SAMURAI_ROOT=str(tmp_path / "state-only"))
+    payload = {"tool_name": "Bash", "tool_input": {"command": "cat .env"},
+               "tool_response": {"stdout": f"KEY={FAKE_KEY}", "stderr": ""}}
+    r = subprocess.run([sys.executable, "-S", str(SCRUBBER)], input=json.dumps(payload),
+                       capture_output=True, text=True, env=env, cwd=str(tmp_path), timeout=30)
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "anthropic_key" in r.stderr, r.stderr
