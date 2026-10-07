@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `samurai install` and `samurai doctor` now name other coding agents found on the machine that Order Samurai cannot protect yet (Gemini CLI, Cursor, Windsurf, Goose, Cline, OpenCode, Aider), so a machine with Claude Code plus another agent is not mistaken for fully covered. Detection only reads PATH, folders in your home directory and `/Applications`; exit codes are unchanged.
 - `samurai install` now also installs the prompt-injection guard for **Codex**. It detects which agent harnesses are installed (Claude Code and Codex) and registers the prompt-injection guard for each, printing one result line per harness. Choose harnesses with `--harness claude,codex` or `SAMURAI_HARNESS`; the choice is remembered.
 - On Codex the guard scans the `Bash` and `apply_patch` calls Codex sends to `PreToolUse` hooks; for `apply_patch` it scans only the lines a patch adds and its file names. It does not cover `write_stdin` to an already-running shell, MCP tools, other tool routes, or anything while Codex hooks are disabled. Codex runs the hook only after you approve it in `/hooks`; Order Samurai never approves it for you. The secret scrubber is not mirrored to Codex.
 
