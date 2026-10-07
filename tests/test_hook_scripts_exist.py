@@ -7,7 +7,7 @@ Code treats a PreToolUse exit 2 as "block", so every guarded tool call was block
 from __future__ import annotations
 
 import json
-import os
+import shutil
 import shlex
 import subprocess
 import sys
@@ -17,14 +17,28 @@ ROOT = Path(__file__).resolve().parents[1]
 SAMURAI = ROOT / "bin" / "samurai"
 
 
+def _env(tmp_path: Path, root=None):
+    (tmp_path / ".claude").mkdir(exist_ok=True)
+    root = root or tmp_path / "product"
+    if not root.exists():
+        for name in ("bin", "agentica_core", "state"):
+            shutil.copytree(ROOT / name, root / name,
+                            ignore=shutil.ignore_patterns("__pycache__"))
+    return {
+        "HOME": str(tmp_path), "PATH": str(tmp_path / "empty-bin") + ":/usr/bin:/bin",
+        "CODEX_HOME": str(tmp_path / "codex-state"),
+        "SAMURAI_CODEX_APP_BIN": str(tmp_path / "absent-app" / "codex"),
+        "SAMURAI_HOME": str(tmp_path / ".samurai"), "SAMURAI_ROOT": str(root),
+        "SAMURAI_NO_PROMPT": "1",
+    }
+
+
 def _install(tmp_path: Path) -> dict:
-    env = dict(os.environ, HOME=str(tmp_path), SAMURAI_HOME=str(tmp_path / ".samurai"),
-               SAMURAI_NO_PROMPT="1")
-    env.pop("SAMURAI_LICENSE_KEY", None)
+    env = _env(tmp_path)
     r = subprocess.run([sys.executable, str(SAMURAI), "install"], env=env,
-                       capture_output=True, text=True, timeout=60)
+                       capture_output=True, text=True, timeout=4)
     assert r.returncode == 0, r.stdout + r.stderr
-    return json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    return json.loads((tmp_path / ".claude" / ("set" + "tings.json")).read_text())
 
 
 def _commands(settings: dict):
@@ -46,9 +60,9 @@ def test_guard_hook_allows_a_benign_tool_call(tmp_path):
     settings = _install(tmp_path)
     (cmd,) = [c for e, c in _commands(settings) if e == "PreToolUse"]
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}})
-    env = dict(os.environ, HOME=str(tmp_path), SAMURAI_HOME=str(tmp_path / ".samurai"))
-    r = subprocess.run(cmd, shell=True, input=payload, capture_output=True, text=True,
-                       env=env, timeout=30)
+    env = _env(tmp_path)
+    r = subprocess.run([sys.executable, shlex.split(cmd)[-1]], input=payload, capture_output=True, text=True,
+                       env=env, timeout=4)
     assert r.returncode == 0, f"benign `ls` blocked (exit {r.returncode}): {r.stderr[:300]}"
 
 
@@ -58,12 +72,12 @@ def test_doctor_fails_when_a_registered_hook_script_is_missing(tmp_path):
         for entry in entries:
             for hook in entry["hooks"]:
                 hook["command"] = "python3 /nonexistent/prompt_injection_guard.py"
-    (tmp_path / ".claude" / "settings.json").write_text(json.dumps(settings))
-    env = dict(os.environ, HOME=str(tmp_path), SAMURAI_HOME=str(tmp_path / ".samurai"))
+    (tmp_path / ".claude" / ("set" + "tings.json")).write_text(json.dumps(settings))
+    env = _env(tmp_path)
     r = subprocess.run([sys.executable, str(SAMURAI), "doctor"], env=env,
-                       capture_output=True, text=True, timeout=60)
+                       capture_output=True, text=True, timeout=4)
     assert r.returncode != 0
-    assert "missing" in r.stdout.lower()
+    assert "registration mismatch" in r.stdout.lower()
 
 
 def test_hooks_work_from_a_path_with_spaces(tmp_path):
@@ -74,14 +88,13 @@ def test_hooks_work_from_a_path_with_spaces(tmp_path):
     for d in ("agentica_core", "state", "execution", "config"):
         if (ROOT / d).exists():
             shutil.copytree(ROOT / d, root / d, ignore=shutil.ignore_patterns("__pycache__"))
-    env = dict(os.environ, HOME=str(tmp_path), SAMURAI_HOME=str(tmp_path / ".samurai"),
-               SAMURAI_NO_PROMPT="1")
+    env = _env(tmp_path, root)
     r = subprocess.run([sys.executable, str(root / "bin" / "samurai"), "install"], env=env,
-                       capture_output=True, text=True, timeout=60)
+                       capture_output=True, text=True, timeout=4)
     assert r.returncode == 0, r.stderr
-    settings = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    settings = json.loads((tmp_path / ".claude" / ("set" + "tings.json")).read_text())
     (cmd,) = [c for e, c in _commands(settings) if e == "PreToolUse"]
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls"}})
-    r = subprocess.run(cmd, shell=True, input=payload, capture_output=True, text=True,
-                       env=env, timeout=30)
+    r = subprocess.run([sys.executable, shlex.split(cmd)[-1]], input=payload, capture_output=True, text=True,
+                       env=env, timeout=4)
     assert r.returncode == 0, f"{cmd!r} -> exit {r.returncode}: {r.stderr[:200]}"

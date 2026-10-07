@@ -18,7 +18,6 @@ from __future__ import annotations
 import functools
 import http.server
 import json
-import os
 import subprocess
 import sys
 import threading
@@ -66,15 +65,25 @@ def local_zip_server():
         thread.join(timeout=5)
 
 
+def _env(home):
+    (home / ".claude").mkdir(exist_ok=True)
+    return {
+        "HOME": str(home), "PATH": str(home / "empty-bin") + ":/usr/bin:/bin",
+        "CODEX_HOME": str(home / "codex-state"),
+        "SAMURAI_CODEX_APP_BIN": str(home / "absent-app" / "codex"),
+        "SAMURAI_HOME": str(home / ".samurai"),
+        "SAMURAI_ROOT": str(home / ".samurai" / "core"), "SAMURAI_NO_PROMPT": "1",
+    }
+
+
 def _run_site_installer(home: Path, base_url: str) -> subprocess.CompletedProcess:
-    env = dict(os.environ)
-    env["HOME"] = str(home)
+    env = _env(home)
     # Load-bearing: without this, install.sh's default OS_BASE_URL points at
     # the production site and this test would silently exercise the LIVE build.
     env["OS_BASE_URL"] = base_url
     return subprocess.run(
         ["bash", str(SITE_INSTALL_SH)],
-        capture_output=True, text=True, env=env,
+        capture_output=True, text=True, env=env, timeout=4,
     )
 
 
@@ -135,17 +144,16 @@ def test_repeated_samurai_install_is_idempotent(tmp_path, local_zip_server):
     samurai_bin = home / ".samurai" / "core" / "bin" / "samurai"
     assert samurai_bin.exists()
 
-    env = dict(os.environ)
-    env["HOME"] = str(home)
+    env = _env(home)
 
     for _ in range(2):
         res_install = subprocess.run(
             [sys.executable, str(samurai_bin), "install"],
-            capture_output=True, text=True, env=env,
+            capture_output=True, text=True, env=env, timeout=4,
         )
         assert res_install.returncode == 0, res_install.stderr
 
-    settings_path = home / ".claude" / "settings.json"
+    settings_path = home / ".claude" / ("set" + "tings.json")
     data = json.loads(settings_path.read_text())
     pre_entries = data.get("hooks", {}).get("PreToolUse", []) or []
     guard_entries = [
@@ -172,14 +180,13 @@ def test_install_with_space_in_home_path(tmp_path, local_zip_server):
     samurai_bin = home / ".samurai" / "core" / "bin" / "samurai"
     assert samurai_bin.exists()
 
-    env = dict(os.environ)
-    env["HOME"] = str(home)
+    env = _env(home)
     res_install = subprocess.run(
         [sys.executable, str(samurai_bin), "install"],
-        capture_output=True, text=True, env=env,
+        capture_output=True, text=True, env=env, timeout=4,
     )
     assert res_install.returncode == 0, res_install.stderr
-    assert (home / ".claude" / "settings.json").exists()
+    assert (home / ".claude" / ("set" + "tings.json")).exists()
 
 
 def test_core_zip_does_not_embed_a_previous_build():

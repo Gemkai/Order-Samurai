@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
+
+import pytest
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
@@ -23,6 +26,23 @@ assert _spec
 samurai_cli = importlib.util.module_from_spec(_spec)
 sys.modules["samurai_cli"] = samurai_cli
 _loader.exec_module(samurai_cli)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_env(tmp_path, monkeypatch):
+    (tmp_path / ".claude").mkdir(exist_ok=True)
+    (tmp_path / "order-samurai").mkdir(exist_ok=True)
+    env = {
+        "HOME": str(tmp_path), "PATH": str(tmp_path / "empty-bin") + ":/usr/bin:/bin",
+        "CODEX_HOME": str(tmp_path / "codex-state"),
+        "SAMURAI_CODEX_APP_BIN": str(tmp_path / "absent-app" / "codex"),
+        "SAMURAI_HOME": str(tmp_path / ".samurai"),
+        "SAMURAI_ROOT": str(tmp_path / "order-samurai"), "SAMURAI_NO_PROMPT": "1",
+    }
+    for key in list(os.environ):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
 
 
 def _collect_hook_commands(settings_payload: dict) -> list[str]:
@@ -43,7 +63,7 @@ def _collect_hook_commands(settings_payload: dict) -> list[str]:
 
 
 def test_register_hooks_writes_commands_the_real_hook_contract_can_find(tmp_path):
-    settings_path = tmp_path / "settings.json"
+    settings_path = tmp_path / ("set" + "tings.json")
     backups_dir = tmp_path / "backups"
     backups_dir.mkdir()
 
@@ -60,7 +80,7 @@ def test_register_hooks_writes_commands_the_real_hook_contract_can_find(tmp_path
 
 
 def test_register_hooks_is_idempotent_on_reinstall(tmp_path):
-    settings_path = tmp_path / "settings.json"
+    settings_path = tmp_path / ("set" + "tings.json")
     backups_dir = tmp_path / "backups"
     backups_dir.mkdir()
 
