@@ -50,6 +50,7 @@ def machine(tmp_path, monkeypatch):
         "PATH": str(path),
         "CODEX_HOME": str(home / ".codex"),
         "SAMURAI_CODEX_APP_BIN": str(app),
+        "SAMURAI_APPLICATIONS_DIR": str(tmp_path / "Applications"),
         "SAMURAI_HOME": str(home / ".samurai"),
         "SAMURAI_ROOT": str(root),
         "SAMURAI_NO_PROMPT": "1",
@@ -374,3 +375,39 @@ def test_invalid_recorded_codex_hooks_fail_with_one_line_per_harness(machine, co
     lines = _lines(result)
     assert "FAILED" in lines["codex"]
     assert "FAILED" not in lines["claude"]
+
+
+UNPROTECTED_NOTE = "not protected by Order Samurai"
+
+
+def _add_other_agents(machine):
+    """Gemini CLI on PATH, a Cursor config dir and a Windsurf app bundle."""
+    _runtime(machine.path / "gemini")
+    (machine.home / ".cursor").mkdir()
+    (machine.cwd / "Applications" / "Windsurf.app").mkdir(parents=True)
+
+
+def test_install_and_doctor_name_detected_agents_they_cannot_protect(machine):
+    _prepare(machine, "claude-dir")
+    _add_other_agents(machine)
+    install = _run(machine, "install")
+    assert install.returncode == 0, install.stdout + install.stderr
+    doctor = _run(machine, "doctor")
+    for result in (install, doctor):
+        line = next((l for l in result.stdout.splitlines() if UNPROTECTED_NOTE in l), "")
+        for label in ("Gemini CLI", "Cursor", "Windsurf"):
+            assert label in line, result.stdout
+
+
+def test_no_unprotected_note_when_only_supported_harnesses_exist(machine):
+    _prepare(machine, "claude-dir")
+    for command in ("install", "doctor"):
+        result = _run(machine, command)
+        assert UNPROTECTED_NOTE not in result.stdout, result.stdout
+
+
+def test_unprotected_agents_named_when_no_supported_harness_exists(machine):
+    (machine.home / ".cursor").mkdir()
+    result = _run(machine, "install")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "Cursor" in next(l for l in result.stdout.splitlines() if UNPROTECTED_NOTE in l)
