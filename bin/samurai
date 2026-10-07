@@ -5,20 +5,24 @@ Provides samurai install, samurai doctor, and samurai uninstall capabilities.
 """
 
 import os
+import re
 import sys
+import copy
 import json
+import stat
+import time
 import shlex
 import shutil
+import fcntl
 import datetime
+import tempfile
+import contextlib
 import subprocess
 import argparse
 import getpass
 from pathlib import Path
 
 SAMURAI_VERSION = "2.1.3"
-
-GUARD_MARKER = "prompt_injection_guard"
-SCRUBBER_MARKER = "secret_scrubber_realtime"
 
 # Tool patterns the guard and scrubber are scoped to. Claude Code matches these
 # against the tool name for each PreToolUse/PostToolUse event.
@@ -193,7 +197,7 @@ def get_paths():
     # the guard never fires. See tests/test_hook_wiring.py.
     claude_settings = home / ".claude" / "settings.json"
     backups_dir = samurai_home / "backups"
-    
+
     return {
         "root": samurai_root,
         "home": samurai_home,
@@ -205,138 +209,681 @@ def get_paths():
         "taxonomy": samurai_root / "state" / "kill_chain_taxonomy.json"
     }
 
-def _backup(settings_path: Path, backups_dir: Path, label: str):
-    """Back up settings_path under a label unique to its target.
 
-    The label matters: both target files are named settings.json, so a shared
-    backup name lets an uninstall restore the wrong one over the user's real
-    Claude Code config.
-    """
-    if not settings_path.exists():
-        return
+# --- Harnesses -----------------------------------------------------------------
+#
+# Claude Code and Codex both load PreToolUse command hooks from a JSON file with
+# the same shape. Detection only chooses install targets; doctor and uninstall act
+# on what ~/.samurai/install.json recorded, so a harness removed later is still
+# cleaned up and a past --harness choice is remembered.
+
+HARNESSES = ("claude", "codex")
+HARNESS_LABELS = {"claude": "Claude Code", "codex": "Codex"}
+CONFIG_BACKUP_LABELS = {"claude": "claude-settings", "codex": "codex-hooks"}
+CODEX_APP_BIN_DEFAULT = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"
+# Codex matches tool names with a regex; Bash and apply_patch carry their text in
+# tool_input.command, which is what the guard scans.
+CODEX_GUARD_MATCHER = "^(Bash|apply_patch)$"
+GUARD_SCRIPT = "prompt_injection_guard.py"
+SCRUBBER_SCRIPT = "secret_scrubber_realtime.py"
+# What v2.1.0-v2.1.3 wrote (Claude only, no manifest): adopted only on an exact match.
+LEGACY_TIMEOUT = 5000
+LEGACY_SCRUBBER_MATCHER = "Bash|Read|WebFetch"
+CODEX_NOT_VERIFIED = "guard installed and working when run directly; Codex enforcement not verified by doctor"
+
+
+class UnsafeFile(Exception):
+    """The target is a symlink or not a regular file; Samurai will not replace it."""
+
+
+class ConcurrentModification(Exception):
+    """The file changed while Samurai was updating it, twice in a row."""
+
+
+class Refusal(Exception):
+    """Our recorded hook is missing, duplicated or edited; changing it could hurt the user's config."""
+
+
+class MissingHook(Refusal):
+    """No unmodified copy of our recorded hook is left in the config."""
+
+
+class SelectionError(Exception):
+    """--harness / SAMURAI_HARNESS named something Samurai does not support."""
+
+
+def _checkpoint(step, harness=None, path=None):
+    """Called after each durable install/uninstall step (test seam; no-op)."""
+
+
+def codex_home() -> Path:
+    """Codex's state root: $CODEX_HOME when set, else ~/.codex."""
+    raw = os.environ.get("CODEX_HOME", "")
+    return Path(os.path.abspath(raw)) if raw else Path.home() / ".codex"
+
+
+def _codex_app_bin() -> Path:
+    return Path(os.environ.get("SAMURAI_CODEX_APP_BIN") or CODEX_APP_BIN_DEFAULT)
+
+
+def _is_executable_file(path) -> bool:
+    return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
+def _on_path(name):
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = os.path.join(directory, name)
+        if directory and _is_executable_file(candidate):
+            return candidate
+    return None
+
+
+def detect_harnesses() -> dict:
+    """Runtime evidence per harness. Reads ~/.claude, PATH, the ChatGPT app's bundled
+    codex and the Codex home, nothing else. A Codex config directory alone is not a
+    runtime: it is reported as config_only and skipped."""
+    claude_dir = Path.home() / ".claude"
+    found = None if claude_dir.is_dir() else _on_path("claude")
+    claude = {"present": claude_dir.is_dir() or bool(found),
+              "evidence": f"claude on PATH ({found})" if found else str(claude_dir)}
+    codex_bin = _on_path("codex")
+    app = _codex_app_bin()
+    if codex_bin:
+        codex = {"present": True, "evidence": f"codex on PATH ({codex_bin})", "config_only": False}
+    elif _is_executable_file(app):
+        codex = {"present": True, "evidence": str(app), "config_only": False}
+    else:
+        codex = {"present": False, "evidence": "no codex on PATH or in the ChatGPT app",
+                 "config_only": codex_home().is_dir()}
+    return {"claude": claude, "codex": codex}
+
+
+def _parse_harnesses(raw, source):
+    chosen = []
+    for part in str(raw).split(","):
+        name = part.strip().lower()
+        if not name:
+            continue
+        if name not in HARNESSES:
+            raise SelectionError(f"unknown harness {name!r} in {source} (choose from: {', '.join(HARNESSES)})")
+        if name not in chosen:
+            chosen.append(name)
+    if not chosen:
+        raise SelectionError(f"no harness named in {source} (choose from: {', '.join(HARNESSES)})")
+    return chosen
+
+
+def _explicit_selection(args):
+    """--harness beats SAMURAI_HARNESS; None when neither names anything."""
+    flag = getattr(args, "harness", None)
+    if flag is not None:
+        return _parse_harnesses(flag, "--harness"), "flag"
+    env = os.environ.get("SAMURAI_HARNESS", "")
+    if env.strip():
+        return _parse_harnesses(env, "SAMURAI_HARNESS"), "env"
+    return None, None
+
+
+# --- Hook definitions ---------------------------------------------------------
+
+def _command(root, script):
+    return "python3 " + shlex.quote(str(Path(root) / "bin" / script))
+
+
+def _group(matcher, command, timeout):
+    return {"matcher": matcher, "hooks": [{"type": "command", "command": command, "timeout": timeout}]}
+
+
+def hook_definitions(harness, root):
+    """(event, group) pairs Samurai writes for a harness. Codex gets the guard only:
+    the secret scrubber is not mirrored to Codex."""
+    guard = _group(GUARD_MATCHER if harness == "claude" else CODEX_GUARD_MATCHER,
+                   _command(root, GUARD_SCRIPT), GUARD_TIMEOUT_S)
+    if harness == "codex":
+        return [("PreToolUse", guard)]
+    return [("PreToolUse", guard),
+            ("PostToolUse", _group(SCRUBBER_MATCHER, _command(root, SCRUBBER_SCRIPT), SCRUBBER_TIMEOUT_S))]
+
+
+def _known_definitions(harness, roots):
+    """Every exact group an earlier or current Samurai wrote for this harness, per event."""
+    known = {}
+    for root in roots:
+        for event, group in hook_definitions(harness, root):
+            known.setdefault(event, []).append(group)
+        if harness == "claude":
+            known["PreToolUse"].append(_group(GUARD_MATCHER, _command(root, GUARD_SCRIPT), LEGACY_TIMEOUT))
+            known["PostToolUse"].append(_group(LEGACY_SCRUBBER_MATCHER, _command(root, SCRUBBER_SCRIPT), LEGACY_TIMEOUT))
+    return known
+
+
+def _owned_roots(paths, manifest):
+    roots = [str(paths["root"]), str(paths["home"] / "core"), *manifest.get("roots", [])]
+    return list(dict.fromkeys(roots))
+
+
+# --- Safe file writes -----------------------------------------------------------
+
+def _read_regular(path):
+    """(bytes, mode) of a regular file, (None, None) when absent. Never follows a symlink."""
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
+        return None, None
+    if not stat.S_ISREG(st.st_mode):
+        raise UnsafeFile(f"{path} is a symlink or not a regular file; Samurai will not replace it")
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    with os.fdopen(fd, "rb") as fh:
+        return fh.read(), stat.S_IMODE(st.st_mode)
+
+
+def _parse_json_bytes(raw, path):
+    if raw is None or not raw.strip():
+        return {}
+    try:
+        return json.loads(raw)
+    except ValueError as e:
+        raise ValueError(f"{path} is not valid JSON ({e})") from None
+
+
+def _write_backup(raw, backups_dir, label):
     backups_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_file = backups_dir / f"{label}.bak.{ts}"
-    shutil.copy2(settings_path, backup_file)
+    fd, name = tempfile.mkstemp(prefix=f"{label}.bak.{ts}.", dir=backups_dir)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(raw)
+    return Path(name)
+
+
+def _backup(settings_path: Path, backups_dir: Path, label: str):
+    """Back up settings_path under a label unique to its target. Names never collide:
+    both target files are named settings.json, and two runs can share a second."""
+    if not os.path.isfile(settings_path) or os.path.islink(settings_path):
+        return
+    backup_file = _write_backup(Path(settings_path).read_bytes(), backups_dir, label)
     print(f"  [✓] Backed up prior settings to {backup_file}")
 
 
-def _load_json(path: Path) -> dict:
-    if not path.exists():
-        return {}
+def _update_json_file(path, mutate, backup=None):
+    """Atomically replace a JSON file with mutate(current data).
+
+    The new content goes to a unique temp file in the same directory and keeps the
+    original mode (0600 for a new file). Just before the replace the file is read
+    again: if anyone changed it since it was read, the whole update is redone once
+    on the new content, then ConcurrentModification is raised. Editors that ignore
+    Samurai's lock can still race in the gap between that check and the rename.
+    Returns "unchanged" (nothing written) or "written"."""
+    path = Path(path)
+    for _attempt in range(2):
+        raw, mode = _read_regular(path)
+        data = _parse_json_bytes(raw, path)
+        new = mutate(copy.deepcopy(data))
+        if raw is not None and new == data:
+            return "unchanged"
+        if backup is not None and raw is not None:
+            _write_backup(raw, *backup)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write((json.dumps(new, indent=2) + "\n").encode("utf-8"))
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.chmod(tmp, mode if mode is not None else 0o600)
+            _checkpoint("before_replace", path=path)
+            if _read_regular(path)[0] != raw:
+                continue
+            os.replace(tmp, path)
+            return "written"
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(tmp)
+    raise ConcurrentModification(f"{path} changed while Samurai was updating it; re-run when it is idle")
+
+
+@contextlib.contextmanager
+def _state_lock(paths, wait_s=30.0):
+    """Serialize Samurai's own writers on $SAMURAI_HOME/.lock."""
+    paths["home"].mkdir(parents=True, exist_ok=True)
+    fh = open(paths["home"] / ".lock", "a")
     try:
-        with open(path, "r") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
+        deadline = time.monotonic() + wait_s
+        waiting = False
+        while True:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"another samurai process holds the lock {paths['home'] / '.lock'}") from None
+                if not waiting:
+                    print(f"  [i] Waiting for another samurai process (lock {paths['home'] / '.lock'})...")
+                    waiting = True
+                time.sleep(0.1)
+        yield
+    finally:
+        fh.close()
 
 
-def _write_json(path: Path, data: dict):
-    """Write atomically -- the Claude Code config is large and user-owned."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=2)
-    os.replace(tmp, path)
+# --- Install manifest ----------------------------------------------------------
+
+def _manifest_path(paths):
+    return paths["home"] / "install.json"
 
 
-def _entry_targets(entry: dict, marker: str) -> bool:
-    """True when a Claude-Code-shaped entry runs one of our scripts."""
+def _load_manifest(paths):
+    raw, _ = _read_regular(_manifest_path(paths))
+    data = _parse_json_bytes(raw, _manifest_path(paths)) if raw is not None else {}
+    if not isinstance(data, dict) or not isinstance(data.get("harnesses", {}), dict):
+        raise ValueError(f"{_manifest_path(paths)} is not a Samurai install manifest")
+    data.setdefault("version", 1)
+    data.setdefault("selected", [])
+    data.setdefault("selection_source", "auto")
+    data.setdefault("roots", [])
+    data.setdefault("harnesses", {})
+    return data
+
+
+def _save_manifest(paths, manifest):
+    _update_json_file(_manifest_path(paths), lambda _old: copy.deepcopy(manifest))
+
+
+def _hooks_doc(path):
+    """Parsed hook config ({} when absent), validated before anything mutates it."""
+    raw, _ = _read_regular(path)
+    data = _parse_json_bytes(raw, path)
+    _validate_hooks_doc(data, path)
+    return data
+
+
+def _validate_hooks_doc(data, path):
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: top level is not a JSON object")
+    hooks = data.get("hooks", {})
+    if not isinstance(hooks, dict):
+        raise ValueError(f"{path}: 'hooks' is not an object")
+    for event, groups in hooks.items():
+        if not isinstance(groups, list) or not all(isinstance(g, dict) for g in groups):
+            raise ValueError(f"{path}: 'hooks.{event}' is not an array of hook groups")
+
+
+def _locate(groups, record, path):
+    """Index of our group in an event list: the recorded index when the group there
+    is still exactly ours, else the single exact copy elsewhere. Refuses on zero
+    copies (edited or removed) and on more than one copy (ambiguous)."""
+    defs = [record["definition"], *record.get("previous", [])]
+    hits = [i for i, g in enumerate(groups) if g in defs]
+    if len(hits) == 1:
+        return hits[0]
+    if not hits:
+        raise MissingHook(f"refusing: the Order Samurai {record['event']} hook in {path} was edited or removed "
+                      f"(no unmodified copy found); restore it or remove it by hand, then re-run")
+    raise Refusal(f"refusing: {len(hits)} copies of the Order Samurai {record['event']} hook in {path}; "
+                  f"remove the extra copies by hand, then re-run")
+
+
+# --- Install ---------------------------------------------------------------------
+
+def _plan_install(harness, data, entry, paths, manifest, config):
+    """[(event, index or None to append, new definition, previous list)] for one config.
+    index None means append; a known group in place is replaced at its index."""
+    hooks = data.get("hooks", {})
+    known = _known_definitions(harness, _owned_roots(paths, manifest))
+    plan = []
+    for event, definition in hook_definitions(harness, paths["root"]):
+        groups = hooks.get(event, [])
+        record = next((r for r in (entry or {}).get("groups", []) if r["event"] == event), None)
+        if record is not None:
+            index = _locate(groups, record, config)
+            previous = list(record.get("previous", []))
+        else:
+            # No record: adopt an exact group an earlier Samurai wrote (manifest lost or
+            # a v2.1.x install), never a lookalike. Ambiguity is refused.
+            hits = [i for i, g in enumerate(groups) if g in known.get(event, [])]
+            if len(hits) > 1:
+                raise Refusal(f"refusing: {len(hits)} Order Samurai {event} hooks found in "
+                              f"{config}; remove the extra copies by hand")
+            index = hits[0] if hits else None
+            previous = []
+        if index is not None and groups[index] != definition and groups[index] not in previous:
+            previous.append(groups[index])
+        plan.append((event, index, definition, previous))
+    return plan
+
+
+def _apply_plan(data, plan):
+    hooks = data.setdefault("hooks", {})
+    records = []
+    for event, index, definition, previous in plan:
+        groups = hooks.setdefault(event, [])
+        if index is None:
+            groups.append(copy.deepcopy(definition))
+            index = len(groups) - 1
+        else:
+            groups[index] = copy.deepcopy(definition)
+        records.append({"event": event, "index": index, "definition": definition, "previous": previous})
+    return data, records
+
+
+def _recover_entry(entry, installing):
+    """Reconcile an entry left `pending`/`removing` by an interrupted run.
+    Returns the entry to keep (state installed) or None to drop it."""
+    state = entry.get("state")
+    if state == "installed":
+        return entry
+    try:
+        data = _hooks_doc(Path(entry["config_path"]))
+        hooks = data.get("hooks", {})
+        present = all(r["definition"] in hooks.get(r["event"], []) for r in entry.get("groups", []))
+    except (OSError, ValueError, UnsafeFile):
+        return entry  # leave it for the user; the harness step will fail and explain
+    if state == "pending":
+        if present:
+            return {**entry, "state": "installed"}
+        prior = entry.get("prior")
+        return dict(prior, state="installed") if prior else None
+    if state == "removing" and present:
+        # install keeps the hook it found; uninstall finishes removing it.
+        return dict(entry, state="installed") if installing else entry
+    return None if state == "removing" else entry
+
+
+def _install_harness(harness, paths, manifest):
+    """Install or update one harness; returns its result text. Raises on refusal."""
+    entry = manifest["harnesses"].get(harness)
+    config = Path(entry["config_path"]) if entry else (
+        paths["claude_settings"] if harness == "claude" else codex_home() / "hooks.json")
+    data = _hooks_doc(config)
+    plan = _plan_install(harness, data, entry, paths, manifest, config)
+    if all(i is not None and data["hooks"][e][i] == d for e, i, d, _ in plan):
+        _, records = _apply_plan(copy.deepcopy(data), plan)
+        manifest["harnesses"][harness] = {"state": "installed", "config_path": str(config), "groups": records}
+        _save_manifest(paths, manifest)
+        return "unchanged"
+
+    updating = any(i is not None for _, i, _, _ in plan)
+    _, records = _apply_plan(copy.deepcopy(data), plan)
+    pending = {"state": "pending", "config_path": str(config), "groups": records}
+    if entry:
+        pending["prior"] = {k: v for k, v in entry.items() if k != "prior"}
+    manifest["harnesses"][harness] = pending
+    _save_manifest(paths, manifest)
+    _checkpoint("manifest_pending", harness=harness, path=config)
+
+    final = {}
+
+    def mutate(current):
+        _validate_hooks_doc(current, config)
+        current_plan = _plan_install(harness, current, entry, paths, manifest, config)
+        current, final["records"] = _apply_plan(current, current_plan)
+        return current
+
+    if not config.parent.exists():
+        config.parent.mkdir(parents=True, mode=0o700)
+    _update_json_file(config, mutate, backup=(paths["backups"], CONFIG_BACKUP_LABELS[harness]))
+    _checkpoint("config_written", harness=harness, path=config)
+    manifest["harnesses"][harness] = {"state": "installed", "config_path": str(config),
+                                      "groups": final.get("records", records)}
+    _save_manifest(paths, manifest)
+    _checkpoint("manifest_installed", harness=harness, path=config)
+    if not updating:
+        return "installed — approve it in Codex's /hooks screen" if harness == "codex" else "installed"
+    if harness == "codex":
+        return "updated — Codex will ask you to re-approve this hook only (in /hooks)"
+    return "updated"
+
+
+def _register_hooks_in_file(settings_path: Path, guard_script: str, scrubber_script: str, backups_dir: Path, target_label: str = "samurai-settings"):
+    """Write the agent-agnostic record (~/.samurai/settings.json, Samurai's own file)
+    in Claude Code's hook schema. Re-running replaces our entries, never duplicates."""
+    ours = {GUARD_SCRIPT, SCRUBBER_SCRIPT, Path(guard_script).name, Path(scrubber_script).name}
+
+    def mutate(data):
+        if not isinstance(data, dict):
+            data = {}
+        hooks = data.get("hooks") if isinstance(data.get("hooks"), dict) else {}
+        for event, matcher, script, timeout in (
+            ("PreToolUse", GUARD_MATCHER, guard_script, GUARD_TIMEOUT_S),
+            ("PostToolUse", SCRUBBER_MATCHER, scrubber_script, SCRUBBER_TIMEOUT_S),
+        ):
+            entries = [e for e in (hooks.get(event) or []) if not _targets_script(e, ours)]
+            entries.append(_group(matcher, f"python3 {shlex.quote(script)}", timeout))
+            hooks[event] = entries
+        data["hooks"] = hooks
+        return data
+
+    _update_json_file(settings_path, mutate, backup=(backups_dir, target_label))
+
+
+def _targets_script(entry, script_names):
+    """True when a hook group's handler runs one of the named scripts (Samurai's own file only)."""
     if not isinstance(entry, dict):
         return False
     for hook in entry.get("hooks", []) or []:
-        if isinstance(hook, dict) and marker in str(hook.get("command", "")):
+        if not isinstance(hook, dict):
+            continue
+        try:
+            parts = shlex.split(str(hook.get("command", "")))
+        except ValueError:
+            continue
+        if parts and Path(parts[-1]).name in script_names:
             return True
     return False
 
 
-def _register_claude_hooks(settings_path: Path, guard_script: str, scrubber_script: str, backups_dir: Path, target_label: str = "claude-settings"):
-    """Register into ~/.claude/settings.json using Claude Code's own schema.
+def _print_results(results):
+    for harness in HARNESSES:
+        print(f"{HARNESS_LABELS[harness]}: {results[harness]}")
 
-    Entries take the form {"matcher": ..., "hooks": [{"type": "command", ...}]}.
-    Merges into the existing config: unrelated keys and the user's own hooks are
-    preserved, and re-running replaces our entries rather than duplicating them.
-    """
-    _backup(settings_path, backups_dir, target_label)
-    settings = _load_json(settings_path)
-
-    hooks = settings.get("hooks") if isinstance(settings.get("hooks"), dict) else {}
-
-    for event, marker, matcher, script, timeout in (
-        ("PreToolUse", GUARD_MARKER, GUARD_MATCHER, guard_script, GUARD_TIMEOUT_S),
-        ("PostToolUse", SCRUBBER_MARKER, SCRUBBER_MATCHER, scrubber_script, SCRUBBER_TIMEOUT_S),
-    ):
-        script_marker = Path(script).name
-        entries = [e for e in (hooks.get(event) or []) if not (_entry_targets(e, marker) or _entry_targets(e, script_marker))]
-        entries.append({
-            "matcher": matcher,
-            "hooks": [{
-                "type": "command",
-                "command": f"python3 {shlex.quote(script)}",
-                "timeout": timeout,
-            }],
-        })
-        hooks[event] = entries
-
-    settings["hooks"] = hooks
-    _write_json(settings_path, settings)
-    print(f"  [✓] Registered hooks in {settings_path}")
-
-
-def _register_hooks_in_file(settings_path: Path, guard_script: str, scrubber_script: str, backups_dir: Path, target_label: str = "samurai-settings"):
-    """Use the same hook schema in the agent-agnostic settings record."""
-    _register_claude_hooks(settings_path, guard_script, scrubber_script, backups_dir, target_label)
 
 def cmd_install(args):
     paths = get_paths()
+    try:
+        explicit, source = _explicit_selection(args)
+    except SelectionError as e:
+        print(f"❌ {e}", file=sys.stderr)
+        return 2
     print(f"⚔️  Installing Order Samurai v{SAMURAI_VERSION}...")
 
-    paths["home"].mkdir(parents=True, exist_ok=True)
-    paths["backups"].mkdir(parents=True, exist_ok=True)
+    try:
+        with _state_lock(paths):
+            paths["backups"].mkdir(parents=True, exist_ok=True)
+            results, failed, targets = _install_locked(paths, explicit, source)
+    except (TimeoutError, ValueError, UnsafeFile, OSError) as e:
+        print(f"❌ {e}")
+        return 1
 
-    # The hook scripts ship in bin/. A path that does not exist makes python3 exit 2,
-    # which Claude Code reads as "block": every guarded tool call would be refused.
-    guard_script = str(paths["root"] / "bin" / "prompt_injection_guard.py")
-    scrubber_script = str(paths["root"] / "bin" / "secret_scrubber_realtime.py")
-
-    # Agent-agnostic record for non-Claude harnesses.
-    _register_hooks_in_file(paths["samurai_settings"], guard_script, scrubber_script, paths["backups"])
-
-    # The one that actually enforces anything: Claude Code's own config. Always
-    # written -- if Claude Code is installed later, the guard is already wired.
-    _register_claude_hooks(paths["claude_settings"], guard_script, scrubber_script, paths["backups"])
-
-    print(f"⚔️  Installation complete! Run 'samurai doctor' to verify system health.")
+    _print_results(results)
+    if failed:
+        print("⚠️  Installation finished with errors (see FAILED above). Fix them and re-run 'samurai install'.")
+    elif not targets:
+        print("   No supported harness found (Claude Code or Codex). Install one, then re-run 'samurai install'.")
+    else:
+        print("⚔️  Installation complete! Run 'samurai doctor' to verify system health.")
     try:
         _offer_pro_activation(args)
     except (KeyboardInterrupt, EOFError):
         print(f"\n   Skipped. Activate later with: {_self_cmd()} activate")
     except (Exception, SystemExit) as e:  # activation must never fail the install
         print(f"   Pro activation skipped ({type(e).__name__}). Activate later with: {_self_cmd()} activate")
-    return 0
-
-_HOOK_PROBES = {
-    "PreToolUse": {"tool_name": "Bash", "tool_input": {"command": "true"}},
-    "PostToolUse": {"tool_name": "Bash", "tool_input": {"command": "true"},
-                    "tool_response": {"stdout": "", "stderr": ""}},
-}
+    return 1 if failed else 0
 
 
-def _probe_hook(event, parts):
-    """Run one registered hook on a benign payload; return a failure string or None."""
-    payload = json.dumps(_HOOK_PROBES.get(event, _HOOK_PROBES["PreToolUse"]))
-    name = Path(parts[-1]).name
+def _install_locked(paths, explicit, source):
+    manifest = _load_manifest(paths)
+    for harness, entry in list(manifest["harnesses"].items()):
+        kept = _recover_entry(entry, installing=True)
+        if kept is None:
+            del manifest["harnesses"][harness]
+        else:
+            manifest["harnesses"][harness] = kept
+    remembered = explicit is None and manifest.get("selection_source") in ("flag", "env") and manifest.get("selected")
+    if explicit is not None:
+        selected, selection_source = explicit, source
+    elif remembered:
+        selected, selection_source = list(manifest["selected"]), manifest["selection_source"]
+    else:
+        selected, selection_source = None, "auto"
+
+    detected = detect_harnesses()
+    targets, results, failed = [], {}, False
+    for harness in HARNESSES:
+        present = detected[harness]["present"]
+        if selected is not None and harness not in selected:
+            results[harness] = "skipped (not selected)" if present else "skipped (not detected)"
+        elif present:
+            targets.append(harness)
+        elif explicit is not None:
+            results[harness] = f"FAILED — requested with {'--harness' if source == 'flag' else 'SAMURAI_HARNESS'} but not detected"
+            failed = True
+        elif harness == "codex" and detected["codex"]["config_only"]:
+            results[harness] = "Codex config found but Codex not installed — skipped"
+        else:
+            results[harness] = "skipped (not detected)"
+
+    manifest["selected"] = [h for h in HARNESSES if h in (selected if selected is not None else targets)]
+    manifest["selection_source"] = selection_source
+    if str(paths["root"]) not in manifest["roots"]:
+        manifest["roots"].append(str(paths["root"]))
+    _save_manifest(paths, manifest)
+
+    if targets:
+        # Agent-agnostic record, Samurai's own file.
+        _register_hooks_in_file(paths["samurai_settings"], str(paths["root"] / "bin" / GUARD_SCRIPT),
+                                str(paths["root"] / "bin" / SCRUBBER_SCRIPT), paths["backups"])
+    for harness in targets:
+        try:
+            results[harness] = _install_harness(harness, paths, manifest)
+        except (Refusal, ValueError, UnsafeFile, ConcurrentModification, OSError) as e:
+            results[harness] = f"FAILED — {e}"
+            failed = True
+    return results, failed, targets
+
+
+# --- Doctor ---------------------------------------------------------------------
+
+def _probe_payloads():
+    """Benign and blocking probes in Claude and Codex payload shapes. The blocking
+    text is assembled at runtime so this file never trips a host's own guard."""
+    attack = "jail" + "break"
+    codex = {"hook_event_name": "PreToolUse", "cwd": "/tmp", "session_id": "samurai-doctor",
+             "turn_id": "samurai-doctor", "tool_use_id": "samurai-doctor", "model": "probe",
+             "permission_mode": "default", "transcript_path": None}
+    patch = "*** Begin Patch\n*** Add File: probe.txt\n+" + attack + "\n*** End Patch\n"
+    fake_key = "sk-ant-" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4"
+    guard = [
+        ("Claude benign", {"tool_name": "Bash", "tool_input": {"command": "true"}}, 0),
+        ("Claude blocking", {"tool_name": "Write", "tool_input": {"file_path": "probe.txt", "content": attack}}, 2),
+        ("Codex benign", dict(codex, tool_name="Bash", tool_input={"command": "true"}), 0),
+        ("Codex blocking", dict(codex, tool_name="apply_patch", tool_input={"command": patch}), 2),
+    ]
+    scrubber = [
+        ("benign", {"tool_name": "Bash", "tool_input": {"command": "true"},
+                    "tool_response": {"stdout": "", "stderr": ""}}, 0, None),
+        ("secret", {"tool_name": "Bash", "tool_input": {"command": "cat .env"},
+                    "tool_response": {"stdout": "KEY=" + fake_key, "stderr": ""}}, 0, "detected"),
+    ]
+    return guard, scrubber
+
+
+def _run_packaged(script, payload, scratch):
+    """Run a PACKAGED hook script with this interpreter. Its logs and any
+    notification go to a scratch home, so a probe never looks like a real event."""
+    env = dict(os.environ, HOME=str(scratch), SAMURAI_ROOT=str(scratch))
+    env.pop("ORDER_SAMURAI_ROOT", None)
     try:
-        r = subprocess.run(parts, input=payload, capture_output=True, text=True, timeout=15)
+        r = subprocess.run([sys.executable, str(script)], input=json.dumps(payload), capture_output=True,
+                           text=True, timeout=GUARD_TIMEOUT_S, env=env, cwd=str(scratch))
     except subprocess.TimeoutExpired:
-        return f"{name} timed out after 15s"
+        return None, f"timed out after {GUARD_TIMEOUT_S}s"
     except OSError as e:
-        return f"{name} could not start: {e}"
-    if r.returncode == 0:
-        return None
-    last = (r.stderr.strip().splitlines() or ["no error output"])[-1][:160]
-    return f"{name} exited {r.returncode} ({last})"
+        return None, f"could not start: {e}"
+    return r, None
+
+
+def _packaged_failures(paths, run_scrubber):
+    """Failure strings from the packaged guard (and scrubber), [] when all probes pass."""
+    guard_probes, scrubber_probes = _probe_payloads()
+    bin_dir = paths["root"] / "bin"
+    failures = {"guard": [], "scrubber": []}
+    with tempfile.TemporaryDirectory(prefix="samurai-doctor-") as scratch:
+        # The scrubber finds its packaged secret patterns under SAMURAI_ROOT.
+        for core in (paths["root"] / "agentica_core", paths["root"].parent / "agentica_core"):
+            if core.is_dir():
+                (Path(scratch) / "agentica_core").symlink_to(core.resolve())
+                break
+        for label, payload, expected in guard_probes:
+            r, err = _run_packaged(bin_dir / GUARD_SCRIPT, payload, scratch)
+            if err or r.returncode != expected:
+                why = err or f"exited {r.returncode}, expected {expected}"
+                failures["guard"].append(f"{GUARD_SCRIPT} {label} probe {why}")
+        if run_scrubber:
+            for label, payload, expected, needle in scrubber_probes:
+                r, err = _run_packaged(bin_dir / SCRUBBER_SCRIPT, payload, scratch)
+                if err or r.returncode != expected or (needle and needle not in r.stderr):
+                    why = err or (f"exited {r.returncode}, expected {expected}" if r.returncode != expected
+                                  else f"did not report '{needle}'")
+                    failures["scrubber"].append(f"{SCRUBBER_SCRIPT} {label} probe {why}")
+    return failures
+
+
+def _registration_problem(harness, entry, paths):
+    """None when the recorded hooks are present exactly as recorded and current."""
+    config = Path(entry["config_path"])
+    if entry.get("state") != "installed":
+        return f"interrupted {entry.get('state')} step recorded; run 'samurai install'"
+    try:
+        hooks = _hooks_doc(config).get("hooks", {})
+    except (OSError, ValueError, UnsafeFile) as e:
+        return f"cannot read {config}: {e}"
+    current = dict(hook_definitions(harness, paths["root"]))
+    for record in entry.get("groups", []):
+        groups = hooks.get(record["event"], [])
+        try:
+            _locate(groups, {**record, "previous": []}, config)
+        except Refusal:
+            return (f"registration mismatch: the {record['event']} hook in {config} differs from what "
+                    f"'samurai install' recorded (not executed); run 'samurai install' or restore it")
+        handler = record["definition"]["hooks"]
+        if len(handler) != 1 or handler[0].get("async"):
+            return f"registration mismatch: {record['event']} handler is not a single synchronous command"
+        if harness == "codex" and not all(re.search(record["definition"].get("matcher", ""), t)
+                                          for t in ("Bash", "apply_patch")):
+            return "registration mismatch: matcher does not cover both Bash and apply_patch"
+        if current.get(record["event"]) != record["definition"]:
+            return (f"registration mismatch: {record['event']} hook targets another install path; "
+                    f"run 'samurai install'")
+    return None
+
+
+def _codex_trust(entry):
+    """Read-only look at Codex's trust record for our hook. Never writes config.toml."""
+    config_path = entry["config_path"]
+    toml_path = Path(config_path).parent / "config.toml"
+    index = next((r["index"] for r in entry.get("groups", []) if r["event"] == "PreToolUse"), None)
+    if not toml_path.exists():
+        return "no trust record — approve in Codex /hooks"
+    try:
+        import tomllib  # noqa: PLC0415 (3.11+)
+        data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
+    except Exception:
+        return "unknown"
+    features = data.get("features")
+    if isinstance(features, dict) and features.get("hooks") is False:
+        return "hooks disabled in Codex config"
+    hooks = data.get("hooks")
+    trust = hooks.get("state") if isinstance(hooks, dict) else None
+    record = trust.get(f"{config_path}:pre_tool_use:{index}:0") if isinstance(trust, dict) else None
+    if isinstance(record, dict) and record.get("trusted_hash"):
+        return "trust record present — current approval unverified"
+    return "no trust record — approve in Codex /hooks"
+
+
+def _legacy_registration(paths, manifest):
+    try:
+        return _legacy_claude_entry(paths, manifest) is not None
+    except (Refusal, ValueError, UnsafeFile, OSError):
+        return False
 
 
 def cmd_doctor(args):
@@ -344,11 +891,12 @@ def cmd_doctor(args):
     print(f"🩺 Order Samurai Doctor v{SAMURAI_VERSION}")
     print("----------------------------------------")
 
-    total = 6
+    total = 0
     passed = 0
 
     def check(name, ok, detail=""):
-        nonlocal passed
+        nonlocal passed, total
+        total += 1
         status = "[✅ PASS]" if ok else "[❌ FAIL]"
         if ok:
             passed += 1
@@ -373,50 +921,62 @@ def cmd_doctor(args):
     fail_open = os.environ.get("BUSHIDO_FAIL_OPEN", "false").lower() == "true"
     check("Security Posture", not fail_open, f"BUSHIDO_FAIL_OPEN={fail_open} (Fail-closed enforced)")
 
-    # Check 4: Hook Registration.
-    # Asserted ONLY against ~/.claude/settings.json in Claude Code's own schema.
-    # v1.0.0 accepted ~/.samurai/settings.json as proof and reported PASS while
-    # the guard was wired nowhere Claude Code would ever load it.
-    claude_settings = paths["claude_settings"]
-    pre = _load_json(claude_settings).get("hooks", {}).get("PreToolUse", []) or []
-    registered = any(_entry_targets(e, GUARD_MARKER) for e in pre)
-    missing = []
-    probes = []
-    for event, entries in (_load_json(claude_settings).get("hooks", {}) or {}).items():
-        for entry in entries or []:
-            if not (_entry_targets(entry, GUARD_MARKER) or _entry_targets(entry, SCRUBBER_MARKER)):
-                continue
-            for hook in entry.get("hooks") or []:
-                try:
-                    parts = shlex.split(str(hook.get("command", "")))
-                except ValueError:
-                    parts = [str(hook.get("command", ""))]
-                if parts and not Path(parts[-1]).is_file():
-                    missing.append(parts[-1])
-                elif parts:
-                    probes.append((event, parts))
-    if not registered:
-        detail = f"NOT registered in {claude_settings} -- run 'samurai install'"
-    elif missing:
-        detail = (f"hook script missing: {', '.join(sorted(set(missing)))} -- Claude Code will block "
-                  f"tool calls; run 'samurai install' again")
-    else:
-        detail = f"PreToolUse guard registered in {claude_settings}"
-    check("Claude Code Hook Registration", registered and not missing, detail)
+    # Registration is inspected as data, from what install recorded. Doctor never
+    # runs a command read from any config (v2.1.3 did: a tampered entry ran).
+    try:
+        manifest = _load_manifest(paths)
+    except (ValueError, UnsafeFile, OSError) as e:
+        manifest = {"selected": [], "selection_source": "auto", "harnesses": {}}
+        print(f"  [!] {e}")
+    recorded = manifest["harnesses"]
+    detected = detect_harnesses()
+    results, problems = {}, {}
+    for harness in HARNESSES:
+        label = HARNESS_LABELS[harness]
+        if harness in recorded:
+            problems[harness] = _registration_problem(harness, recorded[harness], paths)
+            config = recorded[harness]["config_path"]
+            detail = problems[harness] or f"Order Samurai hooks registered in {config}"
+            check(f"{label} Hook Registration", problems[harness] is None, detail)
+        elif harness in manifest.get("selected", []) and detected[harness]["present"]:
+            results[harness] = "FAILED — not registered; run 'samurai install'"
+            check(f"{label} Hook Registration", False, "NOT registered -- run 'samurai install'")
+        elif manifest.get("selected") and detected[harness]["present"]:
+            results[harness] = "skipped (not selected)"
+        elif harness == "codex" and detected["codex"]["config_only"]:
+            results[harness] = "Codex config found but Codex not installed — skipped"
+        elif detected[harness]["present"]:
+            hint = "NOT registered -- run 'samurai install'"
+            if harness == "claude" and _legacy_registration(paths, manifest):
+                hint = "registered by an older version with no install record -- run 'samurai install' to adopt it"
+            results[harness] = f"FAILED — {hint}"
+            check(f"{label} Hook Registration", False, hint)
+        else:
+            results[harness] = "skipped (not detected)"
 
-    # Check 5: Hook Execution. A registered, present script can still crash on import
-    # (v2.1.2's scrubber needed a module only the author's machine had), and a crashing
-    # hook is silent in Claude Code. Run each one on a benign call and require exit 0.
-    failures = [f for f in (_probe_hook(event, parts) for event, parts in probes) if f]
-    if not probes:
-        detail = "no registered hook to run -- run 'samurai install'"
-    elif failures:
-        detail = "; ".join(failures)
+    # Hook Execution: the PACKAGED scripts, run directly with this interpreter.
+    if recorded:
+        failures = _packaged_failures(paths, run_scrubber="claude" in recorded)
+        flat = failures["guard"] + failures["scrubber"]
+        detail = ("packaged script failed — not protecting: " + "; ".join(flat) if flat else
+                  f"packaged guard{' and scrubber' if 'claude' in recorded else ''} passed every probe "
+                  f"(run directly with {sys.executable})")
+        check("Hook Execution", not flat, detail)
     else:
-        detail = f"{len(probes)} registered hook(s) ran cleanly on a benign tool call"
-    check("Hook Execution", bool(probes) and not failures, detail)
+        failures = {"guard": [], "scrubber": []}
+        check("Hook Execution", False, "no harness registered -- run 'samurai install'")
 
-    # Check 6: Path Authority
+    for harness in recorded:
+        if problems.get(harness):
+            results[harness] = f"FAILED — {problems[harness]}"
+        elif failures["guard"] or (harness == "claude" and failures["scrubber"]):
+            results[harness] = "FAILED — packaged hook script failed; not protecting"
+        elif harness == "codex":
+            results[harness] = f"{CODEX_NOT_VERIFIED} — {_codex_trust(recorded[harness])}"
+        else:
+            results[harness] = "registered; packaged guard and scrubber working"
+
+    # Path Authority
     agentica_core_dir = paths["root"] / "agentica_core"
     if not agentica_core_dir.is_dir():
         agentica_core_dir = paths["root"].parent / "agentica_core"
@@ -424,53 +984,147 @@ def cmd_doctor(args):
     check("Path Authority", root_ok, f"Root: {paths['root']}")
 
     print("----------------------------------------")
+    _print_results(results)
     print(f"Summary: {passed}/{total} checks passed.")
-    return 0 if passed == total else 1
+    harness_failed = any(r.startswith("FAILED") for r in results.values())
+    return 0 if passed == total and not harness_failed else 1
+
+
+# --- Uninstall --------------------------------------------------------------------
+
+def _uninstall_harness(harness, entry, paths, manifest, force):
+    """Remove our recorded groups from one harness config. Returns status text;
+    raises Refusal / ValueError / UnsafeFile on anything it will not do."""
+    config = Path(entry["config_path"])
+    data = _hooks_doc(config)
+    hooks = data.get("hooks", {})
+    note = ""
+    try:
+        indices = {r["event"]: _locate(hooks.get(r["event"], []), r, config) for r in entry.get("groups", [])}
+    except MissingHook:
+        if not force:
+            raise
+        # --force when the user already removed our hook: just forget the record.
+        del manifest["harnesses"][harness]
+        _save_manifest(paths, manifest)
+        return "removed (the hook was already gone)"
+    if harness == "codex":
+        later = len(hooks.get("PreToolUse", [])) - indices.get("PreToolUse", 0) - 1
+        if later > 0 and not force:
+            raise Refusal(f"refusing: removing the Order Samurai hook would make Codex re-ask approval for "
+                          f"{later} later hook(s) in {config}; re-run 'samurai uninstall --force' to remove it anyway")
+        if later > 0:
+            note = f" — Codex will re-ask approval for {later} later hook(s)"
+
+    manifest["harnesses"][harness] = dict(entry, state="removing")
+    _save_manifest(paths, manifest)
+    _checkpoint("manifest_removing", harness=harness, path=config)
+
+    def mutate(current):
+        _validate_hooks_doc(current, config)
+        current_hooks = current.get("hooks", {})
+        for record in entry.get("groups", []):
+            groups = current_hooks.get(record["event"], [])
+            del groups[_locate(groups, record, config)]
+        return current
+
+    _update_json_file(config, mutate, backup=(paths["backups"], CONFIG_BACKUP_LABELS[harness]))
+    _checkpoint("config_removed", harness=harness, path=config)
+    del manifest["harnesses"][harness]
+    _save_manifest(paths, manifest)
+    _checkpoint("manifest_deleted", harness=harness, path=config)
+    return "removed" + note
+
+
+def _legacy_claude_entry(paths, manifest):
+    """A manifest-shaped entry for exact v2.1.x Claude groups (no manifest yet), or None."""
+    config = paths["claude_settings"]
+    hooks = _hooks_doc(config).get("hooks", {})
+    known = _known_definitions("claude", _owned_roots(paths, manifest))
+    groups = []
+    for event, defs in known.items():
+        hits = [i for i, g in enumerate(hooks.get(event, [])) if g in defs]
+        if len(hits) > 1:
+            raise Refusal(f"refusing: {len(hits)} Order Samurai {event} hooks in {config}; remove extras by hand")
+        if hits:
+            groups.append({"event": event, "index": hits[0], "definition": hooks[event][hits[0]], "previous": []})
+    if not groups:
+        return None
+    return {"state": "installed", "config_path": str(config), "groups": groups}
+
 
 def cmd_uninstall(args):
     paths = get_paths()
+    force = bool(getattr(args, "force", False))
     print(f"⚔️  Uninstalling Order Samurai v{SAMURAI_VERSION}...")
+    results, failed = {}, False
+    try:
+        with _state_lock(paths):
+            manifest = _load_manifest(paths)
+            for harness in HARNESSES:
+                label = HARNESS_LABELS[harness]
+                try:
+                    entry = manifest["harnesses"].get(harness)
+                    if entry is not None:
+                        kept = _recover_entry(entry, installing=False)
+                        if kept is None:
+                            del manifest["harnesses"][harness]
+                            _save_manifest(paths, manifest)
+                            results[harness] = "removed"
+                            continue
+                        entry = manifest["harnesses"][harness] = kept
+                    elif harness == "claude" and paths["claude_settings"].exists():
+                        entry = _legacy_claude_entry(paths, manifest)
+                        if entry is not None:
+                            manifest["harnesses"][harness] = entry
+                    if entry is None:
+                        results[harness] = "not installed"
+                        continue
+                    results[harness] = _uninstall_harness(harness, entry, paths, manifest, force)
+                except (Refusal, ValueError, UnsafeFile, ConcurrentModification, OSError) as e:
+                    results[harness] = f"FAILED — {e}"
+                    failed = True
+                    print(f"  [!] {label}: deregistration failed; kept {paths['home']} for recovery.")
 
-    # 1. Surgically deregister our own entries, leaving the user's hooks intact.
-    #    Deliberately NOT a restore-from-backup: both settings files share a
-    #    basename, so restoring "the newest backup" could drop ~/.samurai's file
-    #    on top of the user's real Claude Code config. Backups are kept on disk
-    #    for manual recovery instead.
-    for label, settings_path in (
-        ("Claude Code", paths["claude_settings"]),
-        ("agent-agnostic", paths["samurai_settings"]),
-        ("legacy Claude", paths["claude_hooks"] / "settings.json"),
-    ):
-        if not settings_path.exists():
-            continue
-        try:
-            # A malformed user file must survive for recovery, never become {}.
-            cfg = json.loads(settings_path.read_text(encoding="utf-8"))
-            if not isinstance(cfg, dict):
-                continue
-            hooks = cfg.get("hooks", {})
-            if not isinstance(hooks, dict):
-                continue
-            for event, marker, legacy_name in (
-                ("PreToolUse", GUARD_MARKER, "samurai_prompt_injection_guard"),
-                ("PostToolUse", SCRUBBER_MARKER, "samurai_secret_scrubber"),
-            ):
-                entries = hooks.get(event) or []
-                entries = [e for e in entries if not _entry_targets(e, marker)]
-                # Also strip v1.0.0's mis-shaped entries wherever they linger.
-                entries = [
-                    e for e in entries
-                    if not (isinstance(e, dict) and e.get("name") == legacy_name)
-                ]
-                hooks[event] = entries
-            cfg["hooks"] = hooks
-            _write_json(settings_path, cfg)
-            print(f"  [✓] Deregistered Order Samurai hooks from {label} settings.")
-        except Exception as e:
-            print(f"  [!] Error deregistering hooks from {label} settings: {e}")
+            # v1.0.0's file: nothing in it is provably ours any more, so it is left
+            # alone; an unreadable one is still reported rather than ignored.
+            legacy = paths["claude_hooks"] / "settings.json"
+            if legacy.exists():
+                try:
+                    _parse_json_bytes(_read_regular(legacy)[0], legacy)
+                except (ValueError, UnsafeFile, OSError) as e:
+                    if not results["claude"].startswith("FAILED"):
+                        results["claude"] = f"FAILED — {e}"
+                    failed = True
 
-    # 2. Handle data cleanup. license.json is a paid entitlement -- preserve a
-    #    copy rather than silently destroying it with the state directory.
+            # Samurai's own agent-agnostic record.
+            if paths["samurai_settings"].exists():
+                ours = {GUARD_SCRIPT, SCRUBBER_SCRIPT}
+
+                def strip(data):
+                    if not isinstance(data, dict):
+                        raise ValueError(f"{paths['samurai_settings']}: not a JSON object")
+                    hooks = data.get("hooks") if isinstance(data.get("hooks"), dict) else {}
+                    for event in list(hooks):
+                        hooks[event] = [e for e in (hooks[event] or []) if not _targets_script(e, ours)]
+                    return data
+
+                try:
+                    _update_json_file(paths["samurai_settings"], strip)
+                except (ValueError, UnsafeFile, ConcurrentModification, OSError) as e:
+                    print(f"  [!] Could not deregister hooks from {paths['samurai_settings']}: {e}")
+                    failed = True
+    except (TimeoutError, ValueError, UnsafeFile, OSError) as e:
+        print(f"❌ {e}")
+        return 1
+
+    _print_results(results)
+    if failed:
+        print(f"⚠️  Uninstall incomplete: kept {paths['home']} (install record and backups) for recovery.")
+        return 1
+
+    # Data cleanup. license.json is a paid entitlement -- preserve a copy rather
+    # than silently destroying it with the state directory.
     if not args.keep_data and paths["home"].exists():
         license_file = paths["home"] / "license.json"
         if license_file.exists():
@@ -498,6 +1152,9 @@ def main():
     inst_parser = subparsers.add_parser("install", help="Install & register Order Samurai hooks")
     inst_parser.add_argument("--no-activate", action="store_true",
                              help="Do not offer to activate a Pro license key")
+    inst_parser.add_argument("--harness", default=None,
+                             help="Install only for these harnesses: claude, codex or claude,codex "
+                                  "(default: every detected harness; also SAMURAI_HARNESS)")
 
     # doctor
     subparsers.add_parser("doctor", help="Run diagnostic health checks")
@@ -505,6 +1162,8 @@ def main():
     # uninstall
     un_parser = subparsers.add_parser("uninstall", help="Uninstall Order Samurai hooks and restore settings")
     un_parser.add_argument("--keep-data", action="store_true", help="Preserve ~/.samurai state directory")
+    un_parser.add_argument("--force", action="store_true",
+                           help="Remove the Codex hook even when later hooks will need re-approval")
 
     # activate / deactivate / license
     act_parser = subparsers.add_parser("activate", help="Activate an Order Samurai Pro license key")
