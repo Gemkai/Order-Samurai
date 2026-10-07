@@ -517,7 +517,8 @@ def _locate(groups, record, path):
         return hits[0]
     if not hits:
         raise MissingHook(f"refusing: the Order Samurai {record['event']} hook in {path} was edited or removed "
-                      f"(no unmodified copy found); restore it or remove it by hand, then re-run")
+                      f"(no unmodified copy found). Restore it, or if you removed it on purpose run "
+                          f"'samurai uninstall --force --keep-data' and then 'samurai install'")
     raise Refusal(f"refusing: {len(hits)} copies of the Order Samurai {record['event']} hook in {path}; "
                   f"remove the extra copies by hand, then re-run")
 
@@ -689,7 +690,7 @@ def cmd_install(args):
         with _state_lock(paths):
             paths["backups"].mkdir(parents=True, exist_ok=True)
             results, failed, targets = _install_locked(paths, explicit, source)
-    except (TimeoutError, ValueError, UnsafeFile, OSError) as e:
+    except (TimeoutError, ValueError, UnsafeFile, ConcurrentModification, OSError) as e:
         print(f"❌ {e}")
         return 1
 
@@ -754,7 +755,7 @@ def _install_locked(paths, explicit, source):
     for harness in targets:
         try:
             results[harness] = _install_harness(harness, paths, manifest)
-        except (Refusal, ValueError, UnsafeFile, ConcurrentModification, OSError) as e:
+        except (Refusal, ValueError, UnsafeFile, ConcurrentModification, OSError, KeyError) as e:
             results[harness] = f"FAILED — {e}"
             failed = True
     return results, failed, targets
@@ -860,7 +861,12 @@ def _codex_trust(entry):
     """Read-only look at Codex's trust record for our hook. Never writes config.toml."""
     config_path = entry["config_path"]
     toml_path = Path(config_path).parent / "config.toml"
-    index = next((r["index"] for r in entry.get("groups", []) if r["event"] == "PreToolUse"), None)
+    record = next((r for r in entry.get("groups", []) if r["event"] == "PreToolUse"), None)
+    try:  # Codex keys trust by position: use where our group is NOW, not where it was
+        index = _locate(_hooks_doc(Path(config_path)).get("hooks", {}).get("PreToolUse", []),
+                        {**record, "previous": []}, config_path)
+    except (Refusal, ValueError, UnsafeFile, OSError, TypeError):
+        return "unknown"
     if not toml_path.exists():
         return "no trust record — approve in Codex /hooks"
     try:
@@ -869,11 +875,14 @@ def _codex_trust(entry):
     except Exception:
         return "unknown"
     features = data.get("features")
-    if isinstance(features, dict) and features.get("hooks") is False:
+    # codex_hooks is the older name of the same feature flag.
+    if isinstance(features, dict) and (features.get("hooks") is False or features.get("codex_hooks") is False):
         return "hooks disabled in Codex config"
     hooks = data.get("hooks")
     trust = hooks.get("state") if isinstance(hooks, dict) else None
     record = trust.get(f"{config_path}:pre_tool_use:{index}:0") if isinstance(trust, dict) else None
+    if isinstance(record, dict) and record.get("enabled") is False:
+        return "hook disabled in Codex /hooks"
     if isinstance(record, dict) and record.get("trusted_hash"):
         return "trust record present — current approval unverified"
     return "no trust record — approve in Codex /hooks"
@@ -881,7 +890,7 @@ def _codex_trust(entry):
 
 def _legacy_registration(paths, manifest):
     try:
-        return _legacy_claude_entry(paths, manifest) is not None
+        return _adopt_unrecorded("claude", paths, manifest) is not None
     except (Refusal, ValueError, UnsafeFile, OSError):
         return False
 
@@ -1067,11 +1076,14 @@ def _uninstall_harness(harness, entry, paths, manifest, force):
     return "removed" + (f" — Codex will re-ask approval for {later} later hook(s)" if later else "")
 
 
-def _legacy_claude_entry(paths, manifest):
-    """A manifest-shaped entry for exact v2.1.x Claude groups (no manifest yet), or None."""
-    config = paths["claude_settings"]
+def _adopt_unrecorded(harness, paths, manifest):
+    """A manifest-shaped entry for exact Samurai groups with no record (a v2.1.x Claude
+    install, or a lost install.json), or None. Lookalikes are never adopted."""
+    config = paths["claude_settings"] if harness == "claude" else codex_home() / "hooks.json"
+    if not config.exists() and not config.is_symlink():
+        return None
     hooks = _hooks_doc(config).get("hooks", {})
-    known = _known_definitions("claude", _owned_roots(paths, manifest))
+    known = _known_definitions(harness, _owned_roots(paths, manifest))
     groups = []
     for event, defs in known.items():
         hits = [i for i, g in enumerate(hooks.get(event, [])) if g in defs]
@@ -1104,15 +1116,23 @@ def cmd_uninstall(args):
                             results[harness] = "removed"
                             continue
                         entry = manifest["harnesses"][harness] = kept
-                    elif harness == "claude" and paths["claude_settings"].exists():
-                        entry = _legacy_claude_entry(paths, manifest)
-                        if entry is not None:
-                            manifest["harnesses"][harness] = entry
+                    elif harness == "claude":
+                        entry = _adopt_unrecorded(harness, paths, manifest)
+                    else:
+                        # A broken Codex file Samurai never recorded is the user's to fix,
+                        # not a reason to fail the uninstall.
+                        try:
+                            entry = _adopt_unrecorded(harness, paths, manifest)
+                        except (Refusal, ValueError, UnsafeFile, OSError) as e:
+                            results[harness] = f"not installed (could not inspect it: {e})"
+                            continue
+                    if entry is not None:
+                        manifest["harnesses"][harness] = entry
                     if entry is None:
                         results[harness] = "not installed"
                         continue
                     results[harness] = _uninstall_harness(harness, entry, paths, manifest, force)
-                except (Refusal, ValueError, UnsafeFile, ConcurrentModification, OSError) as e:
+                except (Refusal, ValueError, UnsafeFile, ConcurrentModification, OSError, KeyError) as e:
                     results[harness] = f"FAILED — {e}"
                     failed = True
                     print(f"  [!] {label}: deregistration failed; kept {paths['home']} for recovery.")
@@ -1145,18 +1165,23 @@ def cmd_uninstall(args):
                 except (ValueError, UnsafeFile, ConcurrentModification, OSError) as e:
                     print(f"  [!] Could not deregister hooks from {paths['samurai_settings']}: {e}")
                     failed = True
+
+            _print_results(results)
+            if failed:
+                print(f"⚠️  Uninstall incomplete: kept {paths['home']} (install record and backups) for recovery.")
+                return 1
+            # Still under the lock, so a waiting install cannot write into a directory
+            # that is being deleted.
+            return _remove_state(paths, args.keep_data)
     except (TimeoutError, ValueError, UnsafeFile, OSError) as e:
         print(f"❌ {e}")
         return 1
 
-    _print_results(results)
-    if failed:
-        print(f"⚠️  Uninstall incomplete: kept {paths['home']} (install record and backups) for recovery.")
-        return 1
 
-    # Data cleanup. license.json is a paid entitlement -- preserve a copy rather
-    # than silently destroying it with the state directory.
-    if not args.keep_data and paths["home"].exists():
+def _remove_state(paths, keep_data):
+    """Data cleanup. license.json is a paid entitlement -- preserve a copy rather
+    than silently destroying it with the state directory."""
+    if not keep_data and paths["home"].exists():
         license_file = paths["home"] / "license.json"
         if license_file.exists():
             rescued = Path.home() / "order-samurai-license-backup.json"
@@ -1169,7 +1194,7 @@ def cmd_uninstall(args):
                 return 1
         shutil.rmtree(paths["home"])
         print("  [✓] Removed ~/.samurai state (Zero-residue audit PASS).")
-    elif args.keep_data:
+    elif keep_data:
         print("  [i] Kept ~/.samurai data (--keep-data specified).")
 
     print("⚔️  Order Samurai uninstalled cleanly.")
