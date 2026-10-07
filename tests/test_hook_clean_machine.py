@@ -105,3 +105,40 @@ def test_doctor_passes_hook_execution_on_a_clean_install(tmp_path):
     assert "Hook Execution" in r.stdout, r.stdout
     line = next(l for l in r.stdout.splitlines() if "Hook Execution" in l)
     assert "PASS" in line, r.stdout
+
+
+SCRUBBER = ROOT / "bin" / "secret_scrubber_realtime.py"
+
+
+def _bare_env(home: Path) -> dict:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
+    env["HOME"] = str(home)
+    for key in ("SAMURAI_ROOT", "ORDER_SAMURAI_ROOT"):
+        env.pop(key, None)
+    return env
+
+
+def _run_bare(home: Path, payload: dict) -> subprocess.CompletedProcess:
+    # -S: no site-packages, so anything beyond the stdlib and the shipped tree fails.
+    return subprocess.run([sys.executable, "-S", str(SCRUBBER)], input=json.dumps(payload),
+                          capture_output=True, text=True, env=_bare_env(home),
+                          cwd=str(home), timeout=30)
+
+
+def test_scrubber_runs_on_a_bare_interpreter(tmp_path):
+    r = _run_bare(tmp_path, {"tool_name": "Bash", "tool_input": {"command": "cat .env"},
+                             "tool_response": {"stdout": f"KEY={FAKE_KEY}", "stderr": ""}})
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "anthropic_key" in r.stderr, r.stderr
+
+
+def test_scrubber_does_not_load_stdio_helper_from_claude_scripts(tmp_path):
+    """The hook ships to customers; a developer-only helper must not change how it runs."""
+    scripts = tmp_path / ".claude" / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "cli_io.py").write_text(
+        "def configure_utf8_stdio():\n    raise RuntimeError('developer helper loaded')\n")
+    r = _run_bare(tmp_path, {"tool_name": "Bash", "tool_input": {"command": "ls"},
+                             "tool_response": {"stdout": "README.md", "stderr": ""}})
+    assert r.returncode == 0, r.stderr[-400:]
+    assert "developer helper loaded" not in r.stderr, r.stderr[-400:]

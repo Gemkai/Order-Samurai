@@ -11,33 +11,21 @@ Pre-mode:  blocks Bash/WebFetch commands that carry db_connection_string or
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-CLAUDE_ROOT = Path.home() / ".claude"
-if str(CLAUDE_ROOT / "scripts") not in sys.path:
-    sys.path.insert(0, str(CLAUDE_ROOT / "scripts"))
-
 import argparse
 import json
 import os
 import re
 import shutil
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
-# ~/.claude/scripts exists only on a configured workstation. A customer install has
-# no cli_io, and a hard import here crashed this hook on every call.
-try:
-    from cli_io import configure_utf8_stdio
-except ImportError:
-    def configure_utf8_stdio() -> None:
-        for stream in (sys.stdin, sys.stdout, sys.stderr):
-            try:
-                stream.reconfigure(encoding="utf-8", errors="replace")
-            except (AttributeError, ValueError):
-                pass
-
-configure_utf8_stdio()
+# Stdlib only: this hook ships to customers, whose machines have no ~/.claude/scripts.
+for _stream in (sys.stdin, sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
 
 _REPO_ROOT     = Path(os.environ.get("SAMURAI_ROOT") or os.environ.get("ORDER_SAMURAI_ROOT") or Path(__file__).resolve().parent.parent)
 CLAUDE_ROOT    = Path.home() / ".claude"
