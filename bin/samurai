@@ -826,6 +826,34 @@ def cmd_install(args):
     return 1 if failed else 0
 
 
+def _dispatcher_covers_hooks(claude_settings: Path) -> bool:
+    """True when the Claude hook registry beside claude_settings registers both our hooks.
+
+    Parses the registry (no import, no execution) and requires each hook id as a dict key whose
+    value names a script and the event that hook needs; ids that appear only in comments or
+    strings do not count.
+    """
+    import ast
+
+    try:
+        registry = claude_settings.parent / "scripts" / "hook_registry.py"
+        tree = ast.parse(registry.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError, RecursionError, MemoryError):
+        return False
+    found = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values):
+            if not (isinstance(key, ast.Constant) and isinstance(value, ast.Dict)):
+                continue
+            fields = {k.value: v.value for k, v in zip(value.keys, value.values)
+                      if isinstance(k, ast.Constant) and isinstance(v, ast.Constant)}
+            if isinstance(fields.get("script"), str):
+                found.add((key.value, fields.get("event")))
+    return {("prompt-injection-guard", "PreToolUse"), ("secret-scrubber-realtime", "PostToolUse")} <= found
+
+
 def _install_locked(paths, explicit, source):
     manifest = _load_manifest(paths)
     for harness, entry in list(manifest["harnesses"].items()):
@@ -869,6 +897,12 @@ def _install_locked(paths, explicit, source):
         _register_hooks_in_file(paths["samurai_settings"], str(paths["root"] / "bin" / GUARD_SCRIPT),
                                 str(paths["root"] / "bin" / SCRUBBER_SCRIPT), paths["backups"])
     for harness in targets:
+        if harness == "claude" and _dispatcher_covers_hooks(paths["claude_settings"]):
+            # The Claude hook registry's dispatcher already runs the guard and the scrubber;
+            # a direct registration would run them twice (#42).
+            results[harness] = ("left unchanged — Claude hook registry found: its dispatcher already "
+                                "covers the guard and scrubber; leaving the Claude settings untouched")
+            continue
         try:
             results[harness] = _install_harness(harness, paths, manifest)
         except (Refusal, ValueError, UnsafeFile, ConcurrentModification, OSError, KeyError) as e:
@@ -1004,6 +1038,17 @@ def _codex_trust(entry):
     return "no trust record — approve in Codex /hooks"
 
 
+def _settings_run_samurai_scripts(settings):
+    """True when any hook in a Claude settings file runs a script named like ours.
+    Report-only: never used to decide what to modify or remove."""
+    try:
+        hooks = _hooks_doc(settings).get("hooks", {})
+    except (ValueError, UnsafeFile, OSError):
+        return False
+    names = {GUARD_SCRIPT, SCRUBBER_SCRIPT}
+    return any(Path(p).name in names for groups in hooks.values() for g in groups for p in _script_paths([g]))
+
+
 def _legacy_registration(paths, manifest):
     try:
         return _adopt_unrecorded("claude", paths, manifest) is not None
@@ -1056,9 +1101,19 @@ def cmd_doctor(args):
     recorded = manifest["harnesses"]
     detected = detect_harnesses()
     results, problems = {}, {}
+    # A Claude hook registry whose dispatcher runs both hooks also counts as registered (#42);
+    # a direct registration on top of it runs every hook twice.
+    dispatched = detected["claude"]["present"] and _dispatcher_covers_hooks(paths["claude_settings"])
     for harness in HARNESSES:
         label = HARNESS_LABELS[harness]
-        if harness in recorded:
+        if harness == "claude" and dispatched:
+            settings = paths["claude_settings"]
+            if "claude" in recorded or _settings_run_samurai_scripts(settings):
+                problems[harness] = (f"registered in {settings} AND by the Claude hook registry, so each hook "
+                                     f"runs twice -- remove the Order Samurai entries from {settings}")
+            detail = problems.get(harness) or "guard and scrubber run through the Claude hook registry dispatcher"
+            check(f"{label} Hook Registration", problems.get(harness) is None, detail)
+        elif harness in recorded:
             problems[harness] = _registration_problem(harness, recorded[harness], paths)
             config = recorded[harness]["config_path"]
             detail = problems[harness] or f"Order Samurai hooks registered in {config}"
@@ -1080,24 +1135,27 @@ def cmd_doctor(args):
             results[harness] = "skipped (not detected)"
 
     # Hook Execution: the PACKAGED scripts, run directly with this interpreter.
-    if recorded:
-        failures = _packaged_failures(paths, run_scrubber="claude" in recorded)
+    covered = set(recorded) | ({"claude"} if dispatched else set())
+    if covered:
+        failures = _packaged_failures(paths, run_scrubber="claude" in covered)
         flat = failures["guard"] + failures["scrubber"]
         detail = ("packaged script failed — not protecting: " + "; ".join(flat) if flat else
-                  f"packaged guard{' and scrubber' if 'claude' in recorded else ''} passed every probe "
+                  f"packaged guard{' and scrubber' if 'claude' in covered else ''} passed every probe "
                   f"(run directly with {sys.executable})")
         check("Hook Execution", not flat, detail)
     else:
         failures = {"guard": [], "scrubber": []}
         check("Hook Execution", False, "no harness registered -- run 'samurai install'")
 
-    for harness in recorded:
+    for harness in sorted(covered, key=HARNESSES.index):
         if problems.get(harness):
             results[harness] = f"FAILED — {problems[harness]}"
         elif failures["guard"] or (harness == "claude" and failures["scrubber"]):
             results[harness] = "FAILED — packaged hook script failed; not protecting"
         elif harness == "codex":
             results[harness] = f"{CODEX_NOT_VERIFIED} — {_codex_trust(recorded[harness])}"
+        elif harness not in recorded:
+            results[harness] = "registered through the Claude hook registry; packaged guard and scrubber working"
         else:
             results[harness] = "registered; packaged guard and scrubber working"
 
