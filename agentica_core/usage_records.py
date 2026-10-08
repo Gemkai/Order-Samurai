@@ -328,9 +328,13 @@ def window(records, start=None, end=None):
         for f in FIELDS:
             if any(f in values for values in models.values()):
                 r[f] = sum(values.get(f, 0) for values in models.values())
+        usage_events = [e for e in events if any(f in e for f in FIELDS[:4])]
+        r['usage_known'] = bool(usage_events) and all(e.get('usage_known') is True for e in usage_events)
         r['_activity'] = [e for e in events if e.get('tool_name')]
         r['context_max'] = max((number(e.get('context_max')) for e in events), default=0)
         for model, values in models.items():
+            model_events = [e for e in usage_events if e.get('model') == model]
+            values['usage_known'] = bool(model_events) and all(e.get('usage_known') is True for e in model_events)
             values['context_max'] = max((number(e.get('context_max')) for e in events if e.get('model') == model), default=0)
         r['timestamp'] = max(e['timestamp'] for e in events)
         r['_model_usage'] = [dict(values, model=m, model_tier=model_tier(m)) for m, values in models.items()
@@ -357,6 +361,7 @@ def for_tier(records, tier):
             continue
         record = {k: v for k, v in raw.items() if k not in FIELDS}
         record.update(model_tier=tier, _model_usage=parts,
+                      usage_known=all(p.get('usage_known') is True for p in parts),
                       context_max=max((number(p.get("context_max")) for p in parts), default=0))
         for field in FIELDS:
             if any(field in p for p in parts):
