@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The web installer (`install.sh`) now re-downloads the zip and its `.sha256` up to three times when they do not match, bypassing the CDN cache, so an install right after a release no longer fails because the cache paired an old zip with a new checksum. A zip that never matches is still refused with nothing extracted. `OS_CORE_BASE_URL` overrides the download location (used by tests).
 - Cursor is no longer listed as an agent Order Samurai cannot protect.
 - `samurai install` now exits 1 when it finds no supported harness (none of Claude Code, Codex or Cursor) and so installs nothing. It used to exit 0, so the `curl | bash` installers reported success on a machine with no protection; they now stop at that message, which names the command to re-run once a harness is installed.
 - Install records exactly what it wrote in `~/.samurai/install.json` and treats only an exact match as its own. A hook that merely mentions an Order Samurai script is never modified or removed.
