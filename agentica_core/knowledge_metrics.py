@@ -76,10 +76,10 @@ def provider_rate(records: list[dict], *, dedup: bool = False, detail: str = "")
     valid, sessions = [], {}
     for record in records:
         prompt, cached = record.get("tokens_prompt"), record.get("cache_read_tokens")
-        if (record.get("platform") not in PLATFORMS or record.get("usage_known") is False
+        if (record.get("platform") not in PLATFORMS or record.get("usage_known") is not True
                 or not _number(prompt) or not _number(cached) or cached > prompt):
             continue
-        creation = record.get("cache_creation_tokens", 0)
+        creation = record.get("cache_creation_tokens")
         if not _number(creation) or cached + creation > prompt:
             continue
         sid = record.get("session_id")
