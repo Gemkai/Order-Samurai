@@ -13,10 +13,16 @@ every Governance consumer routes local-pinned, where output scrubbing adds
 nothing. Do not reintroduce silent-fallback safety imports here.
 """
 import json
+import math
 import os
 import random
 import re
 import sys
+import shutil
+import signal
+import subprocess
+import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -203,6 +209,12 @@ def _dedupe_chain(models: List[str]) -> List[str]:
     return ordered
 
 
+class StrictCallError(RuntimeError):
+    def __init__(self, kind):
+        self.kind = kind
+        super().__init__(kind)
+
+
 class LLMGateway:
     def __init__(self, env_path: Optional[str] = None):
         if env_path and os.path.exists(env_path):
@@ -236,6 +248,123 @@ class LLMGateway:
         self.local_enabled = (
             os.getenv("LOCAL_SAFETY_NET_ENABLED", "true").lower() == "true"
         )
+
+    def generate_strict(self, *, prompt, system, model="claude-sonnet-4-6",
+                        timeout_s=45, max_output_chars=4000, json_schema=None):
+        """One isolated Claude login call, with no fallback or prompt telemetry."""
+        if model not in ("claude-sonnet-4-6", "claude-sonnet-5-5"):
+            raise StrictCallError("model_not_allowed")
+        if (not isinstance(prompt, str) or len(prompt.encode()) > 24000
+                or not isinstance(system, str) or len(system) > 8000
+                or not isinstance(timeout_s, (int, float)) or not math.isfinite(timeout_s)
+                or not 0 < timeout_s <= 45 or not 0 < max_output_chars <= 4000):
+            raise StrictCallError("invalid_request")
+        schema_text = None
+        if json_schema is not None:
+            try:
+                if not isinstance(json_schema, dict):
+                    raise ValueError("invalid schema")
+                schema_text = json.dumps(json_schema, separators=(",", ":"), allow_nan=False)
+                if len(schema_text) > 8000:
+                    raise ValueError("schema too large")
+            except (ValueError, TypeError):
+                raise StrictCallError("invalid_request") from None
+        executable = shutil.which("claude")
+        if not executable:
+            candidate = Path.home() / ".local/bin/claude"
+            executable = str(candidate) if candidate.is_file() else None
+        if not executable:
+            raise StrictCallError("unavailable")
+        env = {key: os.environ[key] for key in
+               ("HOME", "PATH", "TMPDIR", "USER", "LOGNAME", "LANG", "LC_ALL", "TERM")
+               if key in os.environ}
+        argv = [executable, "-p", "--model", model, "--effort", "low", "--output-format", "json",
+                "--safe-mode", "--tools", "", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+                "--permission-mode", "plan", "--no-session-persistence", "--disable-slash-commands",
+                "--system-prompt", system]
+        if schema_text is not None:
+            argv.extend(["--json-schema", schema_text])
+        started = time.monotonic()
+        output, failures = bytearray(), []
+        with tempfile.TemporaryDirectory(prefix="fleet-claude-") as cwd:
+            try:
+                proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                        stderr=subprocess.DEVNULL, cwd=cwd, env=env, start_new_session=True)
+            except OSError:
+                raise StrictCallError("unavailable") from None
+
+            def stop():
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+            def read():
+                try:
+                    while True:
+                        chunk = proc.stdout.read(4096)
+                        if not chunk:
+                            break
+                        if len(output) + len(chunk) > 65536:
+                            failures.append("output_limit")
+                            stop()
+                            break
+                        output.extend(chunk)
+                except (OSError, ValueError):
+                    failures.append("unavailable")
+
+            def write():
+                try:
+                    proc.stdin.write(prompt.encode())
+                    proc.stdin.close()
+                except (OSError, ValueError):
+                    failures.append("unavailable")
+
+            reader = threading.Thread(target=read, daemon=True)
+            writer = threading.Thread(target=write, daemon=True)
+            reader.start()
+            writer.start()
+            try:
+                proc.wait(timeout=max(0.001, timeout_s - (time.monotonic() - started)))
+                for thread in (reader, writer):
+                    thread.join(max(0, timeout_s - (time.monotonic() - started)))
+                if reader.is_alive() or writer.is_alive():
+                    raise subprocess.TimeoutExpired(argv, timeout_s)
+            except subprocess.TimeoutExpired:
+                stop()
+                proc.wait(timeout=2)
+                reader.join(1)
+                writer.join(1)
+                raise StrictCallError("timeout") from None
+            finally:
+                if not reader.is_alive():
+                    proc.stdout.close()
+            if failures or proc.returncode != 0:
+                raise StrictCallError(failures[0] if failures else "unavailable")
+        try:
+            doc = json.loads(output)
+            text = doc.get("result")
+            structured = None
+            if schema_text is not None:
+                structured = doc.get("structured_output")
+                if not isinstance(structured, dict):
+                    raise ValueError("missing structured result")
+                # Ignore CLI wrapper prose; the caller validates the domain fields.
+                text = json.dumps(structured, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+            if (doc.get("is_error") is not False or doc.get("subtype") != "success"
+                    or set(doc.get("modelUsage", {})) != {model}
+                    or not isinstance(text, str) or not text.strip() or len(text) > max_output_chars):
+                raise ValueError("invalid result")
+            cost = float(doc.get("total_cost_usd", 0))
+            if not math.isfinite(cost) or cost < 0:
+                raise ValueError("invalid cost")
+        except (ValueError, TypeError, AttributeError):
+            raise StrictCallError("invalid_reply") from None
+        reply = {"text": text.strip(), "model": model, "cost_usd": cost,
+                 "latency_ms": round((time.monotonic() - started) * 1000)}
+        if structured is not None:
+            reply["structured"] = structured
+        return reply
 
     def generate_text(
         self,
@@ -814,20 +943,22 @@ class LLMGateway:
             messages.append({"role": "system", "content": system_instruction})
         messages.append({"role": "user", "content": prompt})
 
+        request_body = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "top_p": 1,
+            "max_tokens": int(kwargs.get("max_tokens") or 4096),
+        }
+        if kwargs.get("response_schema"):
+            request_body["response_format"] = {"type": "json_object"}
+
         for attempt in range(MAX_RETRIES):
             try:
                 response = requests.post(
                     url="https://openrouter.ai/api/v1/chat/completions",
                     headers=headers,
-                    data=json.dumps(
-                        {
-                            "model": model,
-                            "messages": messages,
-                            "temperature": temperature,
-                            "top_p": 1,
-                            "max_tokens": int(kwargs.get("max_tokens") or 4096),
-                        }
-                    ),
+                    data=json.dumps(request_body),
                     timeout=60,
                 )
                 if response.status_code != 200:
@@ -1066,6 +1197,8 @@ def call_routed_llm(
     temperature: float = 0.0,
     local_only: bool = False,
     brain: bool = False,
+    num_ctx: Optional[int] = None,
+    force_json: bool = False,
     project: str = "unknown",
 ) -> Optional[str]:
     """Stable text-router contract for scouts and stateless model callers.
@@ -1117,6 +1250,15 @@ def call_routed_llm(
         if routed.openrouter_key:
             chain.append(ROUTED_MODELS["openrouter"][task])
 
+    extra: dict = {}
+    if num_ctx:
+        extra["num_ctx"] = int(num_ctx)
+    if force_json:
+        # piggybacks _call_local's response_schema truthiness check, which sets
+        # Ollama's format:"json" (grammar-constrained output); the schema body
+        # itself is never sent to Ollama
+        extra["response_schema"] = {"type": "array"}
+
     try:
         # Telemetry emission now lives inside generate_text() itself (2026-08-19),
         # so it isn't duplicated here — just pass task_name/project through.
@@ -1127,6 +1269,7 @@ def call_routed_llm(
             model_chain=chain,
             local_only=local_only,
             max_tokens=max_tokens,
+            **extra,
             return_metadata=True,
             task_name=task,
             project=project,
