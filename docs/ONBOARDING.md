@@ -83,9 +83,16 @@ one result line per harness:
   A `~/.cursor` folder alone does not count as an install and is skipped. Restart Cursor
   (or reload the window) so it re-reads the file. Your other Cursor hooks keep their
   content and order.
+- **Gemini CLI** (found when `gemini` is on your PATH): the prompt-injection guard is added
+  to the `hooks` section of `~/.gemini/settings.json` as a `BeforeTool` hook. That file
+  also holds your auth, theme, MCP servers and every other Gemini setting; Order Samurai
+  changes only its own hook entry, keeps the file's permissions and backs it up first. A
+  `~/.gemini` folder alone does not count as an install and is skipped (other Google tools
+  such as Antigravity also write there). Restart Gemini CLI so it re-reads the file. Your
+  other Gemini hooks keep their content and order.
 
 To choose harnesses yourself, run `samurai install --harness claude`, `--harness codex`,
-`--harness cursor` or a comma list such as `--harness claude,cursor` (or set `SAMURAI_HARNESS`). The choice is remembered on later
+`--harness cursor`, `--harness gemini` or a comma list such as `--harness claude,gemini` (or set `SAMURAI_HARNESS`). The choice is remembered on later
 installs. Existing configs are backed up to `~/.samurai/backups/` before any change, and
 `~/.samurai/install.json` records exactly what was written so uninstall removes only that.
 
@@ -121,6 +128,28 @@ Line Tools. Because the entries are `failClosed`, a `python3` Cursor cannot find
 shell, MCP and `Write` call. Run a harmless command in Cursor after installing and confirm it
 still works, then confirm a command containing a known injection phrase is refused.
 
+**What the Gemini CLI guard covers.** It scans the arguments of the shell tool
+(`run_shell_command`), the file-writing tools (`write_file`, `replace`) and every MCP tool
+(`mcp_<server>_<tool>`) that Gemini sends to `BeforeTool` hooks, including JSON carried
+inside an argument string. It does **not** cover `read_file` (reading Order Samurai's own
+pattern files must keep working), `web_fetch`, web search, other built-in tools, hooks in
+other settings layers (project `.gemini/settings.json`, system settings, extensions), or
+anything while hooks are switched off (`hooksConfig.enabled: false`, or the hook listed in
+`hooksConfig.disabled`; doctor reports both). A blocked call exits with code 2 and a
+`{"decision": "deny", ...}` document, and a guard failure also exits 2: Gemini lets a call
+through on any other non-zero exit code (for example a `python3` it cannot find, exit 127).
+Gemini's hook `timeout` is in milliseconds (Order Samurai writes `10000`). Gemini documents
+a fingerprint-and-warn step for *project* hooks only; it documents no approval step for
+user-level hooks like this one, but that has not been tested on a live install. A
+`settings.json` that is not strict JSON (for example one with comments) is refused untouched,
+and so is an install path containing `$`, which Gemini expands inside that file. Order
+Samurai writes no secret-scrubber hook for Gemini.
+
+**Before relying on Gemini CLI protection.** The registered command is `python3 '<path>'`,
+resolved from the environment Gemini CLI runs in. Start Gemini, run a harmless shell command
+and confirm it still works, then confirm a command containing a known injection phrase is
+refused with Order Samurai's message.
+
 ### 2. Verify
 
 ```bash
@@ -137,6 +166,10 @@ Codex will run the hook.
 For Cursor, doctor reports "guard installed and working when run directly; Cursor enforcement
 not verified by doctor": it checks that the entries are present and unmodified and that the
 guard answers Cursor-shaped payloads, but cannot prove Cursor runs the hook.
+For Gemini CLI, doctor reports "guard installed and working when run directly; Gemini CLI
+enforcement not verified by doctor": it checks the entry, that `hooksConfig` in the file does
+not switch it off, and that the guard answers Gemini-shaped payloads with valid JSON, but it
+cannot prove Gemini CLI runs the hook.
 
 ### 3. Launch the dashboard (optional)
 

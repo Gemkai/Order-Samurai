@@ -1,0 +1,10 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "/tmp/gemini-fixture/chats/session-fixture.json",
+  "cwd": "/tmp/gemini-fixture-project",
+  "hook_event_name": "BeforeTool",
+  "timestamp": "2026-10-07T12:00:00.000Z",
+  "tool_name": "mcp_docs_search_docs",
+  "tool_input": {"query": "how do hooks work"},
+  "mcp_context": {"server_name": "docs", "tool_name": "search_docs"}
+}
