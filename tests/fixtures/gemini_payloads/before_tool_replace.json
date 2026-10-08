@@ -1,0 +1,14 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "/tmp/gemini-fixture/chats/session-fixture.json",
+  "cwd": "/tmp/gemini-fixture-project",
+  "hook_event_name": "BeforeTool",
+  "timestamp": "2026-10-07T12:00:00.000Z",
+  "tool_name": "replace",
+  "tool_input": {
+    "file_path": "/tmp/gemini-fixture-project/notes.txt",
+    "old_string": "draft",
+    "new_string": "final",
+    "instruction": "Mark the notes as final"
+  }
+}

@@ -215,13 +215,16 @@ def get_paths():
 #
 # Claude Code and Codex both load PreToolUse command hooks from a JSON file with
 # the same shape. Cursor's ~/.cursor/hooks.json differs: "version": 1 and flat hook
-# entries per event. Detection only chooses install targets; doctor and uninstall act
+# entries per event. Gemini CLI uses the same matcher groups under a "hooks" key of its
+# shared ~/.gemini/settings.json, with its own event name, tool names and a timeout in
+# milliseconds. Detection only chooses install targets; doctor and uninstall act
 # on what ~/.samurai/install.json recorded, so a harness removed later is still
 # cleaned up and a past --harness choice is remembered.
 
-HARNESSES = ("claude", "codex", "cursor")
-HARNESS_LABELS = {"claude": "Claude Code", "codex": "Codex", "cursor": "Cursor"}
-CONFIG_BACKUP_LABELS = {"claude": "claude-settings", "codex": "codex-hooks", "cursor": "cursor-hooks"}
+HARNESSES = ("claude", "codex", "cursor", "gemini")
+HARNESS_LABELS = {"claude": "Claude Code", "codex": "Codex", "cursor": "Cursor", "gemini": "Gemini CLI"}
+CONFIG_BACKUP_LABELS = {"claude": "claude-settings", "codex": "codex-hooks", "cursor": "cursor-hooks",
+                        "gemini": "gemini-settings"}
 CODEX_APP_BIN_DEFAULT = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"
 # Codex matches tool names with a regex; Bash and apply_patch carry their text in
 # tool_input.command, which is what the guard scans.
@@ -230,6 +233,20 @@ CODEX_GUARD_MATCHER = "^(Bash|apply_patch)$"
 # failClosed makes a crashed or timed-out guard block: Cursor lets the action through
 # on any exit code other than 0 or 2 otherwise.
 CURSOR_GUARD_EVENTS = (("beforeShellExecution", None), ("beforeMCPExecution", None), ("preToolUse", "Write"))
+# Gemini CLI's blocking pre-tool event, with a regex over its tool names: the shell tool,
+# the two file-writing tools, every MCP tool (mcp_<server>_<tool>) and every user-configured
+# discovered tool (discovered_tool_<name>, which runs tools.callCommand with model-chosen
+# arguments). read_file is left out on purpose: it is not a write path, and reading
+# Samurai's own pattern files must not be blocked. Gemini's "timeout" is in milliseconds.
+# The --gemini flag makes the guard fail closed on unreadable input: Gemini proceeds when
+# a hook prints nothing and exits 0.
+GEMINI_GUARD_EVENT = "BeforeTool"
+GEMINI_GUARD_MATCHER = "^(run_shell_command|write_file|replace|mcp_.+|discovered_tool_.+)$"
+GEMINI_GUARD_FLAG = "--gemini"
+# Older Gemini releases keep these switches inside "hooks" itself, beside the event lists.
+GEMINI_LEGACY_HOOK_SWITCHES = frozenset({"enabled", "disabled", "notifications"})
+GEMINI_GUARD_NAME = "order-samurai-guard"
+GEMINI_GUARD_TIMEOUT_MS = GUARD_TIMEOUT_S * 1000
 GUARD_SCRIPT = "prompt_injection_guard.py"
 SCRUBBER_SCRIPT = "secret_scrubber_realtime.py"
 # What v2.1.0-v2.1.3 wrote (Claude only, no manifest): adopted only on an exact match.
@@ -272,13 +289,17 @@ def cursor_home() -> Path:
     return Path.home() / ".cursor"
 
 
+def gemini_home() -> Path:
+    return Path.home() / ".gemini"
+
+
 def _applications_dir() -> Path:
     return Path(os.environ.get("SAMURAI_APPLICATIONS_DIR") or "/Applications")
 
 
 def _config_path(harness, paths) -> Path:
     return {"claude": paths["claude_settings"], "codex": codex_home() / "hooks.json",
-            "cursor": cursor_home() / "hooks.json"}[harness]
+            "cursor": cursor_home() / "hooks.json", "gemini": gemini_home() / "settings.json"}[harness]
 
 
 def _codex_app_bin() -> Path:
@@ -299,9 +320,10 @@ def _on_path(name):
 
 def detect_harnesses() -> dict:
     """Runtime evidence per harness. Reads ~/.claude, PATH, the ChatGPT app's bundled
-    codex, the Cursor app, and the Codex and Cursor homes, nothing else. A Codex or
-    Cursor config directory alone is not a runtime (it outlives an uninstalled app
-    and other tools create it): it is reported as config_only and skipped."""
+    codex, the Cursor app, and the Codex, Cursor and Gemini homes, nothing else. A Codex,
+    Cursor or Gemini config directory alone is not a runtime (it outlives an uninstalled
+    app, and other tools create it: Antigravity keeps its config under ~/.gemini): it is
+    reported as config_only and skipped."""
     claude_dir = Path.home() / ".claude"
     found = None if claude_dir.is_dir() else _on_path("claude")
     claude = {"present": claude_dir.is_dir() or bool(found),
@@ -324,14 +346,18 @@ def detect_harnesses() -> dict:
     else:
         cursor = {"present": False, "evidence": "no cursor or cursor-agent on PATH, no Cursor app",
                   "config_only": cursor_home().is_dir()}
-    return {"claude": claude, "codex": codex, "cursor": cursor}
+    gemini_bin = _on_path("gemini")
+    if gemini_bin:
+        gemini = {"present": True, "evidence": f"gemini on PATH ({gemini_bin})", "config_only": False}
+    else:
+        gemini = {"present": False, "evidence": "no gemini on PATH", "config_only": gemini_home().is_dir()}
+    return {"claude": claude, "codex": codex, "cursor": cursor, "gemini": gemini}
 
 
 # Agents Order Samurai cannot protect yet: (label, commands on PATH, dirs under HOME,
 # macOS app bundles). Continue is listed although it reads ~/.claude/settings.json: it never
 # fires PreToolUse/PostToolUse (continuedev/continue#11029 wired no tool-execution call).
 UNPROTECTED_AGENTS = (
-    ("Gemini CLI", ("gemini",), (".gemini",), ()),
     ("Windsurf", ("windsurf",), (".codeium/windsurf",), ("Windsurf.app",)),
     ("Goose", ("goose",), (".config/goose",), ()),
     ("Cline", ("cline",), (".cline",), ()),
@@ -355,7 +381,7 @@ def _print_unprotected():
     found = detect_unprotected_agents()
     if found:
         print(f"⚠️  Also found, not protected by Order Samurai: {', '.join(found)}. "
-              "It protects Claude Code, Codex and Cursor only.")
+              "It protects Claude Code, Codex, Cursor and Gemini CLI only.")
 
 
 def _parse_harnesses(raw, source):
@@ -395,12 +421,16 @@ def _group(matcher, command, timeout):
 
 
 def hook_definitions(harness, root):
-    """(event, group) pairs Samurai writes for a harness. Codex and Cursor get the guard
-    only: the secret scrubber is not mirrored to them. Cursor entries are flat."""
+    """(event, group) pairs Samurai writes for a harness. Codex, Cursor and Gemini get the
+    guard only: the secret scrubber is not mirrored to them. Cursor entries are flat."""
     if harness == "cursor":
         entry = {"command": _command(root, GUARD_SCRIPT), "timeout": GUARD_TIMEOUT_S, "failClosed": True}
         return [(event, dict(entry, matcher=matcher) if matcher else dict(entry))
                 for event, matcher in CURSOR_GUARD_EVENTS]
+    if harness == "gemini":
+        handler = {"name": GEMINI_GUARD_NAME, "type": "command", "timeout": GEMINI_GUARD_TIMEOUT_MS,
+                   "command": f"{_command(root, GUARD_SCRIPT)} {GEMINI_GUARD_FLAG}"}
+        return [(GEMINI_GUARD_EVENT, {"matcher": GEMINI_GUARD_MATCHER, "hooks": [handler]})]
     guard = _group(GUARD_MATCHER if harness == "claude" else CODEX_GUARD_MATCHER,
                    _command(root, GUARD_SCRIPT), GUARD_TIMEOUT_S)
     if harness == "codex":
@@ -490,7 +520,7 @@ def _update_json_file(path, mutate, backup=None):
         fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
         try:
             with os.fdopen(fd, "wb") as fh:
-                fh.write((json.dumps(new, indent=2) + "\n").encode("utf-8"))
+                fh.write((json.dumps(new, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
                 fh.flush()
                 os.fsync(fh.fileno())
             os.chmod(tmp, mode if mode is not None else 0o600)
@@ -552,6 +582,11 @@ def _save_manifest(paths, manifest):
     _update_json_file(_manifest_path(paths), lambda _old: copy.deepcopy(manifest))
 
 
+def _hook_events(hooks):
+    """(event, groups) pairs of a "hooks" object, without Gemini's legacy switches."""
+    return [(event, groups) for event, groups in hooks.items() if event not in GEMINI_LEGACY_HOOK_SWITCHES]
+
+
 def _hooks_doc(path):
     """Parsed hook config ({} when absent), validated before anything mutates it."""
     raw, _ = _read_regular(path)
@@ -566,7 +601,7 @@ def _validate_hooks_doc(data, path):
     hooks = data.get("hooks", {})
     if not isinstance(hooks, dict):
         raise ValueError(f"{path}: 'hooks' is not an object")
-    for event, groups in hooks.items():
+    for event, groups in _hook_events(hooks):
         if not isinstance(groups, list) or not all(isinstance(g, dict) for g in groups):
             raise ValueError(f"{path}: 'hooks.{event}' is not an array of hook groups")
 
@@ -661,6 +696,10 @@ def _install_harness(harness, paths, manifest):
     """Install or update one harness; returns its result text. Raises on refusal."""
     entry = manifest["harnesses"].get(harness)
     config = Path(entry["config_path"]) if entry else _config_path(harness, paths)
+    if harness == "gemini" and "$" in str(paths["root"]):
+        # Gemini expands $VAR in the string values of settings.json, so it would run a different path.
+        raise Refusal(f"refusing: {paths['root']} contains '$', which Gemini CLI expands inside settings.json; "
+                      f"install Order Samurai under a path without it")
     data = _hooks_doc(config)
     plan = _plan_install(harness, data, entry, paths, manifest, config)
     # Cursor files carry "version": 1; an otherwise unchanged file without it is rewritten.
@@ -883,7 +922,7 @@ def cmd_install(args):
     elif not targets:
         # Nothing is protected, so this is a failure: the installers stop here instead of
         # reporting success.
-        print("⚠️  No supported harness found (Claude Code, Codex or Cursor), so nothing was installed. "
+        print("⚠️  No supported harness found (Claude Code, Codex, Cursor or Gemini CLI), so nothing was installed. "
               f"Install one, then re-run: {_self_cmd()} install")
     else:
         print("⚔️  Installation complete! Run 'samurai doctor' to verify system health.")
@@ -984,7 +1023,7 @@ def _install_locked(paths, explicit, source):
 # --- Doctor ---------------------------------------------------------------------
 
 def _probe_payloads():
-    """Benign and blocking probes in Claude, Codex and Cursor payload shapes. The blocking
+    """Benign and blocking probes in Claude, Codex, Cursor and Gemini payload shapes. The blocking
     text is assembled at runtime so this file never trips a host's own guard."""
     attack = "jail" + "break"
     codex = {"hook_event_name": "PreToolUse", "cwd": "/tmp", "session_id": "samurai-doctor",
@@ -992,6 +1031,8 @@ def _probe_payloads():
              "permission_mode": "default", "transcript_path": None}
     cursor = {"conversation_id": "samurai-doctor", "generation_id": "samurai-doctor", "model": "probe",
               "hook_event_name": "beforeShellExecution", "workspace_roots": ["/tmp"], "cwd": "/tmp"}
+    gemini = {"session_id": "samurai-doctor", "transcript_path": "/tmp/samurai-doctor.json", "cwd": "/tmp",
+              "hook_event_name": "BeforeTool", "timestamp": "2026-01-01T00:00:00.000Z"}
     patch = "*** Begin Patch\n*** Add File: probe.txt\n+" + attack + "\n*** End Patch\n"
     fake_key = "sk-ant-" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4"
     guard = [
@@ -1000,8 +1041,14 @@ def _probe_payloads():
         ("Codex benign", dict(codex, tool_name="Bash", tool_input={"command": "true"}), 0, None),
         ("Codex blocking", dict(codex, tool_name="apply_patch", tool_input={"command": patch}), 2, None),
         # Cursor reads stdout as JSON (invalid JSON blocks) and fails open on other exit codes.
-        ("Cursor benign", dict(cursor, command="true"), 0, "allow"),
-        ("Cursor blocking", dict(cursor, command="echo " + attack), 2, "deny"),
+        ("Cursor benign", dict(cursor, command="true"), 0, {"permission": "allow"}),
+        ("Cursor blocking", dict(cursor, command="echo " + attack), 2, {"permission": "deny"}),
+        # Gemini reads stdout as JSON on exit 0 and fails open on exit codes other than 0 and 2.
+        ("Gemini benign", dict(gemini, tool_name="run_shell_command", tool_input={"command": "true"}), 0,
+         {"decision": None}),
+        ("Gemini blocking", dict(gemini, tool_name="write_file",
+                                 tool_input={"file_path": "probe.txt", "content": attack}), 2,
+         {"decision": "deny"}),
     ]
     scrubber = [
         ("benign", {"tool_name": "Bash", "tool_input": {"command": "true"},
@@ -1038,15 +1085,16 @@ def _packaged_failures(paths, run_scrubber):
             if core.is_dir():
                 (Path(scratch) / "agentica_core").symlink_to(core.resolve())
                 break
-        for label, payload, expected, permission in guard_probes:
+        for label, payload, expected, verdict in guard_probes:
             r, err = _run_packaged(bin_dir / GUARD_SCRIPT, payload, scratch)
-            if not err and r.returncode == expected and permission:
+            if not err and r.returncode == expected and verdict:
                 try:
-                    said = json.loads(r.stdout).get("permission")
+                    document = json.loads(r.stdout)
+                    said = all(document.get(key) == value for key, value in verdict.items())
                 except (ValueError, AttributeError):
-                    said = None
-                if said != permission:
-                    err = f"printed {r.stdout.strip()[:60]!r} on stdout, expected permission {permission!r} as JSON"
+                    said = False
+                if not said:
+                    err = f"printed {r.stdout.strip()[:60]!r} on stdout, expected JSON with {verdict}"
             if err or r.returncode != expected:
                 why = err or f"exited {r.returncode}, expected {expected}"
                 failures["guard"].append(f"{GUARD_SCRIPT} {label} probe {why}")
@@ -1072,9 +1120,10 @@ def _registration_problem(harness, entry, paths):
     if entry.get("state") != "installed":
         return f"interrupted {entry.get('state')} step recorded; run 'samurai install'"
     try:
-        hooks = _hooks_doc(config).get("hooks", {})
+        doc = _hooks_doc(config)
     except (OSError, ValueError, UnsafeFile) as e:
         return f"cannot read {config}: {e}"
+    hooks = doc.get("hooks", {})
     current = dict(hook_definitions(harness, paths["root"]))
     for record in entry.get("groups", []):
         groups = hooks.get(record["event"], [])
@@ -1092,7 +1141,30 @@ def _registration_problem(harness, entry, paths):
         if current.get(record["event"]) != record["definition"]:
             return (f"registration mismatch: {record['event']} hook targets another install path; "
                     f"run 'samurai install'")
+    if harness == "gemini":
+        switches = doc.get("hooksConfig")
+        if isinstance(switches, dict):
+            if switches.get("enabled") is False:
+                return f"hooks are switched off in {config} (hooksConfig.enabled is false); the guard never runs"
+            if isinstance(switches.get("disabled"), list) and GEMINI_GUARD_NAME in switches["disabled"]:
+                return f"the guard is listed in hooksConfig.disabled in {config}; it never runs"
     return None
+
+
+def _gemini_trust_note(entry):
+    """Gemini CLI loads no hooks at all in a folder it does not trust, and folder trust is on
+    unless the user's settings.json turns it off. A note, never a failure: doctor reads only
+    that one file, so project and system settings are not covered by it."""
+    try:
+        security = _hooks_doc(Path(entry["config_path"])).get("security")
+    except (OSError, ValueError, UnsafeFile):
+        return ""
+    trust = security.get("folderTrust") if isinstance(security, dict) else None
+    if isinstance(trust, dict) and trust.get("enabled") is False:
+        return ""
+    return (" — note: Gemini CLI skips all hooks, this one included, in any folder it does not trust "
+            "(security.folderTrust is on unless your own settings.json turns it off); this check reads "
+            "only your user settings.json, not project or system settings")
 
 
 def _codex_trust(entry):
@@ -1242,6 +1314,8 @@ def cmd_doctor(args):
             results[harness] = "FAILED — packaged hook script failed; not protecting"
         elif harness == "codex":
             results[harness] = f"{NOT_VERIFIED.format(HARNESS_LABELS[harness])} — {_codex_trust(recorded[harness])}"
+        elif harness == "gemini":
+            results[harness] = NOT_VERIFIED.format(HARNESS_LABELS[harness]) + _gemini_trust_note(recorded[harness])
         elif harness == "cursor":
             results[harness] = NOT_VERIFIED.format(HARNESS_LABELS[harness])
         elif harness not in recorded:
@@ -1275,6 +1349,8 @@ def _script_paths(definitions):
                 parts = shlex.split(str(hook.get("command", "")))
             except ValueError:
                 continue
+            while len(parts) > 1 and parts[-1].startswith("--"):  # e.g. the guard's --gemini
+                parts.pop()
             if parts:
                 found.add(parts[-1])
     return found
@@ -1323,7 +1399,7 @@ def _uninstall_harness(harness, entry, paths, manifest, force):
     # it pointing at scripts that are gone, and a missing script blocks every tool call.
     scripts = _script_paths([d for r in entry.get("groups", []) for d in (r["definition"], *r.get("previous", []))])
     remaining = mutate(copy.deepcopy(_hooks_doc(config))) if remove else _hooks_doc(config)
-    for event, groups in remaining.get("hooks", {}).items():
+    for event, groups in _hook_events(remaining.get("hooks", {})):
         if any(_runs_any(g, scripts) for g in groups):
             raise Refusal(f"refusing: an edited copy of the Order Samurai {event} hook in {config} still "
                           f"runs a Samurai script; remove it by hand, then re-run")
@@ -1476,7 +1552,7 @@ def main():
     inst_parser.add_argument("--no-activate", action="store_true",
                              help="Do not offer to activate a Pro license key")
     inst_parser.add_argument("--harness", default=None,
-                             help="Install only for these harnesses: claude, codex, cursor or a comma list such as claude,codex "
+                             help="Install only for these harnesses: claude, codex, cursor, gemini or a comma list such as claude,codex "
                                   "(default: every detected harness; also SAMURAI_HARNESS)")
 
     # doctor
