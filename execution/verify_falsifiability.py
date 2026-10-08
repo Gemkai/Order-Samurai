@@ -258,8 +258,15 @@ def run_falsifiability(checks: dict | None = None, fixtures_root: Path | None = 
         if not bad_dir.is_dir() or not clean_dir.is_dir():
             results[name] = {"status": "untested", "detail": "no fixture pair"}
             continue
-        bad_ok, bad_detail = fn(bad_dir)
-        clean_ok, clean_detail = fn(clean_dir)
+        # A check that raises must not take the whole harness down with it: the
+        # other registered checks still get reported, and this one becomes its own
+        # ERROR entry rather than a crash with no Summary line at all.
+        try:
+            bad_ok, bad_detail = fn(bad_dir)
+            clean_ok, clean_detail = fn(clean_dir)
+        except Exception as exc:  # noqa: BLE001 - a raising check is a finding, not a stop
+            results[name] = {"status": "error", "detail": f"{type(exc).__name__}: {exc}"}
+            continue
         # The bad fixture must FAIL the check (ok is False); the clean fixture must PASS (ok is True).
         falsifiable = (bad_ok is False) and (clean_ok is True)
         results[name] = {
@@ -312,7 +319,14 @@ def main() -> int:
     # results, so callers checking the exit code alone -- e.g. reconcile_state.py's
     # stage_3 -- could never see a real failure here.)
     any_check_failed = any(v["status"] == "fail" for v in r["checks"].values())
-    return 1 if any_check_failed else 0
+    if any_check_failed:
+        return 1
+
+    # A check that raised made no claim either way -- FAIL outranks ERROR (a
+    # real defect still needs reporting), but ERROR alone must not look like
+    # a clean run: "could not run" and "ran clean" are not the same number.
+    any_check_errored = any(v["status"] == "error" for v in r["checks"].values())
+    return 2 if any_check_errored else 0
 
 
 if __name__ == "__main__":

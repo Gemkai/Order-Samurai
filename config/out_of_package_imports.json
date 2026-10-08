@@ -1,0 +1,1017 @@
+{
+  "_doc": [
+    "Every place a shipped module reaches outside the shipped tree: an import that is not",
+    "stdlib, a declared dependency or an in-tree module, or a sys.path / dynamic-load path",
+    "derived from outside the tree root. Enforced by tests/test_import_boundary.py, which",
+    "fails on an unregistered site, a stale entry and any entry whose visibility is silent.",
+    "visibility: visible (degrade shows in a doctor row, payload field or output),",
+    "fallback (an equivalent route gives the same result), optional (an opt-in extra),",
+    "dead_code (unreachable on supported Pythons), no_degrade (nothing depends on it).",
+    "doctor_row: the doctor label that must read WARN when doctor runs with an empty HOME.",
+    "scope: shared (default; the site exists in the export and in the public repo), export-only (export only; becomes shared the moment the public repo gains the site) or public-only (the public repo only). tests/test_import_boundary.py enforces presence per tree kind. visibility_test: optional pytest node id proving the degrade; checked to exist in the tree where the site applies."
+  ],
+  "version": 1,
+  "classes": {
+    "test-governance-seam": {
+      "target": "the directory above the shipped tree root (<monorepo>/Governance, where agentica_core lives in the monorepo)",
+      "reason": "Monorepo seam in a test module: puts Governance/ on sys.path so `agentica_core` resolves from the monorepo layout.",
+      "degrade": "None under pytest: the tree root is pytest's rootdir and is on sys.path, so agentica_core resolves in-tree; the exported suite passing in export-gate demonstrates it. The inserted directory is unused.",
+      "visibility": "no_degrade",
+      "surface": "exported suite (export-gate) imports agentica_core from the tree"
+    },
+    "governance-root-seam": {
+      "target": "the directory above the shipped tree root (<monorepo>/Governance, where agentica_core lives in the monorepo)",
+      "reason": "Monorepo seam: puts Governance/ on sys.path so `agentica_core` resolves from the monorepo layout.",
+      "degrade": "In the public tree agentica_core is NOT in the inserted directory. The import after this insert resolves only when the tree root is already on sys.path (pytest, doctor, the reflex engine's working directory, or an installed package); run directly from an uninstalled clone it raises ModuleNotFoundError. Residual hazard: in a public clone the inserted directory is the clone's parent, so a same-named module there would shadow.",
+      "visibility": "visible",
+      "surface": "ModuleNotFoundError traceback and non-zero exit (uncaught at this site)"
+    }
+  },
+  "sites": [
+    {
+      "file": "agentica_core/aggregate.py",
+      "symbol": "_dead_rule_count",
+      "imports": [
+        "principle_audit"
+      ],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "~/.claude/scripts/principle_audit.py (USERPROFILE, else HOME)",
+      "reason": "Dead_Rules reads the operator's canonical rule set and violation log, which live in the Claude Code runtime, not in this product.",
+      "degrade": "Missing scripts dir or a failed import returns {val: None, data_gap: True}; sys.path is restored after the import.",
+      "visibility": "visible",
+      "surface": "wid_payload Dead_Rules metric carries data_gap: true"
+    },
+    {
+      "file": "agentica_core/aggregate.py",
+      "symbol": "_license_summary",
+      "imports": [
+        ".licensing"
+      ],
+      "path_calls": [],
+      "target": "agentica_core/licensing.py, owned by the public product repo (PUBLIC_OWNED_MODULES) and never exported",
+      "reason": "Pro entitlement lives in the public product; the monorepo export deliberately omits it.",
+      "degrade": "except ImportError -> {'tier': 'free'}: a bare export fails closed to Free; a real public install has the module.",
+      "visibility": "visible",
+      "surface": "wid_payload license tier reads 'free'",
+      "scope": "export-only"
+    },
+    {
+      "file": "agentica_core/aggregate.py",
+      "symbol": "_vault_health_metrics",
+      "imports": [],
+      "path_calls": [
+        "importlib.util.spec_from_file_location"
+      ],
+      "target": "<monorepo>/Knowledge/vault/_scripts/vault_health.py (parents[2] of agentica_core)",
+      "reason": "The Wiki_* knowledge metrics come from the vault's own health script, which only exists in the Agentica monorepo.",
+      "degrade": "Script absent -> None -> the four Wiki_* metrics are written with source SIMULATED.",
+      "visibility": "visible",
+      "surface": "wid_payload arts.Knowledge Wiki_Health_Score/Wiki_Article_Count/Raw_Pending/Wiki_Orphans source SIMULATED"
+    },
+    {
+      "file": "agentica_core/llm/gateway.py",
+      "symbol": "<module>",
+      "imports": [
+        "dotenv",
+        "langfuse"
+      ],
+      "path_calls": [],
+      "target": "optional third-party packages python-dotenv and langfuse",
+      "reason": "Neither is a declared dependency: .env loading has an in-file fallback and Langfuse tracing is an opt-in integration.",
+      "degrade": "dotenv missing -> the in-file load_dotenv fallback: it parses KEY=VALUE lines, does not strip surrounding quotes and overwrites variables already set (python-dotenv keeps them by default); langfuse missing -> _LANGFUSE_AVAILABLE False, tracing off.",
+      "visibility": "optional",
+      "surface": "dotenv: a simpler in-file .env parser (different quoting/precedence, documented here); langfuse: tracing exists only when the operator installs it"
+    },
+    {
+      "file": "agentica_core/llm/gateway.py",
+      "symbol": "call_routed_llm",
+      "imports": [
+        "agentica_core.brain_context"
+      ],
+      "path_calls": [],
+      "target": "agentica_core/brain_context.py (private Brain\u00b3 context, withheld from the export)",
+      "reason": "Only when a caller passes brain=True; resolved by name at call time so the public static import closure stays self-contained.",
+      "degrade": "Unavailable -> empty preamble, the routed call proceeds without Brain\u00b3 context. No shipped caller passes brain=True.",
+      "visibility": "optional",
+      "surface": "private add-on: no shipped code path requests it in the public product"
+    },
+    {
+      "file": "agentica_core/scouts/__init__.py",
+      "symbol": "agent_process_count",
+      "imports": [
+        "psutil"
+      ],
+      "path_calls": [],
+      "target": "optional third-party package psutil",
+      "reason": "Precise process count when psutil is installed; the plan keeps psutil optional and undeclared.",
+      "degrade": "Import failure falls through to `ps -e -o comm` / `tasklist`; None only if both fail.",
+      "visibility": "fallback",
+      "surface": "same count via the OS process list; None (no value) if that fails too"
+    },
+    {
+      "file": "agentica_core/state_report.py",
+      "symbol": "_load_vault_health",
+      "imports": [],
+      "path_calls": [
+        "importlib.util.spec_from_file_location"
+      ],
+      "scope": "public-only",
+      "target": "<repo parent>/Knowledge/vault/_scripts/vault_health.py (parents[2] of state_report.py, above the shipped tree)",
+      "reason": "The state report's Knowledge Vault section reads the operator's vault-health script, which lives in the operator's own knowledge base, not in this product.",
+      "degrade": "A missing script returns None; _vault_snapshot() then reports available: False.",
+      "visibility": "visible",
+      "surface": "state report 'Knowledge Vault' section reads 'Vault health script unavailable.'",
+      "visibility_test": "tests/test_public_only_visibility.py::test_state_report_vault_absent_is_visible"
+    },
+    {
+      "file": "bin/bushido_check.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam",
+      "visibility": "visible",
+      "surface": "stderr 'bushido_check: failed to import bushido_engine: ...' plus traceback, exit 3"
+    },
+    {
+      "file": "bin/chain_depth_audit.py",
+      "symbol": "_governance_root",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam"
+    },
+    {
+      "file": "bin/error_triage.py",
+      "symbol": "_real_records",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam"
+    },
+    {
+      "file": "bin/first_blood.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "scope": "public-only",
+      "class": "governance-root-seam",
+      "visibility": "visible",
+      "surface": "ModuleNotFoundError traceback and non-zero exit when agentica_core is not importable (run from an uninstalled clone)"
+    },
+    {
+      "file": "bin/hitl_alerts.py",
+      "symbol": "_bushido",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam",
+      "visibility": "visible",
+      "surface": "notify banner line 'FLEET: could not raise HITL item(s): ModuleNotFoundError: ...'"
+    },
+    {
+      "file": "bin/hitl_alerts.py",
+      "symbol": "_load_monitor_status_fn",
+      "imports": [
+        "agentica_core.automation_health"
+      ],
+      "path_calls": [],
+      "target": "agentica_core/automation_health.py (withheld from the export: private machine paths and launchd labels)",
+      "reason": "Monitor-freshness check for the private automation-health summary.",
+      "degrade": "The module file is not shipped (always, in the public tree), so load_automation_health() returns None before reading the JSON and automation_health_alert_lines() returns []. If the file is shipped but the import fails, the 'could not be assessed' line reports it.",
+      "visibility": "optional",
+      "surface": "private automation-health feature: absent from the public product by design; 'AUTOMATION HEALTH: monitor freshness could not be assessed' only on the direct-call path",
+      "scope": "export-only"
+    },
+    {
+      "file": "bin/hitl_alerts.py",
+      "symbol": "_resend_key",
+      "imports": [
+        "secret_env"
+      ],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "<monorepo>/Governance/bin/secret_env.py (macOS Keychain lookup)",
+      "reason": "launchd jobs do not source shell rc files, so the digest reads RESEND_API_KEY from the Keychain when the env var is unset.",
+      "degrade": "Helper unimportable (always, in the public tree) or lookup raises -> \"\" -> the digest is sent via Mail.app, and a WARN line naming the exception type goes to stderr.",
+      "visibility": "visible",
+      "surface": "stderr 'WARN: RESEND_API_KEY is not set and the Keychain lookup failed (<type>)' plus do_email's 'via Mail.app' log line"
+    },
+    {
+      "file": "bin/hitl_alerts.py",
+      "symbol": "_retirement_io",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam",
+      "visibility": "visible",
+      "surface": "refused retirement decision, or notify banner 'FLEET: sweep failed: ModuleNotFoundError: ...'",
+      "degrade": "Raises ModuleNotFoundError to its callers. Inside the retirement boundary a raise refuses the decision; a raise before it (sweep_fleet_hitl) is caught by do_notify."
+    },
+    {
+      "file": "bin/hitl_queue_view.py",
+      "symbol": "_load_proposal_hash",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam",
+      "visibility": "visible",
+      "surface": "JSON line {\"error\": \"view_failed\", ...} only when no candidate holds agentica_core",
+      "degrade": "Inserts a candidate only when it actually contains agentica_core; in the public tree the marker lookup (hitl_alerts._governance_dir) finds the in-tree kernel. If nothing matches, the import error becomes a JSON error line.",
+      "scope": "export-only"
+    },
+    {
+      "file": "bin/mcp_smoke_test.py",
+      "symbol": "_resend_key_present",
+      "imports": [
+        "secret_env"
+      ],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "<monorepo>/Governance/bin/secret_env.py (macOS Keychain lookup)",
+      "reason": "Presence-only check of RESEND_API_KEY, mirroring hitl_alerts._resend_key.",
+      "degrade": "Helper unimportable -> False -> the resend probe reports status unknown, never pass.",
+      "visibility": "visible",
+      "surface": "mcp_smoke_test resend row: status unknown, reason 'RESEND_API_KEY not configured (send path unverifiable)'",
+      "scope": "export-only"
+    },
+    {
+      "file": "bin/migrate_hitl_md.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam",
+      "degrade": "None in the public tree: the module first inserts _REPO (= the tree root), so agentica_core resolves in-tree; the parents[2] insert is unused (shadowing hazard only).",
+      "visibility": "no_degrade",
+      "surface": "_REPO insert resolves agentica_core in-tree"
+    },
+    {
+      "file": "bin/pip_safe_upgrade.py",
+      "symbol": "_real_apply",
+      "imports": [
+        "pkg_resources"
+      ],
+      "path_calls": [],
+      "target": "pkg_resources (setuptools)",
+      "reason": "Only on the Python < 3.8 branch; pyproject requires >= 3.11.",
+      "degrade": "Unreachable on every supported Python.",
+      "visibility": "dead_code",
+      "surface": "branch guarded by sys.version_info >= (3, 8); removal is out of scope (plan section 7)"
+    },
+    {
+      "file": "bin/prompt_injection_guard.py",
+      "symbol": "<module>",
+      "imports": [
+        "jsonl_append"
+      ],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "scope": "public-only",
+      "target": "~/.claude/scripts/jsonl_append.py (Path.home())",
+      "reason": "Optional shared atomic JSONL appender from the operator's Claude Code runtime; the product does not ship it.",
+      "degrade": "Import failure falls back to the in-file _append_jsonl, which appends the same JSON line to the same file (open(..., 'a') is O_APPEND on POSIX). The hook must never hard-fail on an import.",
+      "visibility": "fallback",
+      "surface": "none needed: the same row lands in the same log; pinned by the visibility test, which compares the bytes written with and without the helper",
+      "visibility_test": "tests/test_public_only_visibility.py::test_prompt_injection_guard_fallback_is_equivalent"
+    },
+    {
+      "file": "bin/remeasure_gate.py",
+      "symbol": "_governance_root",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam",
+      "degrade": "The import failure inside _live_payload is caught by main(): verdict 'error', exit 2 (fails open: the caller proceeds to the skill).",
+      "surface": "emitted verdict 'error' with the exception text, exit code 2"
+    },
+    {
+      "file": "bin/render_surface_env.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "scope": "public-only",
+      "class": "governance-root-seam",
+      "visibility": "visible",
+      "surface": "ModuleNotFoundError traceback and non-zero exit when agentica_core is not importable (run from an uninstalled clone)"
+    },
+    {
+      "file": "bin/review_pending_patch.py",
+      "symbol": "_resolve_queue_item",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam",
+      "visibility": "visible",
+      "surface": "stderr 'review_pending_patch: could not resolve hitl_queue item <id>: ...'"
+    },
+    {
+      "file": "bin/secret_scrub.py",
+      "symbol": "_governance_root",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam"
+    },
+    {
+      "file": "bin/secret_scrubber_realtime.py",
+      "symbol": "_emit_chain14_pre",
+      "imports": [
+        "jsonl_append"
+      ],
+      "path_calls": [],
+      "scope": "public-only",
+      "target": "jsonl_append resolved from sys.path (the operator's ~/.claude/scripts when the prompt-injection hook has put it there)",
+      "reason": "Optional shared atomic JSONL appender; not shipped.",
+      "degrade": "Import failure falls back to the scrubber's own atomic_jsonl_append, the same primitive its post-scan path uses unconditionally, writing the same row to the same log.",
+      "visibility": "fallback",
+      "surface": "none needed: the same row lands in the same log; pinned by the visibility test",
+      "visibility_test": "tests/test_public_only_visibility.py::test_secret_scrubber_fallback_is_equivalent_emit_chain14_pre"
+    },
+    {
+      "file": "bin/secret_scrubber_realtime.py",
+      "symbol": "_log_pre_event",
+      "imports": [
+        "jsonl_append"
+      ],
+      "path_calls": [],
+      "scope": "public-only",
+      "target": "jsonl_append resolved from sys.path (the operator's ~/.claude/scripts when the prompt-injection hook has put it there)",
+      "reason": "Optional shared atomic JSONL appender; not shipped.",
+      "degrade": "Import failure falls back to a plain append of the same row to the same log.",
+      "visibility": "fallback",
+      "surface": "none needed: the same row lands in the same log; pinned by the visibility test",
+      "visibility_test": "tests/test_public_only_visibility.py::test_secret_scrubber_fallback_is_equivalent_log_pre_event"
+    },
+    {
+      "file": "bin/skill_conflict_audit.py",
+      "symbol": "_governance_root",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam",
+      "visibility": "visible",
+      "surface": "_conflicts_path() returns None: the sink write is skipped and _real_groups() reports calibrated False; _live_fail_threshold() raises ModuleNotFoundError"
+    },
+    {
+      "file": "bin/slop_strip.py",
+      "symbol": "_governance_root",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam"
+    },
+    {
+      "file": "bin/wiki_compile.py",
+      "symbol": "_governance_root",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam"
+    },
+    {
+      "file": "bin/wiki_compile.py",
+      "symbol": "_real_pending",
+      "imports": [],
+      "path_calls": [
+        "importlib.util.spec_from_file_location"
+      ],
+      "target": "<monorepo>/Knowledge/vault/_scripts/vault_health.py, via agentica_core.aggregate._VAULT_HEALTH_SCRIPT (parents[2] of agentica_core)",
+      "reason": "Re-measures Raw_Pending with the same vault-health script the dashboard grades, so the path cannot drift.",
+      "degrade": "Script absent (always, in the public tree) -> ([], False): the audit reports uncalibrated, the same as aggregate's SIMULATED; a failing script is logged to stderr and also reported uncalibrated.",
+      "visibility": "visible",
+      "surface": "calibrated False in the audit result (plus a stderr line when the script raises)"
+    },
+    {
+      "file": "bin/wiki_link.py",
+      "symbol": "_governance_root",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam"
+    },
+    {
+      "file": "bin/wiki_link.py",
+      "symbol": "_real_orphans",
+      "imports": [],
+      "path_calls": [
+        "importlib.util.spec_from_file_location"
+      ],
+      "target": "<monorepo>/Knowledge/vault/_scripts/vault_health.py, via agentica_core.aggregate._VAULT_HEALTH_SCRIPT (parents[2] of agentica_core)",
+      "reason": "Re-measures Wiki_Orphans with the same vault-health script the dashboard grades, so the path cannot drift.",
+      "degrade": "Script absent (always, in the public tree) -> ([], False): the audit reports uncalibrated, the same as aggregate's SIMULATED; a failing script is logged to stderr and also reported uncalibrated.",
+      "visibility": "visible",
+      "surface": "calibrated False in the audit result (plus a stderr line when the script raises)"
+    },
+    {
+      "file": "dashboard-ui/_shot.py",
+      "symbol": "<module>",
+      "imports": [
+        "playwright.sync_api"
+      ],
+      "path_calls": [],
+      "scope": "public-only",
+      "target": "the optional third-party package playwright",
+      "reason": "Developer screenshot helper for the dashboard UI; playwright is not a declared dependency and no install path runs this file.",
+      "degrade": "A missing playwright raises ModuleNotFoundError at the top of the script.",
+      "visibility": "optional",
+      "surface": "ModuleNotFoundError traceback and non-zero exit",
+      "visibility_test": "tests/test_public_only_visibility.py::test_dashboard_shot_fails_loudly_without_playwright"
+    },
+    {
+      "file": "execution/doctor.py",
+      "symbol": "_run_claude_hook_health_checks",
+      "imports": [
+        "hook_registry"
+      ],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "~/.claude/scripts/hook_registry.py",
+      "reason": "Hook criticality (blocking vs advisory) lives in the Claude Code runtime's hook registry.",
+      "degrade": "Import failure -> registry {} -> quarantined hooks grade with criticality 'unknown' (a blocking gate reads WARN, not FAIL). Every row the family returns (no telemetry, unreadable files, nothing quarantined, per-hook) appends 'hook_registry unavailable (<type>)'; statuses unchanged.",
+      "visibility": "visible",
+      "surface": "doctor rows claude-hook-health / claude-hook-health.<hook_id>: detail names the hook_registry failure",
+      "doctor_row": "claude-hook-health"
+    },
+    {
+      "file": "execution/doctor.py",
+      "symbol": "_run_claude_telemetry_checks",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam",
+      "visibility": "visible",
+      "surface": "doctor row claude-telemetry FAIL naming the import error (doctor itself has the tree root on sys.path, so this resolves in practice)"
+    },
+    {
+      "file": "execution/doctor.py",
+      "symbol": "_run_container_service_checks",
+      "imports": [
+        "fleet_probe"
+      ],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "<monorepo>/Governance/bin/fleet_probe.py (ROOT_DIR.parent / bin)",
+      "reason": "Container reachability probe owned by the monorepo fleet tooling.",
+      "degrade": "Import failure -> one WARN row 'fleet_probe import failed -- service reachability unverified'.",
+      "visibility": "visible",
+      "surface": "doctor row container-services (WARN)",
+      "doctor_row": "container-services"
+    },
+    {
+      "file": "execution/repo_auditor.py",
+      "symbol": "_load_dotenv",
+      "imports": [
+        "dotenv"
+      ],
+      "path_calls": [],
+      "scope": "public-only",
+      "target": "the optional third-party package python-dotenv",
+      "reason": ".env loading prefers python-dotenv, which is not a declared dependency.",
+      "degrade": "ImportError falls back to a built-in KEY=value parser that strips matching quotes and keeps variables already set, as python-dotenv does by default.",
+      "visibility": "optional",
+      "surface": "a built-in .env parser with the same precedence (real environment wins)",
+      "visibility_test": "tests/test_public_only_visibility.py::test_repo_auditor_dotenv_fallback"
+    },
+    {
+      "file": "execution/verify_falsifiability.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "<monorepo>/Governance/docs (regen_metrics_matrix.py), via the module-level sys.path loop",
+      "reason": "check_matrix_registry_drift wraps the monorepo's matrix generator when it is importable.",
+      "degrade": "Only _DOCS_DIR is outside the tree; when regen_metrics_matrix is unimportable the check uses its standalone reimplementation.",
+      "visibility": "fallback",
+      "surface": "check_matrix_registry_drift standalone branch (same drift result)"
+    },
+    {
+      "file": "execution/verify_falsifiability.py",
+      "symbol": "check_matrix_registry_drift",
+      "imports": [
+        "regen_metrics_matrix"
+      ],
+      "path_calls": [],
+      "target": "<monorepo>/Governance/docs/regen_metrics_matrix.py",
+      "reason": "Real drift logic when the monorepo generator is importable.",
+      "degrade": "except ImportError -> the standalone reimplementation in this file computes the same drift.",
+      "visibility": "fallback",
+      "surface": "same pass/fail result from _standalone_load_live_roster/_standalone_compute_drift"
+    },
+    {
+      "file": "execution/verify_falsifiability.py",
+      "symbol": "check_pii_export",
+      "imports": [
+        "extract_public"
+      ],
+      "path_calls": [],
+      "target": "bin/extract_public.py, which the export deliberately excludes",
+      "reason": "Reuses the export's own PII gate instead of a parallel regex.",
+      "degrade": "Public tree: ModuleNotFoundError inside the check -> the harness records pii_export status error and exits non-zero.",
+      "visibility": "visible",
+      "surface": "verify_falsifiability output 'pii_export: error'; exit 2 (or 1 if another check fails)"
+    },
+    {
+      "file": "execution/verify_live_sources.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "the directory above the shipped tree root (execution.runtime_paths.REPO_ROOT.parent)",
+      "reason": "Monorepo seam for agentica_core, next to an in-tree ROOT_DIR insert.",
+      "degrade": "None: the module first inserts ROOT_DIR (parents[1] = the tree root in the public layout), so agentica_core resolves in-tree; the REPO_ROOT.parent insert is unused (same-named-module shadowing hazard only).",
+      "visibility": "no_degrade",
+      "surface": "ROOT_DIR insert resolves agentica_core in-tree"
+    },
+    {
+      "file": "execution/verify_telemetry_freshness.py",
+      "symbol": "_default_telemetry_path",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam",
+      "visibility": "fallback",
+      "surface": "falls back to the same canonical ~/.claude telemetry path the adapter returns; the freshness check still runs",
+      "degrade": "Import inside try/except: when agentica_core is not importable it returns the literal canonical ~/.claude telemetry path, the same path the adapter would return; the freshness FAIL below still gates."
+    },
+    {
+      "file": "governance_review.py",
+      "symbol": "_load_dotenv",
+      "imports": [
+        "dotenv"
+      ],
+      "path_calls": [],
+      "scope": "public-only",
+      "target": "the optional third-party package python-dotenv",
+      "reason": ".env loading prefers python-dotenv, which is not a declared dependency.",
+      "degrade": "ImportError falls back to a built-in KEY=value parser that strips matching quotes and keeps variables already set, as python-dotenv does by default.",
+      "visibility": "optional",
+      "surface": "a built-in .env parser with the same precedence (real environment wins)",
+      "visibility_test": "tests/test_public_only_visibility.py::test_governance_review_dotenv_fallback"
+    },
+    {
+      "file": "scouts/autonomic_events_scout.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "governance-root-seam",
+      "visibility": "no_degrade",
+      "surface": "the module also inserts REPO_ROOT (parents[1] = the tree root in the public layout), so agentica_core resolves in-tree",
+      "degrade": "None: REPO_ROOT (parents[1] = the tree root in the public layout) is inserted first, so agentica_core resolves in-tree; the parents[2] insert is unused (shadowing hazard only)."
+    },
+    {
+      "file": "scouts/kill_chain_discovery_scout.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "scope": "public-only",
+      "class": "governance-root-seam",
+      "visibility": "visible",
+      "surface": "the in-tree insert already makes agentica_core resolve; the parents[2] insert is unused. A failed agentica_core import is an uncaught ModuleNotFoundError at this module's top"
+    },
+    {
+      "file": "scouts/vibe_alignment_scout.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "the directory above the shipped tree root (parents[2]), via the `_sys` alias",
+      "reason": "Monorepo seam for agentica_core, next to an in-tree REPO_ROOT insert.",
+      "degrade": "None: the module first inserts REPO_ROOT (parents[1] = the tree root in the public layout), so agentica_core resolves in-tree; the parents[2] insert is unused (same-named-module shadowing hazard only).",
+      "visibility": "no_degrade",
+      "surface": "REPO_ROOT insert resolves agentica_core in-tree"
+    },
+    {
+      "file": "tests/fixtures/gen_heldout_benign.py",
+      "symbol": "_load_guard_module",
+      "imports": [],
+      "path_calls": [
+        "importlib.util.spec_from_file_location"
+      ],
+      "target": "~/.claude guard module (developer-only fixture generator)",
+      "reason": "Regenerates a held-out benign corpus from the developer's installed injection guard; not run by the suite.",
+      "degrade": "Developer-only generator, never run by the suite. main() prints 'guard not found' and exits 1 when the guard is missing; calling _load_guard_module() directly raises FileNotFoundError.",
+      "visibility": "visible",
+      "surface": "main(): 'guard not found' and exit 1; direct loader call: FileNotFoundError"
+    },
+    {
+      "file": "tests/test_agentica_core_aggregate.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_bushido_engine.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_bushido_push_on_approve.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_bushido_queue_recovery.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_bushido_review_ledger.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_bushido_review_retire.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_bushido_standing_approvals.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_chain_depth_audit.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_doctor_claude_telemetry.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_doctor_launchd_plist_template.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam",
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_doctor_live_root.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam",
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_doctor_meditation_timestamps.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_doctor_outside_agentica.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_doctor_plist_sources.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_doctor_refresh_injection_canary.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam",
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_doctor_schema_violations_clean.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_doctor_state_path_override.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam",
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_doctor_write_state.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_doctor_write_state_run_id.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam",
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_error_triage.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_first_blood.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_hitl_queue_view.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam",
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_kernel_drift.py",
+      "symbol": "test_shared_function_is_reexported_not_duplicated",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_m4_canary_acceptance.py",
+      "symbol": "<module>",
+      "imports": [
+        "bin.weakness_mining_canary"
+      ],
+      "path_calls": [],
+      "target": "bin/weakness_mining_canary.py (withheld from the export)",
+      "reason": "Acceptance tests for a private canary.",
+      "degrade": "In the export the import is skipped (file absent) and the dependent tests skip.",
+      "visibility": "visible",
+      "surface": "pytest SKIP 'weakness-mining canary is deliberately withheld from the public export'",
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_m4_gap_acceptance.py",
+      "symbol": "<module>",
+      "imports": [
+        "bin.surface_proposal_review"
+      ],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "bin/surface_proposal_review.py (withheld) and the directory above the tree root (GOV_ROOT)",
+      "reason": "Acceptance tests for a private reviewer; GOV_ROOT is the monorepo seam.",
+      "degrade": "In the export the import is skipped (file absent) and the dependent tests skip; REPO_ROOT (inserted first) resolves agentica_core.",
+      "visibility": "visible",
+      "surface": "pytest SKIP for the surface-review tests",
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_mcp_smoke_test_launcher_path.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam",
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_mcp_smoke_test_npx_package.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_mcp_smoke_test_probes.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam",
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_mcp_smoke_test_run_id.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam",
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_public_only_visibility.py",
+      "symbol": "_reference_appender",
+      "imports": [
+        "jsonl_append"
+      ],
+      "path_calls": [],
+      "scope": "public-only",
+      "target": "a reference jsonl_append.py the test itself writes under its own tmp_path/.claude/scripts",
+      "reason": "Lets the test compare the fallback with a helper-present run without reading the developer's real ~/.claude.",
+      "degrade": "Not applicable: the module is created by the test immediately before it is imported.",
+      "visibility": "no_degrade",
+      "surface": "the test fails on an assertion if the reference helper cannot be imported"
+    },
+    {
+      "file": "tests/test_remeasure_gate.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_secret_scrub.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_skill_conflict_audit.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_slop_strip.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_verify_falsifiability.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "<monorepo>/Governance/docs, for the regen_metrics_matrix cross-check",
+      "reason": "Same sys.path shape as execution/verify_falsifiability.py.",
+      "degrade": "The one test that needs regen_metrics_matrix skips when it is unimportable.",
+      "visibility": "visible",
+      "surface": "pytest SKIP 'regen_metrics_matrix genuinely unimportable in this environment'"
+    },
+    {
+      "file": "tests/test_verify_falsifiability.py",
+      "symbol": "test_standalone_compute_drift_matches_the_real_regen_metrics_matrix_module",
+      "imports": [
+        "regen_metrics_matrix"
+      ],
+      "path_calls": [],
+      "target": "<monorepo>/Governance/docs/regen_metrics_matrix.py",
+      "reason": "Cross-checks the standalone drift reimplementation against the real module.",
+      "degrade": "except ImportError -> pytest.skip.",
+      "visibility": "visible",
+      "surface": "pytest SKIP in the exported suite"
+    },
+    {
+      "file": "tests/test_verify_live_sources.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_wiki_compile.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_wiki_link.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "class": "test-governance-seam"
+    }
+  ]
+}
