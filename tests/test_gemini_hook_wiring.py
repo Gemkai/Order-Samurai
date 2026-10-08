@@ -21,12 +21,12 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 EVENT = "BeforeTool"
-MATCHER = "^(run_shell_command|write_file|replace|mcp_.+)$"
+MATCHER = "^(run_shell_command|write_file|replace|mcp_.+|discovered_tool_.+)$"
 HOOK_NAME = "order-samurai-guard"
 
 
 def definition(root):
-    command = "python3 " + shlex.quote(str(root / "bin/prompt_injection_guard.py"))
+    command = "python3 " + shlex.quote(str(root / "bin/prompt_injection_guard.py")) + " --gemini"
     return {"matcher": MATCHER, "hooks": [
         {"name": HOOK_NAME, "type": "command", "command": command, "timeout": 10000}]}
 
@@ -143,11 +143,13 @@ def line(result, label="Gemini CLI"):
 # --- the registered entry -----------------------------------------------------------
 
 def test_matcher_covers_shell_file_write_and_mcp_tools_but_not_reads():
-    for name in ("run_shell_command", "write_file", "replace", "mcp_github_create_issue", "mcp_docs_search"):
+    for name in ("run_shell_command", "write_file", "replace", "mcp_github_create_issue", "mcp_docs_search",
+                 "discovered_tool_deploy", "discovered_tool_my_helper"):
         assert re.search(MATCHER, name), name
     # read_file would block reading Samurai's own pattern files; the rest are not write paths.
     for name in ("read_file", "read_many_files", "glob", "grep_search", "list_directory",
-                 "web_fetch", "google_web_search", "write_todos", "run_shell_command2", "my_replace"):
+                 "web_fetch", "google_web_search", "write_todos", "run_shell_command2", "my_replace",
+                 "discovered_tool_", "discovered_toolbox"):
         assert not re.search(MATCHER, name), name
 
 
@@ -440,3 +442,114 @@ def test_no_unprotected_note_names_gemini_even_with_only_its_folder(tmp_path):
     machine.env["SAMURAI_HARNESS"] = ""
     result = machine.run("install")
     assert "not protected by Order Samurai" not in result.stdout, result.stdout
+
+
+# --- the installed command ----------------------------------------------------------------
+
+def installed_argv(machine):
+    command = read_json(machine.settings)["hooks"][EVENT][0]["hooks"][0]["command"]
+    argv = shlex.split(command)
+    assert argv[0] == "python3"
+    return [sys.executable, *argv[1:]]
+
+
+def run_installed(machine, stdin):
+    env = {**machine.env, "SAMURAI_ROOT": str(machine.root)}
+    return subprocess.run(installed_argv(machine), input=stdin, env=env, cwd=machine.home,
+                          capture_output=True, text=True, timeout=20)
+
+
+def test_installed_command_carries_the_gemini_flag(machine):
+    machine.install()
+    assert installed_argv(machine)[-1] == "--gemini"
+
+
+@pytest.mark.parametrize("stdin", ["[" * 50000 + "]" * 50000, "not json", "[1]"],
+                         ids=["deep-nesting", "garbage", "json-list"])
+def test_installed_command_denies_input_it_cannot_parse(machine, stdin):
+    """Gemini proceeds on exit 0 with no output, so the registered command must refuse."""
+    machine.install()
+    result = run_installed(machine, stdin)
+    assert result.returncode == 2, result.stderr
+    assert json.loads(result.stdout)["decision"] == "deny"
+
+
+def test_installed_command_still_allows_a_normal_call(machine):
+    machine.install()
+    payload = {"hook_event_name": "BeforeTool", "tool_name": "run_shell_command",
+               "tool_input": {"command": "ls"}}
+    result = run_installed(machine, json.dumps(payload))
+    assert (result.returncode, json.loads(result.stdout)) == (0, {})
+
+
+def test_uninstall_force_refuses_an_edited_copy_that_still_runs_the_flagged_guard(machine):
+    machine.seed()
+    data = read_json(machine.settings)
+    data["hooks"][EVENT][0]["matcher"] = "run_shell_command"
+    write_json(machine.settings, data)
+    result = machine.run("uninstall", "--force")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "still runs a Samurai script" in result.stdout
+    assert read_json(machine.settings) == data
+
+
+# --- folder trust, scope of the doctor check ---------------------------------------------
+
+def test_doctor_notes_that_gemini_skips_hooks_in_untrusted_folders(machine):
+    machine.install()
+    result = machine.run("doctor")
+    assert result.returncode == 0, result.stdout + result.stderr
+    text = line(result)
+    assert "folder" in text and "trust" in text, text
+    assert "your own settings.json" in text or "user settings" in text, text
+
+
+@pytest.mark.parametrize("trust", [True, None])
+def test_doctor_keeps_the_trust_note_unless_it_is_switched_off(machine, trust):
+    machine.install()
+    data = read_json(machine.settings)
+    if trust is not None:
+        data["security"] = {"folderTrust": {"enabled": trust}}
+    write_json(machine.settings, data)
+    assert "trust" in line(machine.run("doctor"))
+
+
+def test_doctor_drops_the_trust_note_when_folder_trust_is_explicitly_off(machine):
+    machine.install()
+    data = read_json(machine.settings)
+    data["security"] = {"folderTrust": {"enabled": False}}
+    write_json(machine.settings, data)
+    result = machine.run("doctor")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "trust" not in line(result)
+
+
+# --- legacy hooks.* switches and non-ASCII settings ---------------------------------------
+
+LEGACY = {"enabled": True, "disabled": ["some-other-hook"], "notifications": False}
+
+
+def test_install_doctor_and_uninstall_accept_legacy_hooks_switches(machine):
+    original = realistic_settings()
+    original["hooks"].update(LEGACY)
+    write_json(machine.settings, original)
+    machine.install()
+    expected = copy.deepcopy(original)
+    expected["hooks"][EVENT].append(definition(machine.root))
+    assert read_json(machine.settings) == expected
+    assert machine.run("doctor").returncode == 0
+    assert machine.run("install").returncode == 0
+    result = machine.run("uninstall")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert read_json(machine.settings) == original
+
+
+def test_non_ascii_settings_are_written_back_literally(machine):
+    original = realistic_settings()
+    raw = json.dumps(original, indent=2, ensure_ascii=False) + "\n"
+    machine.gemini.mkdir()
+    machine.settings.write_text(raw, encoding="utf-8")
+    machine.install()
+    text = machine.settings.read_text(encoding="utf-8")
+    assert "café ☕" in text and "\\u00e9" not in text
+    assert read_json(machine.settings)["notes"] == original["notes"]

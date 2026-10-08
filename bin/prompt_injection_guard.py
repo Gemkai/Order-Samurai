@@ -131,6 +131,19 @@ def _read_payload() -> dict:
     except Exception:
         return {}
 
+def _read_gemini_payload() -> dict:
+    """The payload, or an exception when stdin is non-empty but is not a JSON object.
+    Gemini CLI proceeds when a hook prints nothing and exits 0, so unlike _read_payload
+    this never turns unreadable input into "nothing to scan"."""
+    raw = sys.stdin.read()
+    if not raw.strip():
+        return {}
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise ValueError("hook input is not a JSON object")
+    return payload
+
+
 _SEMANTIC_DEADLINE_S = 3.5  # whole call, well inside the 10 s hook timeout
 
 _PATCH_HEADERS = ("*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: ")
@@ -389,14 +402,17 @@ def _scan(payload: dict, harness: str | None) -> tuple[int, str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--test", action="store_true", help="Run self-test suite")
+    parser.add_argument("--gemini", action="store_true",
+                        help="Gemini CLI entry: answer in Gemini's format and fail closed on unreadable input")
     args, unknown = parser.parse_known_args()
 
     if args.test:
         return run_self_tests()
 
-    payload = _read_payload()
-    harness = _harness_of(payload)
+    harness = "gemini" if args.gemini else None
     try:
+        payload = _read_gemini_payload() if args.gemini else _read_payload()
+        harness = harness or _harness_of(payload)
         code, detail = _scan(payload, harness)
     except Exception as error:
         if harness is None:

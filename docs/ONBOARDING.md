@@ -129,26 +129,51 @@ shell, MCP and `Write` call. Run a harmless command in Cursor after installing a
 still works, then confirm a command containing a known injection phrase is refused.
 
 **What the Gemini CLI guard covers.** It scans the arguments of the shell tool
-(`run_shell_command`), the file-writing tools (`write_file`, `replace`) and every MCP tool
-(`mcp_<server>_<tool>`) that Gemini sends to `BeforeTool` hooks, including JSON carried
-inside an argument string. It does **not** cover `read_file` (reading Order Samurai's own
-pattern files must keep working), `web_fetch`, web search, other built-in tools, hooks in
-other settings layers (project `.gemini/settings.json`, system settings, extensions), or
-anything while hooks are switched off (`hooksConfig.enabled: false`, or the hook listed in
-`hooksConfig.disabled`; doctor reports both). A blocked call exits with code 2 and a
-`{"decision": "deny", ...}` document, and a guard failure also exits 2: Gemini lets a call
-through on any other non-zero exit code (for example a `python3` it cannot find, exit 127).
-Gemini's hook `timeout` is in milliseconds (Order Samurai writes `10000`). Gemini documents
-a fingerprint-and-warn step for *project* hooks only; it documents no approval step for
-user-level hooks like this one, but that has not been tested on a live install. A
-`settings.json` that is not strict JSON (for example one with comments) is refused untouched,
-and so is an install path containing `$`, which Gemini expands inside that file. Order
-Samurai writes no secret-scrubber hook for Gemini.
+(`run_shell_command`), the file-writing tools (`write_file`, `replace`), every MCP tool
+(`mcp_<server>_<tool>`) and every user-configured discovered tool (`discovered_tool_<name>`)
+that Gemini sends to `BeforeTool` hooks, including JSON carried inside an argument string.
 
-**Before relying on Gemini CLI protection.** The registered command is `python3 '<path>'`,
-resolved from the environment Gemini CLI runs in. Start Gemini, run a harmless shell command
-and confirm it still works, then confirm a command containing a known injection phrase is
-refused with Order Samurai's message.
+**Gemini CLI skips all hooks in folders it does not trust.** Folder trust
+(`security.folderTrust.enabled`) is on by default in Gemini CLI 0.46.0, and in a folder it has
+not marked trusted Gemini loads no hooks at all, user-level ones included, so Order Samurai's
+guard does not run there (very likely including headless `gemini -p` runs). Trust each folder
+you work in, or run the manual check below inside the folders you actually use. Doctor prints a
+note about this on its Gemini line unless your own settings turn folder trust off.
+
+It does **not** cover `read_file` (reading Order Samurai's own pattern files must keep
+working), `web_fetch`, web search, other built-in tools, or anything while hooks are switched
+off. Doctor reads only your user `~/.gemini/settings.json`: it reports `hooksConfig.enabled:
+false` and the hook listed in `hooksConfig.disabled` there, but a trusted project's
+`.gemini/settings.json` can also set `hooksConfig.enabled: false` (that overrides the user
+file) or add to `hooksConfig.disabled`, and system settings can do the same. Doctor does not
+look at those layers, and Order Samurai never writes hooks into them.
+
+The registered command is `python3 '<path>' --gemini`. The flag makes the guard fail closed:
+a block exits 2 with a `{"decision": "deny", ...}` document, and so do input it cannot parse
+(for example absurdly deep nesting) and any error of its own, because Gemini proceeds when a
+hook prints nothing. In Gemini CLI 0.46.0 a JSON verdict on stdout wins whatever the exit
+code, plain-text output with exit 2 or higher also denies, and only exit 1, a timeout, a
+signal or empty output let the call through; a `python3` Gemini cannot find (exit 127) is
+plain text from the shell, so it should deny rather than pass, but test that on your install.
+Older releases and Gemini's published docs describe every non-zero code other than 2 as only
+a warning, so do not rely on that difference. Gemini's hook `timeout` is in milliseconds
+(Order Samurai writes `10000`). Gemini documents a fingerprint-and-warn step for *project*
+hooks only; it documents no approval step for user-level hooks like this one, but that has not
+been tested on a live install.
+
+Known limit: when a JSON document inside an argument string cannot be decoded (trailing text
+after it, or nesting too deep), only its raw text is scanned, so a pattern hidden by `\u`
+escapes in that string is not caught (Cursor's guard has the same limit).
+
+A `settings.json` that is not strict JSON (for example one with comments) is refused
+untouched, and so is an install path containing `$`, which Gemini expands inside that file.
+Older `hooks.enabled`, `hooks.disabled` and `hooks.notifications` keys are left as they are.
+Order Samurai writes no secret-scrubber hook for Gemini.
+
+**Before relying on Gemini CLI protection.** The registered command is resolved from the
+environment Gemini CLI runs in. In a folder you work in (and have trusted), start Gemini, run a
+harmless shell command and confirm it still works, then confirm a command containing a known
+injection phrase is refused with Order Samurai's message.
 
 ### 2. Verify
 
@@ -167,9 +192,10 @@ For Cursor, doctor reports "guard installed and working when run directly; Curso
 not verified by doctor": it checks that the entries are present and unmodified and that the
 guard answers Cursor-shaped payloads, but cannot prove Cursor runs the hook.
 For Gemini CLI, doctor reports "guard installed and working when run directly; Gemini CLI
-enforcement not verified by doctor": it checks the entry, that `hooksConfig` in the file does
-not switch it off, and that the guard answers Gemini-shaped payloads with valid JSON, but it
-cannot prove Gemini CLI runs the hook.
+enforcement not verified by doctor": it checks the entry, that `hooksConfig` in your user
+`settings.json` does not switch it off (project and system settings are not read), and that the
+guard answers Gemini-shaped payloads with valid JSON, but it cannot prove Gemini CLI runs the
+hook. Its line also carries the folder-trust note described above.
 
 ### 3. Launch the dashboard (optional)
 

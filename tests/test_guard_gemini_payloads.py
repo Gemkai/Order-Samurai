@@ -43,10 +43,12 @@ def run_guard(tmp_path):
         "PIG_LMSTUDIO_URL": "http://127.0.0.1:1/v1/chat/completions",
     }
 
-    def run(payload):
-        raw = payload if isinstance(payload, str) else json.dumps(payload)
-        return subprocess.run([sys.executable, str(script)], input=raw, text=True,
-                              capture_output=True, cwd=root, env=env, timeout=10)
+    def run(payload, *args):
+        raw = payload if isinstance(payload, (str, bytes)) else json.dumps(payload)
+        result = subprocess.run([sys.executable, str(script), *args], input=raw.encode() if isinstance(raw, str) else raw,
+                                capture_output=True, cwd=root, env=env, timeout=10)
+        return subprocess.CompletedProcess(result.args, result.returncode, result.stdout.decode(),
+                                           result.stderr.decode())
 
     return run
 
@@ -163,3 +165,41 @@ def test_only_before_tool_is_answered_as_gemini(run_guard):
 def test_gemini_event_with_claude_style_tool_name_is_still_gemini(run_guard):
     _assert_denied(run_guard(_fixture("before_tool_run_shell_command", tool_name="Bash",
                                       tool_input={"command": INJ})))
+
+
+# --- the --gemini flag: the installed command form --------------------------------------
+
+UNPARSEABLE = {
+    "garbage": "this is not json",
+    "truncated": '{"hook_event_name": "BeforeTool", "tool_input": {',
+    "json-list": "[1, 2, 3]",
+    "json-string": '"just a string"',
+    "deep-nesting": "[" * 50000 + "]" * 50000,
+}
+
+
+@pytest.mark.parametrize("kind", sorted(UNPARSEABLE))
+def test_flagged_guard_denies_input_it_cannot_parse(run_guard, kind):
+    """Without a verdict Gemini proceeds, so --gemini turns every unreadable input into a deny."""
+    _assert_denied(run_guard(UNPARSEABLE[kind], "--gemini"))
+
+
+@pytest.mark.parametrize("kind", ["garbage", "json-list", "deep-nesting"])
+def test_unflagged_guard_keeps_its_old_behaviour_on_unparseable_input(run_guard, kind):
+    """Claude Code, Codex and Cursor entries carry no flag: nothing changes for them."""
+    result = run_guard(UNPARSEABLE[kind])
+    assert result.stdout == ""
+    assert result.returncode in (0, 1), result.stderr
+
+
+def test_flagged_guard_answers_a_normal_gemini_payload_as_before(run_guard):
+    result = run_guard(_fixture("before_tool_run_shell_command"), "--gemini")
+    _assert_not_blocked(result)
+    assert json.loads(result.stdout) == {}
+    _assert_denied(run_guard(_input("before_tool_run_shell_command", command=f"echo {INJ}"), "--gemini"))
+
+
+def test_flagged_guard_treats_empty_stdin_as_nothing_to_scan(run_guard):
+    result = run_guard("", "--gemini")
+    _assert_not_blocked(result)
+

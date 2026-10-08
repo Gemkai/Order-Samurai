@@ -234,11 +234,17 @@ CODEX_GUARD_MATCHER = "^(Bash|apply_patch)$"
 # on any exit code other than 0 or 2 otherwise.
 CURSOR_GUARD_EVENTS = (("beforeShellExecution", None), ("beforeMCPExecution", None), ("preToolUse", "Write"))
 # Gemini CLI's blocking pre-tool event, with a regex over its tool names: the shell tool,
-# the two file-writing tools and every MCP tool (mcp_<server>_<tool>). read_file is left
-# out on purpose: it is not a write path, and reading Samurai's own pattern files must
-# not be blocked. Gemini's "timeout" is in milliseconds.
+# the two file-writing tools, every MCP tool (mcp_<server>_<tool>) and every user-configured
+# discovered tool (discovered_tool_<name>, which runs tools.callCommand with model-chosen
+# arguments). read_file is left out on purpose: it is not a write path, and reading
+# Samurai's own pattern files must not be blocked. Gemini's "timeout" is in milliseconds.
+# The --gemini flag makes the guard fail closed on unreadable input: Gemini proceeds when
+# a hook prints nothing and exits 0.
 GEMINI_GUARD_EVENT = "BeforeTool"
-GEMINI_GUARD_MATCHER = "^(run_shell_command|write_file|replace|mcp_.+)$"
+GEMINI_GUARD_MATCHER = "^(run_shell_command|write_file|replace|mcp_.+|discovered_tool_.+)$"
+GEMINI_GUARD_FLAG = "--gemini"
+# Older Gemini releases keep these switches inside "hooks" itself, beside the event lists.
+GEMINI_LEGACY_HOOK_SWITCHES = frozenset({"enabled", "disabled", "notifications"})
 GEMINI_GUARD_NAME = "order-samurai-guard"
 GEMINI_GUARD_TIMEOUT_MS = GUARD_TIMEOUT_S * 1000
 GUARD_SCRIPT = "prompt_injection_guard.py"
@@ -422,8 +428,8 @@ def hook_definitions(harness, root):
         return [(event, dict(entry, matcher=matcher) if matcher else dict(entry))
                 for event, matcher in CURSOR_GUARD_EVENTS]
     if harness == "gemini":
-        handler = {"name": GEMINI_GUARD_NAME, "type": "command", "command": _command(root, GUARD_SCRIPT),
-                   "timeout": GEMINI_GUARD_TIMEOUT_MS}
+        handler = {"name": GEMINI_GUARD_NAME, "type": "command", "timeout": GEMINI_GUARD_TIMEOUT_MS,
+                   "command": f"{_command(root, GUARD_SCRIPT)} {GEMINI_GUARD_FLAG}"}
         return [(GEMINI_GUARD_EVENT, {"matcher": GEMINI_GUARD_MATCHER, "hooks": [handler]})]
     guard = _group(GUARD_MATCHER if harness == "claude" else CODEX_GUARD_MATCHER,
                    _command(root, GUARD_SCRIPT), GUARD_TIMEOUT_S)
@@ -514,7 +520,7 @@ def _update_json_file(path, mutate, backup=None):
         fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
         try:
             with os.fdopen(fd, "wb") as fh:
-                fh.write((json.dumps(new, indent=2) + "\n").encode("utf-8"))
+                fh.write((json.dumps(new, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))
                 fh.flush()
                 os.fsync(fh.fileno())
             os.chmod(tmp, mode if mode is not None else 0o600)
@@ -576,6 +582,11 @@ def _save_manifest(paths, manifest):
     _update_json_file(_manifest_path(paths), lambda _old: copy.deepcopy(manifest))
 
 
+def _hook_events(hooks):
+    """(event, groups) pairs of a "hooks" object, without Gemini's legacy switches."""
+    return [(event, groups) for event, groups in hooks.items() if event not in GEMINI_LEGACY_HOOK_SWITCHES]
+
+
 def _hooks_doc(path):
     """Parsed hook config ({} when absent), validated before anything mutates it."""
     raw, _ = _read_regular(path)
@@ -590,7 +601,7 @@ def _validate_hooks_doc(data, path):
     hooks = data.get("hooks", {})
     if not isinstance(hooks, dict):
         raise ValueError(f"{path}: 'hooks' is not an object")
-    for event, groups in hooks.items():
+    for event, groups in _hook_events(hooks):
         if not isinstance(groups, list) or not all(isinstance(g, dict) for g in groups):
             raise ValueError(f"{path}: 'hooks.{event}' is not an array of hook groups")
 
@@ -1140,6 +1151,22 @@ def _registration_problem(harness, entry, paths):
     return None
 
 
+def _gemini_trust_note(entry):
+    """Gemini CLI loads no hooks at all in a folder it does not trust, and folder trust is on
+    unless the user's settings.json turns it off. A note, never a failure: doctor reads only
+    that one file, so project and system settings are not covered by it."""
+    try:
+        security = _hooks_doc(Path(entry["config_path"])).get("security")
+    except (OSError, ValueError, UnsafeFile):
+        return ""
+    trust = security.get("folderTrust") if isinstance(security, dict) else None
+    if isinstance(trust, dict) and trust.get("enabled") is False:
+        return ""
+    return (" — note: Gemini CLI skips all hooks, this one included, in any folder it does not trust "
+            "(security.folderTrust is on unless your own settings.json turns it off); this check reads "
+            "only your user settings.json, not project or system settings")
+
+
 def _codex_trust(entry):
     """Read-only look at Codex's trust record for our hook. Never writes config.toml."""
     config_path = entry["config_path"]
@@ -1287,7 +1314,9 @@ def cmd_doctor(args):
             results[harness] = "FAILED — packaged hook script failed; not protecting"
         elif harness == "codex":
             results[harness] = f"{NOT_VERIFIED.format(HARNESS_LABELS[harness])} — {_codex_trust(recorded[harness])}"
-        elif harness in ("cursor", "gemini"):
+        elif harness == "gemini":
+            results[harness] = NOT_VERIFIED.format(HARNESS_LABELS[harness]) + _gemini_trust_note(recorded[harness])
+        elif harness == "cursor":
             results[harness] = NOT_VERIFIED.format(HARNESS_LABELS[harness])
         elif harness not in recorded:
             results[harness] = "registered through the Claude hook registry; packaged guard and scrubber working"
@@ -1320,6 +1349,8 @@ def _script_paths(definitions):
                 parts = shlex.split(str(hook.get("command", "")))
             except ValueError:
                 continue
+            while len(parts) > 1 and parts[-1].startswith("--"):  # e.g. the guard's --gemini
+                parts.pop()
             if parts:
                 found.add(parts[-1])
     return found
@@ -1368,7 +1399,7 @@ def _uninstall_harness(harness, entry, paths, manifest, force):
     # it pointing at scripts that are gone, and a missing script blocks every tool call.
     scripts = _script_paths([d for r in entry.get("groups", []) for d in (r["definition"], *r.get("previous", []))])
     remaining = mutate(copy.deepcopy(_hooks_doc(config))) if remove else _hooks_doc(config)
-    for event, groups in remaining.get("hooks", {}).items():
+    for event, groups in _hook_events(remaining.get("hooks", {})):
         if any(_runs_any(g, scripts) for g in groups):
             raise Refusal(f"refusing: an edited copy of the Order Samurai {event} hook in {config} still "
                           f"runs a Samurai script; remove it by hand, then re-run")
