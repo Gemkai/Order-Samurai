@@ -75,6 +75,10 @@ its active profile, so a run at the lenient tier is never mistaken for a strict 
 `0` clean · `1` findings · `2` the command could not run (usage error, or policy contracts absent).
 A gate that cannot distinguish "clean" from "could not check" is not a gate, so these never collapse.
 
+## Feedback & support
+
+One address for support, bug reports and feedback: **support@agentica-llc.biz**. `samurai doctor` and the installer print it at the end of their output.
+
 ## Recent Major Advancements
 
 - **Repair scope (September 23, 2026)**: Broad autonomous LLM repair and auto-apply are retired. Order Samurai supports diagnosis, staged patches for explicit human review and approval, and existing bounded deterministic maintenance. A passing check alone does not authorize applying a repair.

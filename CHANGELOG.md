@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Support and feedback now go to one address, `support@agentica-llc.biz`, replacing the old ordersamurai.ai support address in the terms, EULA, onboarding guide, Gumroad receipt text and dashboard. It is also printed as the last line of `samurai doctor` (pass or fail; exit codes unchanged) and of both installer success paths, and has a "Feedback & support" section in the README and onboarding guide.
 - `samurai install` and `samurai doctor` now name other coding agents found on the machine that Order Samurai cannot protect yet (Windsurf, Goose, Cline, OpenCode, Aider, Continue; Cursor and Gemini CLI were in this list until they gained their own hook support, below), so a machine with Claude Code plus another agent is not mistaken for fully covered. Detection only reads PATH, folders in your home directory and `/Applications`; exit codes are unchanged.
 - Continue is named as not protected even though it reads `~/.claude/settings.json`: its CLI loads hook settings but never runs `PreToolUse`/`PostToolUse` hooks on tool calls, so the Claude Code hooks do not protect it.
 - `samurai install` now also installs the prompt-injection guard for **Codex**. It detects which agent harnesses are installed (Claude Code and Codex) and registers the prompt-injection guard for each, printing one result line per harness. Choose harnesses with `--harness claude,codex` or `SAMURAI_HARNESS`; the choice is remembered.

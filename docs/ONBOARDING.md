@@ -284,7 +284,7 @@ You should see `Order Samurai — PRO tier` with your machine name and activatio
 - **New machine**: run `samurai deactivate` on the old machine, then `samurai activate` on
   the new one.
 - **Refund** (within 14 days): contact the seller through your Gumroad receipt or
-  email `support@ordersamurai.ai`. Deactivate the local entitlement after a refund.
+  email `support@agentica-llc.biz`. Deactivate the local entitlement after a refund.
   Subsequent activation rejects a refunded key; an already activated offline
   entitlement is not automatically revoked remotely. `samurai license` only reads
   local state and does not refresh refund status.
@@ -317,6 +317,13 @@ to Free. The single source of truth is `agentica_core/licensing.py` (Python) and
 | Dojo says *"is an Order Samurai Pro feature"* | You are on Free. Run `samurai activate` and paste your key (or buy one) to unlock. |
 | Legacy `REFLEX_AUTO_APPLY=true` setting | Remove it. Auto-apply is retired on both tiers; review staged patches before explicitly approving a repair. |
 | Want to remove everything | `samurai uninstall` (add `--keep-data` to preserve `~/.samurai`). |
+
+---
+
+## Feedback & support
+
+One address for questions, bug reports, refunds and feedback: **support@agentica-llc.biz**.
+`samurai doctor` and the installer print it at the end of their output.
 
 ---
 
