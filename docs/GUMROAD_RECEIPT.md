@@ -32,5 +32,5 @@ python3 ~/.samurai/core/bin/samurai activate
 ```
 
 Trouble? Run `python3 ~/.samurai/core/bin/samurai doctor` and email the output to
-support@ordersamurai.ai.
+support@agentica-llc.biz.
 14-day money-back guarantee: reply to this receipt to request a refund.

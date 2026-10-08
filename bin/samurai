@@ -24,6 +24,7 @@ import getpass
 from pathlib import Path
 
 SAMURAI_VERSION = "2.1.3"
+SUPPORT_EMAIL = "support@agentica-llc.biz"  # single support and feedback address
 
 # Tool patterns the guard and scrubber are scoped to. Claude Code matches these
 # against the tool name for each PreToolUse/PostToolUse event.
@@ -1334,6 +1335,7 @@ def cmd_doctor(args):
     _print_results(results)
     _print_unprotected()
     print(f"Summary: {passed}/{total} checks passed.")
+    print(f"Feedback or problems: {SUPPORT_EMAIL}")
     harness_failed = any(r.startswith("FAILED") for r in results.values())
     return 0 if passed == total and not harness_failed else 1
 
