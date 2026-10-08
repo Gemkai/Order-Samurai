@@ -7,6 +7,7 @@ Registry-driven: each metric is an entry with a reducer; add a metric = an entry
 """
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import os
 import re
@@ -22,6 +23,13 @@ import jsonschema
 
 _ORDER_SAMURAI_ROOT = Path(os.environ.get(
     "ORDER_SAMURAI_ROOT", str(Path(__file__).resolve().parents[1] / "Order Samurai")))
+# The reflex loop's per-cycle heartbeat ("[starved] 0 eligible ..." when nothing is
+# eligible). Same file refresh_dashboard._check_engine_freshness reads; here it lets
+# Mechanism_Liveness tell "loop alive, correctly idle" from "loop dead".
+_REFLEX_HEARTBEAT_LOG = _ORDER_SAMURAI_ROOT / "state" / "reflex_output.jsonl"
+# The engine's run log: a same-week row here with no mechanism_run means the bridge
+# broke, so the week is NOT idle.
+_REFLEX_EXEC_LOG = _ORDER_SAMURAI_ROOT / "state" / "exec_log.jsonl"
 # The repo root containing .git (Governance/agentica_core -> Governance -> repo root).
 # Used by _cost_per_outcome (AUTO-002) to read real `git log` outcomes.
 _AGENTICA_REPO_ROOT = Path(os.environ.get(
@@ -40,7 +48,7 @@ _KILL_CHAIN_EXTRA_ROOTS: list[Path] = [
     Path(__file__).resolve().parents[1],  # Governance/ (covers all session cwds)
 ]
 
-from . import (display_evidence, harness_config, insights, knowledge_metrics, licensing, operator_attention, reflexes,
+from . import (display_evidence, harness_config, insights, knowledge_metrics, operator_attention, reflexes,
                remediation, remediation_delta, scouts, threshold_audit, verify_secrets)
 from .atomic import atomic_json_write, file_write_lock
 from .model_tiers import model_tier
@@ -721,6 +729,21 @@ _CONTEXT_CLIFF_MEMO: tuple[float, tuple, float | None] | None = None
 _CONTEXT_CLIFF_TTL_S = 60.0
 
 
+def _newest_jsonls(projects_dir: Path, limit: int) -> list[Path]:
+    """The `limit` most recently modified transcripts, oldest first.
+
+    Transcripts can vanish between rglob and stat (factory worktree cleanup); those are
+    skipped rather than raised, so one deleted file cannot fail the whole refresh."""
+    stamped = []
+    for path in projects_dir.rglob("*.jsonl"):
+        try:
+            stamped.append((path.stat().st_mtime, path))
+        except OSError:
+            continue
+    stamped.sort(key=lambda item: item[0])
+    return [path for _, path in stamped[-limit:]]
+
+
 def _file_signature(paths: list[Path]) -> tuple:
     """Cheap change key for file-backed reducers; missing paths stay visible."""
     parts = []
@@ -756,7 +779,7 @@ def r_context_cliff_events(recs):  # noqa: ARG001
     projects_dir = Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".claude" / "projects"
     if not projects_dir.exists():
         return None
-    jsonls = sorted(projects_dir.rglob("*.jsonl"), key=lambda p: p.stat().st_mtime)[-_CLIFF_SCAN_FILES:]
+    jsonls = _newest_jsonls(projects_dir, _CLIFF_SCAN_FILES)
     threshold = _cliff_threshold()
     signature = (threshold, _file_signature(jsonls))
     now = time.monotonic()
@@ -1161,8 +1184,7 @@ def _agent_spawn_events() -> list[tuple[str, str]]:
     events: list[tuple[str, str]] = []
     if not projects_dir.exists():
         return events
-    jsonls = sorted(projects_dir.rglob("*.jsonl"),
-                     key=lambda p: p.stat().st_mtime)[-_AGENT_SPAWN_FILE_CAP:]
+    jsonls = _newest_jsonls(projects_dir, _AGENT_SPAWN_FILE_CAP)
     for jl in jsonls:
         try:
             with open(jl, encoding="utf-8", errors="ignore") as f:
@@ -1898,23 +1920,27 @@ def _estimated_cost_savings(records: list[dict], repo_root: Path | None = None) 
         return {"val": None, "error": f"source unavailable: {str(e)}", "calibrated": False}
 
 
-def _vibe_alignment_score(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
+def _vibe_alignment_score(records: list[dict], repo_root: Path) -> float | None:  # noqa: ARG001
     """Anti-slop vibe alignment score (0-100) from state/vibe_alignment.json.
 
     Written by scouts/vibe_alignment_scout.py (local gemma-4-e4b pass).
-    Returns 0.0 when the file is absent or the last run failed (score=null).
+    Returns None -- a data gap, not a measured score -- when the file is absent,
+    unreadable, or the last run recorded score=null/non-numeric. A genuine 0.0
+    (very slopped code) and "no data" used to collapse to the same 0.0, so a
+    dead scout read as a max-slop reading downstream; callers must treat None
+    as a gap and must not fold it into arithmetic as if it were zero.
     """
     vibe_path = repo_root / "state" / "vibe_alignment.json"
     if not vibe_path.exists():
-        return 0.0
+        return None
     try:
         d = json.loads(vibe_path.read_text(encoding="utf-8", errors="ignore"))
         score = d.get("score")
         if not isinstance(score, (int, float)):
-            return 0.0
+            return None
         return float(score)
     except Exception:
-        return 0.0
+        return None
 
 
 def _doc_parity_latency_days(records: list[dict], repo_root: Path) -> float:  # noqa: ARG001
@@ -2018,8 +2044,15 @@ def _craft_improvements(records: list[dict], repo_root: Path | None = None) -> d
         vibe_now = _vibe_alignment_score(records, repo_root)
         prior_vibe = _get_prior_week_val(history_path, "arts/Output Quality/Vibe_Alignment",
                                          before_week=this_week)
-        vibe_str = (f"Vibe {vibe_now:g}" if prior_vibe is None
-                    else f"Vibe {round(vibe_now - prior_vibe, 1):+g}")
+        # A gap (absent/null/unreadable source) renders "no data", never a
+        # fabricated level or delta — vibe_now=None must not reach the :g
+        # format spec or a None-minus-number subtraction.
+        if vibe_now is None:
+            vibe_str = "Vibe no data"
+        elif prior_vibe is None:
+            vibe_str = f"Vibe {vibe_now:g}"
+        else:
+            vibe_str = f"Vibe {round(vibe_now - prior_vibe, 1):+g}"
 
         doc_now = _doc_parity_latency_days(records, repo_root)
         prior_doc = _get_prior_week_val(history_path, "arts/Docs/Documentation_Parity_Latency",
@@ -2106,7 +2139,10 @@ def _estimated_human_time_saved(records: list[dict], repo_root: Path | None = No
         vibe_now = _vibe_alignment_score(records, repo_root)
         prior_vibe = _get_prior_week_val(history_path, "arts/Output Quality/Vibe_Alignment",
                                          before_week=this_week)
-        vibe_gain = max(vibe_now - prior_vibe, 0.0) if prior_vibe is not None else 0.0
+        # A gap contributes no hours (never a negative or fabricated gain) — the
+        # subtraction below is only valid once both sides are real measurements.
+        vibe_gain = (max(vibe_now - prior_vibe, 0.0)
+                     if vibe_now is not None and prior_vibe is not None else 0.0)
         doc_now = _doc_parity_latency_days(records, repo_root)
         prior_doc = _get_prior_week_val(history_path, "arts/Docs/Documentation_Parity_Latency",
                                         before_week=this_week)
@@ -2235,9 +2271,57 @@ def _mechanism_liveness(records: list[dict]) -> dict:
                 last_count += 1
     except OSError as e:
         return {"val": None, "error": f"source unavailable: {e}", "calibrated": False}
+    starved = _starved_heartbeats(this_week) if this_count == 0 else 0
+    # == 0, not falsy: an unreadable exec_log (None) is missing evidence, not "no runs".
+    if starved and _week_record_count(_REFLEX_EXEC_LOG, this_week) == 0:
+        # Idle by design (owner decision 2026-10-07, option B): after F4 a cycle with
+        # nothing eligible writes no exec_log row, so no mechanism_run is emitted.
+        # Heartbeats prove the loop ran, so report that state ungraded instead of a
+        # FAIL. No heartbeat, or an engine run that never got bridged, keeps the 0.
+        return {"val": None, "state": "idle_by_design", "data_gap": True,
+                "calibrated": True,
+                "detail": (f"idle by design: 0 mechanism runs, {starved} starved "
+                           f"heartbeat(s) in {this_week} (reflex loop alive, nothing "
+                           f"eligible to remediate)")}
     if this_count == 0 and last_count == 0:
         return {"val": 0, "week_delta": 0, "calibrated": True, "data_gap": True}
     return {"val": this_count, "week_delta": this_count - last_count, "calibrated": True}
+
+
+def recorded_idle_still_valid(week: str) -> bool:
+    """Whether a week history recorded as Mechanism_Liveness idle_by_design may stay
+    idle on rebuild. The heartbeats that proved idle rotate away, but any engine run
+    logged that week (or an unreadable exec_log) means the 0 is a real FAIL."""
+    return _week_record_count(_REFLEX_EXEC_LOG, week) == 0
+
+
+def _starved_heartbeats(week: str) -> int:
+    """Count the reflex loop's "[starved]" heartbeats in ISO `week` (0 if unreadable)."""
+    return _week_record_count(
+        _REFLEX_HEARTBEAT_LOG, week,
+        lambda r: r.get("metric") == "reflex" and str(r.get("line", "")).startswith("[starved]")) or 0
+
+
+def _week_record_count(path: Path, week: str,
+                       keep: Callable[[dict], bool] = lambda r: True) -> int | None:
+    """Count JSONL records in ISO `week` that pass `keep`. A missing file counts 0 (it
+    holds no records); any other read failure returns None, so callers can tell
+    "observed empty" from "could not observe"."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except FileNotFoundError:
+        return 0
+    except OSError:
+        return None
+    count = 0
+    for line in text.splitlines():
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(rec, dict) and iso_week(rec.get("timestamp")) == week and keep(rec):
+            count += 1
+    return count
 
 
 def _lesson_graduation_rate(records: list[dict]) -> dict:  # noqa: ARG001
@@ -2314,7 +2398,8 @@ def _cache_hit_rate(records: list[dict]) -> dict:
 
 
 def r_skill_routing_adherence(recs):  # noqa: ARG001
-    """Sword — % of critical-work prompts routed through their governing skill.
+    """Sword — % of critical-work detections routed through their governing skill
+    (same session, at or after the detection; hiring-review nudges excluded).
 
     Reads the two skill-routing hook logs under ~/.claude/data (repo-independent),
     so `recs` is ignored. Mirrors _governance_pass_rate's inside-fn `execution.*`
@@ -2633,6 +2718,193 @@ def _daemon_restart_count(records: list[dict]) -> dict:  # noqa: ARG001
     }
 
 
+# ---------------------------------------------------------------------------
+# Git / factory hygiene trio — Stale_Branch_Count, Lane_Pending_Age,
+# Approved_Unexecuted_HITL (bow/Autonomic, AUTO). Catalogued 2026-09-20 after the
+# 09-16 sweep found 338 branches, a 25-ticket merge-lane deadlock and 62 unexecuted
+# human approvals that none of the live metrics could see; intake approved
+# 2026-09-21; moved here from Research/proposed_hygiene_reducers.py on wiring
+# (that file re-exports these names so its tests stay the contract).
+#
+# Inner contract: reducer(records, repo_root) -> int, repo_root = the Order Samurai
+# root (the directory holding state/). `records` (telemetry) is ignored — each reads
+# its own source. -1 ALWAYS means "source missing" and the r_* wrapper turns it into
+# a SIMULATED envelope; it must never be emitted as a zero.
+# ---------------------------------------------------------------------------
+POLL_SECONDS = 900  # the dispatcher's poll; anything older than one poll is "stuck", not "in flight"
+PROTECTED_BRANCHES = {"work", "main", "master", "autosave"}
+PROTECTED_PREFIXES = ("backup/",)
+PENDING_STATES = {"awaiting-lane", "pr-pending", "repair-pending"}
+
+
+def _agentica_root(repo_root: Path) -> Path:
+    """The AgenticaOS checkout that contains this Order Samurai root (two levels up)."""
+    root = Path(repo_root).resolve()
+    for cand in (root.parents[1] if len(root.parents) > 1 else root, root):
+        if (cand / "Execution" / "factory").is_dir():
+            return cand
+    return root.parents[1] if len(root.parents) > 1 else root
+
+
+def _ledger_path(repo_root: Path) -> Path:
+    return _agentica_root(repo_root) / "Execution" / "factory" / "state" / "ledger.jsonl"
+
+
+def _queue_path(repo_root: Path) -> Path:
+    return Path(repo_root) / "state" / "hitl_queue.json"
+
+
+def _now(now: _dt.datetime | None) -> _dt.datetime:
+    return now or _dt.datetime.now(_dt.timezone.utc)
+
+
+def _parse_ts(text: str) -> _dt.datetime | None:
+    try:
+        t = _dt.datetime.fromisoformat(str(text).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=_dt.timezone.utc)
+
+
+def _git(root: Path, *args: str) -> tuple[int, str]:
+    proc = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, timeout=120)
+    return proc.returncode, proc.stdout.strip()
+
+
+def _open_pr_branches_from_report(agentica_root: Path, now: _dt.datetime, max_age_days: int = 8) -> set[str]:
+    """Branch names the latest branch_adjudicate dry-run kept because of an OPEN PR.
+
+    gh is network + auth; the weekly report already paid that cost, so the reducer reuses it when
+    it is fresh. No report (or a stale one) means no exclusion, which over-counts rather than hides.
+    """
+    reports = sorted((agentica_root / "Governance" / "data" / "worktree_sweep").glob("branch-adjudicate-*-dryrun.md"))
+    if not reports:
+        return set()
+    latest = reports[-1]
+    m = re.search(r"branch-adjudicate-(\d{4}-\d{2}-\d{2})", latest.name)
+    if m:
+        day = _parse_ts(m.group(1) + "T00:00:00+00:00")
+        if day and (now - day).days > max_age_days:
+            return set()
+    names: set[str] = set()
+    for line in latest.read_text(encoding="utf-8", errors="replace").splitlines():
+        hit = re.match(r"^- (\S+) @[0-9a-f]+ — open PR", line)
+        if hit:
+            names.add(hit.group(1))
+    return names
+
+
+def _stale_branch_count(records: list[dict], repo_root: Path, now: _dt.datetime | None = None) -> int:  # noqa: ARG001
+    """Local branches that are not ancestors of the integration branch and carry no OPEN PR."""
+    root = _agentica_root(repo_root)
+    rc, _ = _git(root, "rev-parse", "--git-dir")
+    if rc:
+        return -1
+    base = "origin/work" if _git(root, "rev-parse", "--verify", "origin/work")[0] == 0 else "work"
+    if _git(root, "rev-parse", "--verify", base)[0]:
+        return -1
+    rc, out = _git(root, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+    if rc:
+        return -1
+    open_pr = _open_pr_branches_from_report(root, _now(now))
+    count = 0
+    for branch in out.splitlines():
+        if not branch or branch in PROTECTED_BRANCHES or branch.startswith(PROTECTED_PREFIXES):
+            continue
+        if branch in open_pr:
+            continue
+        if _git(root, "merge-base", "--is-ancestor", branch, base)[0] != 0:
+            count += 1
+    return count
+
+
+def _latest_ticket_states(ledger: Path) -> dict[str, dict]:
+    latest: dict[str, dict] = {}
+    with ledger.open(encoding="utf-8", errors="replace") as fh:
+        for line in fh:  # skip-tolerant: real ledgers carry the odd malformed line
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if row.get("event") == "ticket_state" and row.get("task_id"):
+                latest[row["task_id"]] = row
+    return latest
+
+
+def _lane_pending_age(records: list[dict], repo_root: Path, now: _dt.datetime | None = None) -> int:  # noqa: ARG001
+    """Factory tickets whose LAST ledger ticket_state is lane-pending for longer than one poll."""
+    ledger = _ledger_path(repo_root)
+    if not ledger.is_file():
+        return -1
+    cutoff = _now(now) - _dt.timedelta(seconds=POLL_SECONDS)
+    count = 0
+    for row in _latest_ticket_states(ledger).values():
+        if row.get("state") not in PENDING_STATES:
+            continue
+        ts = _parse_ts(row.get("ts", ""))
+        if ts is None or ts <= cutoff:
+            count += 1  # an unparseable timestamp is treated as old, not as fresh
+    return count
+
+
+def _approved_unexecuted_hitl(records: list[dict], repo_root: Path, now: _dt.datetime | None = None) -> int:  # noqa: ARG001
+    """HITL queue rows source=factory, status=approved, executing_at unset, approved older than one poll."""
+    queue = _queue_path(repo_root)
+    try:
+        items = json.loads(queue.read_text(encoding="utf-8")).get("items", [])
+    except (OSError, ValueError, AttributeError):
+        return -1
+    if not isinstance(items, list):
+        return -1
+    cutoff = _now(now) - _dt.timedelta(seconds=POLL_SECONDS)
+    count = 0
+    for it in items:
+        if not isinstance(it, dict) or it.get("source") != "factory" or it.get("status") != "approved":
+            continue
+        if it.get("executing_at"):
+            continue
+        approved = _parse_ts(it.get("approved_at") or "")
+        if approved is None or approved <= cutoff:
+            count += 1
+    return count
+
+
+def _hygiene_envelope(n: int, missing: str) -> dict:
+    """-1 (source missing) -> SIMULATED error envelope; anything else is a real count."""
+    if n < 0:
+        return {"val": None, "error": f"source unavailable: {missing}", "calibrated": False}
+    return {"val": n, "calibrated": True}
+
+
+_STALE_BRANCH_CACHE: dict = {"t": 0.0, "v": None}
+_STALE_BRANCH_TTL_S = 300.0
+
+
+def r_stale_branch_count(recs):  # noqa: ARG001
+    """MEMOIZED with a short TTL, same reason as _unbounded_wait_count: the reducer
+    spawns one `git merge-base` per local branch (measured 2026-09-23: 1.8s for ~150
+    branches) and build_pillars() runs every reducer ~22 times per aggregate(). Refs
+    cannot meaningfully change mid-refresh, so within-run reuse is exact; the TTL
+    bounds cross-run staleness well under the 15-minute refresh cadence."""
+    now = time.monotonic()
+    if _STALE_BRANCH_CACHE["v"] is not None and now - _STALE_BRANCH_CACHE["t"] < _STALE_BRANCH_TTL_S:
+        return dict(_STALE_BRANCH_CACHE["v"])
+    result = _hygiene_envelope(_stale_branch_count([], _ORDER_SAMURAI_ROOT), "not a git checkout")
+    _STALE_BRANCH_CACHE.update(t=now, v=result)
+    return dict(result)
+
+
+def r_lane_pending_age(recs):  # noqa: ARG001
+    return _hygiene_envelope(_lane_pending_age([], _ORDER_SAMURAI_ROOT), "factory ledger missing")
+
+
+def r_approved_unexecuted_hitl(recs):  # noqa: ARG001
+    return _hygiene_envelope(_approved_unexecuted_hitl([], _ORDER_SAMURAI_ROOT), "hitl_queue missing/malformed")
+
+
 REGISTRY: list[tuple[str, str, str, Callable | None, str, bool, bool]] = [
     ("bow", "Activity", "Error_Rate", r_error_rate, "DERIVED", True, False),
     # Latency_P50 consolidated into Latency_P95 (2026-07-08 audit): the median was
@@ -2659,8 +2931,9 @@ REGISTRY: list[tuple[str, str, str, Callable | None, str, bool, bool]] = [
     # (The *_Lifetime twins were misnamed window sums duplicating the window
     # toggle — consolidated away, 2026-07-08 audit.)
     ("sword", "Governance", "Rule_Violations", r_sum_field("rule_violations"), "DERIVED", False, True),
-    # Skill_Routing_Adherence: % of critical-work prompts (router-hook detections)
-    # whose governing skill was actually invoked that session. The honor-system
+    # Skill_Routing_Adherence: % of router-hook (category, skill) detections whose
+    # governing skill was invoked in the same session at or after the detection;
+    # the hiring-review nudge's own recommendations are excluded (2026-09-30). The honor-system
     # "use the skill, don't hand-roll it" rule made measurable. SIMULATED until the
     # UserPromptSubmit router hook logs its first detection. Target >= 80%.
     ("sword", "Governance", "Skill_Routing_Adherence", r_skill_routing_adherence, "AUTO", True, False),
@@ -2741,6 +3014,12 @@ REGISTRY: list[tuple[str, str, str, Callable | None, str, bool, bool]] = [
     # log (~/.claude/data/service_supervisor.log), never state/autonomic_events.jsonl.
     # See _daemon_restart_count.
     ("bow", "Autonomic", "Daemon_Restart_Count", _daemon_restart_count, "AUTO", False, True),
+    # Git / factory hygiene trio (wired 2026-09-23; intake approved 2026-09-21). Each
+    # reads its own source outside telemetry; -1 (source missing) grades SIMULATED via
+    # the r_* wrapper, never a zero. See the reducer block above the REGISTRY.
+    ("bow", "Autonomic", "Stale_Branch_Count", r_stale_branch_count, "AUTO", False, True),
+    ("bow", "Autonomic", "Lane_Pending_Age", r_lane_pending_age, "AUTO", False, True),
+    ("bow", "Autonomic", "Approved_Unexecuted_HITL", r_approved_unexecuted_hitl, "AUTO", False, True),
     # AUTO-017: Lesson Graduation Rate — real skill-lesson ledger
     # (~/.claude/data/skill_improve_queue.jsonl) vs. proven-effective graduation
     # classification (~/.claude/data/auto_eureka_skills.md RULE section); see
@@ -2761,6 +3040,7 @@ def _env(val, tier, *, is_percent=False, is_count=False, simulated=False):
     data_gap = False
     detail = None
     estimate_by_design = False
+    state = None
 
     if isinstance(val, dict):
         calibrated = val.get("calibrated", True)
@@ -2768,6 +3048,7 @@ def _env(val, tier, *, is_percent=False, is_count=False, simulated=False):
         data_gap = val.get("data_gap", False)
         detail = val.get("detail")
         estimate_by_design = val.get("estimate_by_design", False)
+        state = val.get("state")
         if val.get("error"):
             simulated = True
             val = None
@@ -2801,6 +3082,8 @@ def _env(val, tier, *, is_percent=False, is_count=False, simulated=False):
         env["data_gap"] = True
     if detail:
         env["detail"] = detail
+    if state:
+        env["state"] = state
     if estimate_by_design:
         # permanent honest "est." badge (real counts x asserted coefficients,
         # no sample source) — distinct from calibrated=False "awaiting samples"
@@ -2845,7 +3128,9 @@ def build_pillars(records: list[dict], *, verifier_results: list[dict] | None = 
         # key must grade SIMULATED — never as a live metric, where _health(None)
         # would inject a perfect 100 into the pillar score.
         inner = val.get("val") if isinstance(val, dict) else val
-        simulated = inner is None
+        # A reported state (Mechanism_Liveness idle_by_design) is an observation with no
+        # grade, not a dead source: keep its live tier and let annotate skip it.
+        simulated = inner is None and not (isinstance(val, dict) and val.get("state"))
         env = _env(val, "SIMULATED" if simulated else live_tier,
                    is_percent=is_pct, is_count=is_cnt, simulated=simulated)
         validate_metric(env)  # tier-honesty contract
@@ -3116,22 +3401,43 @@ def build_project_scores(all_records: list[dict], proj_platform: dict[str, str],
     folders = sorted(p.name for p in root.iterdir() if p.is_dir()) if root.exists() else []
     out: dict[str, dict] = {}
     matched_tproj: set[str] = set()
+
+    # Assign each telemetry tag to AT MOST ONE folder. Exact/alias matches are
+    # resolved in a first pass before any substring match is considered, so a
+    # tag that exactly names one folder (e.g. "AgenticaOS-bot") can't also be
+    # absorbed by another folder whose normalized name happens to be a
+    # substring of it (e.g. "AgenticaOS") — that used to double-count the
+    # tag's records into both folders' Session_Count, since `matched_tproj`
+    # was tracked but never consulted while matching (2026-09-08 fix).
+    tag_to_folder: dict[str, str] = {}
     for f in folders:
         nf = _norm(f)
         aliases = set(_PROJECT_ALIASES.get(f, []))
+        for tp in by_tproj:
+            if tp in tag_to_folder:
+                continue
+            if tp in aliases or _norm(tp) == nf:
+                tag_to_folder[tp] = f
+    for f in folders:
+        nf = _norm(f)
+        for tp in by_tproj:
+            if tp in tag_to_folder:
+                continue
+            ntp = _norm(tp)
+            # Substring was too broad on its own: "api" matched "apify", "hub"
+            # matched "github". Require the SHORTER (substring/needle) name to
+            # be at least 6 chars in each direction — guarding only ntp let a
+            # short folder like "api" still absorb a long telemetry project
+            # like "apifyscraper" via `nf in ntp`.
+            if (len(ntp) >= 6 and ntp in nf) or (len(nf) >= 6 and nf in ntp):
+                tag_to_folder[tp] = f
+
+    for f in folders:
         recs: list[dict] = []
         plats: Counter = Counter()
-        for tp, rs in by_tproj.items():
-            ntp = _norm(tp)
-            # Exact normalized match or alias-only. Substring was too broad:
-            # "api" matched "apify", "hub" matched "github". Require the SHORTER
-            # (substring/needle) name to be at least 6 chars in each direction —
-            # guarding only ntp let a short folder like "api" still absorb a long
-            # telemetry project like "apifyscraper" via `nf in ntp`.
-            match = (tp in aliases or ntp == nf
-                     or (len(ntp) >= 6 and ntp in nf)
-                     or (len(nf) >= 6 and nf in ntp))
-            if match:
+        for tp, folder in tag_to_folder.items():
+            if folder == f:
+                rs = by_tproj[tp]
                 recs.extend(rs)
                 plats[proj_platform.get(tp, "")] += len(rs)
                 matched_tproj.add(tp)
@@ -3376,8 +3682,19 @@ def aggregate(platforms: list[str] | None = None, timestamp: str | None = None,
         "operator_attention": operator_attention.build_safe(
             os_root=_ORDER_SAMURAI_ROOT, repo_root=_AGENTICA_REPO_ROOT),
         # Unlocks the dashboard's Pro metrics. Tier only, read from ~/.samurai/license.json.
-        "license": licensing.dashboard_summary(),
+        "license": _license_summary(),
     }, window_start, window_end, collection_start)
+
+
+def _license_summary() -> dict[str, str]:
+    """Tier-only Pro entitlement for the payload. licensing.py is owned by the public
+    product repo and absent from a bare export (extract_public.PUBLIC_OWNED_MODULES), so
+    a missing module fails closed to Free instead of breaking aggregation."""
+    try:
+        from . import licensing  # noqa: PLC0415
+    except ImportError:
+        return {"tier": "free"}
+    return licensing.dashboard_summary()
 
 
 def default_payload_path() -> Path:
