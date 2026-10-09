@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from agentica_core import aggregate as agg
-from agentica_core import insights
+from agentica_core import backfill_history, insights
 
 # 2026-W41: Monday 2026-10-05 .. Sunday 2026-10-11.
 _RECORDS = [{"timestamp": "2026-10-07T13:00:00Z"}]
@@ -126,6 +126,17 @@ def test_same_week_engine_runs_without_bridged_events_still_fail(sources, tmp_pa
     assert _graded(out)["status"] == "FAIL"
 
 
+def test_backfill_does_not_carry_a_number_into_an_idle_week(sources):
+    key = "bow/Autonomic/Mechanism_Liveness"
+    prior = [{"ts": "2026-09-28T00:00:00+00:00", "values": {key: 0}}]
+    weekly = [{"ts": "2026-10-05T00:00:00+00:00", "week": "2026-W41", "values": {},
+               "idle": [key]}]
+
+    out = backfill_history._carry_forward(weekly, prior)
+
+    assert key not in out[0]["values"]
+
+
 def test_unreadable_exec_log_is_not_evidence_of_idle(sources, tmp_path, monkeypatch):
     _, heartbeat, write = sources
     write(heartbeat, [_starved(_THIS_WEEK)])
@@ -142,3 +153,53 @@ def test_unreadable_exec_log_is_not_evidence_of_idle(sources, tmp_path, monkeypa
 _KEY = "bow/Autonomic/Mechanism_Liveness"
 
 
+def test_rebuild_keeps_a_recorded_idle_week_when_heartbeats_rotated_away(sources):
+    prior = [{"ts": "2026-10-05T00:00:00+00:00", "week": "2026-W41", "kind": "weekly",
+              "values": {}, "idle": [_KEY]}]
+    rebuilt = [{"ts": "2026-10-05T00:00:00+00:00", "week": "2026-W41", "kind": "weekly",
+                "values": {_KEY: 0}}]
+
+    out = backfill_history._carry_forward(rebuilt, prior)
+
+    assert _KEY not in out[0]["values"]
+    assert out[0]["idle"] == [_KEY]
+
+
+def test_rebuild_keeps_a_recorded_idle_week_when_the_events_source_is_missing(sources):
+    prior = [{"ts": "2026-09-28T00:00:00+00:00", "values": {_KEY: 0}},
+             {"ts": "2026-10-05T00:00:00+00:00", "week": "2026-W41", "kind": "weekly",
+              "values": {}, "idle": [_KEY]}]
+    rebuilt = [{"ts": "2026-10-05T00:00:00+00:00", "week": "2026-W41", "kind": "weekly",
+                "values": {}}]
+
+    out = backfill_history._carry_forward(rebuilt, prior)
+
+    assert _KEY not in out[0]["values"]
+
+
+def test_real_runs_in_a_rebuild_supersede_a_recorded_idle_week(sources):
+    prior = [{"ts": "2026-10-05T00:00:00+00:00", "week": "2026-W41", "kind": "weekly",
+              "values": {}, "idle": [_KEY]}]
+    rebuilt = [{"ts": "2026-10-05T00:00:00+00:00", "week": "2026-W41", "kind": "weekly",
+                "values": {_KEY: 4}}]
+
+    out = backfill_history._carry_forward(rebuilt, prior)
+
+    assert out[0]["values"][_KEY] == 4
+    assert "idle" not in out[0]
+
+
+def test_same_week_engine_runs_override_a_recorded_idle_week(sources, tmp_path):
+    """Recorded mid-week as idle, then an unbridged engine run landed: the rebuild's 0
+    is a broken-bridge FAIL and must not be turned back into idle."""
+    _, _, write = sources
+    write(tmp_path / "exec_log.jsonl", [{"timestamp": _ts(_THIS_WEEK), "source": "reflex_engine"}])
+    prior = [{"ts": "2026-10-05T00:00:00+00:00", "week": "2026-W41", "kind": "weekly",
+              "values": {}, "idle": [_KEY]}]
+    rebuilt = [{"ts": "2026-10-05T00:00:00+00:00", "week": "2026-W41", "kind": "weekly",
+                "values": {_KEY: 0}}]
+
+    out = backfill_history._carry_forward(rebuilt, prior)
+
+    assert out[0]["values"][_KEY] == 0
+    assert "idle" not in out[0]
