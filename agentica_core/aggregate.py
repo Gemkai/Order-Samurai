@@ -2746,6 +2746,26 @@ def _agentica_root(repo_root: Path) -> Path:
     return root.parents[1] if len(root.parents) > 1 else root
 
 
+def _in_monorepo_layout() -> bool:
+    """True only when THIS module sits at <checkout>/Governance/agentica_core of a checkout that
+    has Execution/factory (the marker `_agentica_root` and `claude_runtime_target.agentica_repo_root`
+    already use for "inside the AgenticaOS repo"), Governance/Order Samurai beside it (an export
+    flattens the pack) and no `.export-withdrawn` manifest (so an install folder that merely happens
+    to be named "Governance" is still an export).
+
+    The hygiene metrics walk two levels above the Order Samurai root. In the public export and in
+    a buyer install this module sits at <install>/agentica_core, so that walk lands on the install's
+    PARENT: whatever git repo or factory ledger is there belongs to someone else, and reading it
+    reports a stranger's branches as the buyer's own. Owner decision 2026-10-07: outside the
+    monorepo layout these metrics read SIMULATED (the -1 missing-source envelope), never another repo.
+    """
+    governance = Path(__file__).resolve().parents[1]
+    if (governance / ".export-withdrawn").exists():  # the marker bin/extract_public.py writes into every export
+        return False
+    return (governance.name == "Governance" and (governance / "Order Samurai").is_dir()
+            and (governance.parent / "Execution" / "factory").is_dir())
+
+
 def _ledger_path(repo_root: Path) -> Path:
     return _agentica_root(repo_root) / "Execution" / "factory" / "state" / "ledger.jsonl"
 
@@ -2796,6 +2816,8 @@ def _open_pr_branches_from_report(agentica_root: Path, now: _dt.datetime, max_ag
 
 def _stale_branch_count(records: list[dict], repo_root: Path, now: _dt.datetime | None = None) -> int:  # noqa: ARG001
     """Local branches that are not ancestors of the integration branch and carry no OPEN PR."""
+    if not _in_monorepo_layout():
+        return -1
     root = _agentica_root(repo_root)
     rc, _ = _git(root, "rev-parse", "--git-dir")
     if rc:
@@ -2837,7 +2859,7 @@ def _latest_ticket_states(ledger: Path) -> dict[str, dict]:
 def _lane_pending_age(records: list[dict], repo_root: Path, now: _dt.datetime | None = None) -> int:  # noqa: ARG001
     """Factory tickets whose LAST ledger ticket_state is lane-pending for longer than one poll."""
     ledger = _ledger_path(repo_root)
-    if not ledger.is_file():
+    if not _in_monorepo_layout() or not ledger.is_file():
         return -1
     cutoff = _now(now) - _dt.timedelta(seconds=POLL_SECONDS)
     count = 0
