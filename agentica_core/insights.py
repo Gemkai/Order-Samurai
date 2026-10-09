@@ -63,8 +63,21 @@ METRIC_CONFIG: dict[str, dict] = {
     # 0 = the autonomy layer's own instrumentation is down (FAIL). A missing events file
     # still yields val=None -> ungraded, never a fabricated zero. NOT auto_remediable:
     # the fix is diagnosing which producer died (/audit-mechanisms), never a blind
-    # skill run.
+    # skill run. 2026-10-07 (option B): zero runs WITH reflex "[starved]" heartbeats
+    # that week is reported ungraded as state=idle_by_design (F4: nothing eligible ->
+    # no exec_log row); zero runs with NO heartbeat still grades 0 -> FAIL.
     "Mechanism_Liveness":       {"skill": "audit-mechanisms",             "command": "/audit-mechanisms",                    "dir": "higher", "warn": 2,     "fail": 0.5, "readonly": True, "auto_remediable": False, "weight": 1.0},
+    # Git / factory hygiene trio (LIVE 2026-09-23; intake approved 2026-09-21). Counts,
+    # dir=lower, target 0. Thresholds are a FIRST GUESS against the 2026-09-20 readings
+    # 88 / 7 / 59 (all three open FAIL by design — that is the debt they were filed to
+    # expose); retune after two weekly readings. NOT auto_remediable: every remediation
+    # is a human merge or a human archive by policy — /git-hygiene adjudicates branches
+    # and triages the merge lane, /captain reads back and steers the factory's
+    # approved-never-executed rows. Neither operates on the live session's context, so
+    # neither belongs in SESSION_HYGIENE_SKILLS.
+    "Stale_Branch_Count":       {"skill": "git-hygiene",                  "command": "/git-hygiene",                         "dir": "lower",  "warn": 20,    "fail": 60,  "auto_remediable": False, "weight": 1.0},
+    "Lane_Pending_Age":         {"skill": "git-hygiene",                  "command": "/git-hygiene",                         "dir": "lower",  "warn": 1,     "fail": 5,   "auto_remediable": False, "weight": 1.0},
+    "Approved_Unexecuted_HITL": {"skill": "captain",                      "command": "/captain",                             "dir": "lower",  "warn": 1,     "fail": 10,  "auto_remediable": False, "weight": 1.0},
     # Remediation_Delta (2026-08-01, metric-gap remediation, phase B2): magnitude
     # companion to Self_Correction_Rate's yes/no judgment -- median(3 post-firing) -
     # median(3 pre-firing) history values per remediation attempt, sign-normalized so
@@ -444,6 +457,9 @@ _GRADED_METRIC_PILLARS: dict[str, tuple[str, ...]] = {
     "Mechanism_Orphans": ("bow",),
     "Scheduled_Job_Failures": ("bow",),
     "Mechanism_Liveness": ("bow",),
+    "Stale_Branch_Count": ("bow",),
+    "Lane_Pending_Age": ("bow",),
+    "Approved_Unexecuted_HITL": ("bow",),
     "Governance_Pass_Rate": ("bow",),
     "MCP_Smoke_Fails": ("bow",),
     "Open_CVEs": ("sword",),

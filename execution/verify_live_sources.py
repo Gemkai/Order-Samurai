@@ -30,7 +30,10 @@ Source mini-language (as declared in agentica_core.ronin_metrics.REGISTRY):
   a | b          either suffices (alternation)
   file.mtime(g)  one or more comma-separated globs; any match satisfies
   path/with/*    glob; >=1 match satisfies
-  ~/.claude/...   resolved under the user home; all other tokens under REPO_ROOT
+  ~/.claude/...   resolved under the user home
+  ../x/y          resolved lexically against REPO_ROOT's parents (sources outside the
+                  Order Samurai root, e.g. the factory ledger or the repo's .git);
+                  all other tokens under REPO_ROOT
 
 Runtime cost (M6, 2026-08-16): this check needs only metric names and their
 is_simulated flags, but building them via aggregate() costs 30-68s (measured),
@@ -96,6 +99,12 @@ def _token_resolves(token: str, repo_root: Path) -> bool:
         base, rel = _HOME_CLAUDE, token[len("~/.claude/"):]
     else:
         base, rel = repo_root, token
+        # Sources outside the Order Samurai root (the factory ledger, the repo's .git) are
+        # declared with leading ../ segments. Fold them into the base lexically so the
+        # existence check is explicit rather than relying on the OS walking '..' inside
+        # stat()/glob() — and so such a source is still CHECKED, never exempted.
+        while rel.startswith("../"):
+            base, rel = base.parent, rel[len("../"):]
     if "*" in rel:
         return any(base.glob(rel))
     return (base / rel).exists()

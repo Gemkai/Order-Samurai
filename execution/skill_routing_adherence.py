@@ -6,8 +6,10 @@ been used, the fraction where it actually was. This is the "honor-system, ignore
 signal made measurable: the exact governance failure of hand-rolling work a skill
 packages (no rubric, no adversarial-verify, no telemetry) becomes a graded number.
 
-  numerator   = detections whose routed skill was invoked in the same session
-  denominator = all detections (router-hook firings) in the last 30 days
+  numerator   = detections whose routed skill was invoked in the same session at or
+                after the detection
+  denominator = all (category, skill) detections in the last 30 days, excluding the
+                hiring-review nudge's own recommendations (HIRING_CATEGORY)
   value       = 100 * numerator / denominator   (higher = better adherence)
 
 Sources (written by the two hooks):
@@ -28,6 +30,30 @@ from pathlib import Path
 CLAUDE_HOME = Path(os.environ.get("CLAUDE_HOME") or Path.home() / ".claude")
 DETECT = CLAUDE_HOME / "data" / "skill_routing.jsonl"
 INVOKE = CLAUDE_HOME / "data" / "skill_invocations.jsonl"
+
+# The UserPromptSubmit nudge (~/.claude/scripts/skill_router_nudge.py, HIRING_CATEGORY)
+# logs the nightly hiring review's recommendations as detections on every prompt. They
+# are the router's own suggestions, not critical-work intent, and were 96% of in-window
+# pairs on 2026-09-30 — so both reducers exclude them.
+HIRING_CATEGORY = "hiring-review"
+
+
+def _parse_ts(value):
+    """Aware datetime for a hook `ts` ("...-0400" or "...+00:00"/"Z"), else None.
+
+    The strptime fallback keeps "-0400" parseable on Python < 3.11 (launchd jobs can
+    run /usr/bin/python3 3.9, whose fromisoformat rejects a colon-less offset). Both
+    hooks write local time, so a naive value is read as local, not UTC."""
+    from datetime import datetime
+    text = str(value).replace("Z", "+00:00")
+    try:
+        ts = datetime.fromisoformat(text)
+    except ValueError:
+        try:
+            ts = datetime.strptime(text, "%Y-%m-%dT%H:%M:%S%z")
+        except ValueError:
+            return None
+    return ts if ts.tzinfo else ts.astimezone()
 
 
 def _load(path: Path) -> list[dict]:
@@ -59,35 +85,36 @@ def compute_adherence(window_days: int = 30) -> dict:
     cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
     detections = []
     for d in _load(DETECT):
-        try:
-            ts = datetime.fromisoformat(str(d.get("ts", "")).replace("Z", "+00:00"))
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-        if ts >= cutoff:
-            detections.append(d)
-    invocations = _load(INVOKE)
-    # skills invoked per session (leading slug, no leading slash)
-    invoked_by_session: dict[str, set] = defaultdict(set)
-    for r in invocations:
+        ts = _parse_ts(d.get("ts", ""))
+        if ts is not None and ts >= cutoff:
+            detections.append((ts, d))
+    # latest invocation time per (session, skill slug). A detection is credited only by
+    # an invocation at or after it — a skill used earlier in the session did not answer
+    # this prompt. Undated invocations credit nothing.
+    last_invoked: dict[tuple[str, str], datetime] = {}
+    for r in _load(INVOKE):
         slug = (str(r.get("skill", "")).lstrip("/").split() or [""])[0]
-        if slug:
-            invoked_by_session[str(r.get("session_id", ""))].add(slug)
+        its = _parse_ts(r.get("ts", ""))
+        if not slug or its is None:
+            continue
+        key = (str(r.get("session_id", "")), slug)
+        if key not in last_invoked or its > last_invoked[key]:
+            last_invoked[key] = its
 
     total = 0
     routed = 0
     unrouted_by_cat: dict[str, int] = defaultdict(int)
-    for d in detections:
+    for dts, d in detections:
         sid = str(d.get("session_id", ""))
         cats = d.get("categories") or []
         skills = d.get("skills") or []
         for cat, skill in zip(cats, skills):
             slug = (str(skill).lstrip("/").split() or [""])[0]
-            if not slug:
+            if not slug or cat == HIRING_CATEGORY:
                 continue
             total += 1
-            if slug in invoked_by_session.get(sid, set()):
+            invoked_at = last_invoked.get((sid, slug))
+            if invoked_at is not None and invoked_at >= dts:
                 routed += 1
             else:
                 unrouted_by_cat[cat] += 1
@@ -103,7 +130,7 @@ def compute_adherence(window_days: int = 30) -> dict:
         "sample_size": total,
         "routed": routed,
         "detail": (
-            f"{routed}/{total} critical-work prompts routed through their skill"
+            f"{routed}/{total} category/skill detections routed through their skill"
             + (f"; top unrouted: {', '.join(f'{c} ({n})' for c, n in worst)}" if worst else "")
             if total else "no critical-work prompts detected yet"
         ),
@@ -130,18 +157,13 @@ def compute_work_volume(window_days: int = 30) -> dict:
     total = 0
     by_cat: dict[str, int] = defaultdict(int)
     for d in _load(DETECT):
-        try:
-            ts = datetime.fromisoformat(str(d.get("ts", "")).replace("Z", "+00:00"))
-            if ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-        if ts < cutoff:
+        ts = _parse_ts(d.get("ts", ""))
+        if ts is None or ts < cutoff:
             continue
         cats = d.get("categories") or []
         skills = d.get("skills") or []
         for cat, skill in zip(cats, skills):
-            if str(skill).lstrip("/").split()[0:1]:
+            if cat != HIRING_CATEGORY and str(skill).lstrip("/").split()[0:1]:
                 total += 1
                 by_cat[cat] += 1
     top = sorted(by_cat.items(), key=lambda kv: -kv[1])[:3]

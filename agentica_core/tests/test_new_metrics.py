@@ -874,3 +874,103 @@ class TestDaemonRestartCount:
         assert env["is_simulated"] is False
         assert env["tier"] == "AUTO"
         assert env["val"] != "—"
+
+
+# ── Hygiene trio: Stale_Branch_Count / Lane_Pending_Age / Approved_Unexecuted_HITL ──
+# Wired live 2026-09-23 from Research/proposed_hygiene_reducers.py (intake approved
+# 2026-09-21). Each inner `_*` reducer returns an int, -1 = source missing; the r_*
+# wrapper must turn -1 into a SIMULATED envelope, never into a zero.
+
+_HYGIENE_TRIO = [
+    # (metric key, r_ wrapper name, inner reducer name, expected error fragment)
+    ("Stale_Branch_Count", "r_stale_branch_count", "_stale_branch_count", "not a git checkout"),
+    ("Lane_Pending_Age", "r_lane_pending_age", "_lane_pending_age", "ledger missing"),
+    ("Approved_Unexecuted_HITL", "r_approved_unexecuted_hitl", "_approved_unexecuted_hitl", "hitl_queue"),
+]
+
+
+@pytest.fixture(autouse=True)
+def _reset_stale_branch_cache(monkeypatch):
+    """r_stale_branch_count memoizes for 300s; every test here wants a fresh read."""
+    monkeypatch.setattr(agg, "_STALE_BRANCH_CACHE", {"t": 0.0, "v": None})
+
+
+@pytest.mark.parametrize("key,wrapper,inner,err_fragment", _HYGIENE_TRIO)
+class TestHygieneTrioWiring:
+    def test_registered_in_registry_under_bow_autonomic_as_auto_count(self, key, wrapper, inner, err_fragment):
+        entry = next((e for e in agg.REGISTRY if e[2] == key), None)
+        assert entry is not None, f"{key} must be a row in aggregate.REGISTRY (not the scout _set block)"
+        pillar, group, _key, reducer, tier, is_percent, is_count = entry
+        assert (pillar, group, tier) == ("bow", "Autonomic", "AUTO")
+        assert is_percent is False
+        assert is_count is True
+        assert callable(reducer)
+        assert reducer is getattr(agg, wrapper)
+
+    def test_metric_config_grades_lower_with_a_remediation_route(self, key, wrapper, inner, err_fragment):
+        from agentica_core import insights
+        cfg = insights.METRIC_CONFIG[key]
+        assert cfg["dir"] == "lower"
+        assert cfg["auto_remediable"] is False  # every fix here is a human merge/archive
+        assert key in insights.METRIC_RULES
+        assert insights.REMEDIATION[key]["command"].startswith("/")
+        assert insights._GRADED_METRIC_PILLARS[key] == ("bow",)
+
+    def test_non_negative_reading_emits_live_auto(self, key, wrapper, inner, err_fragment, monkeypatch):
+        monkeypatch.setattr(agg, inner, lambda records, repo_root, now=None: 42)
+        result = getattr(agg, wrapper)([])
+        assert result == {"val": 42, "calibrated": True}
+        env = agg.build_pillars([])["bow"]["Autonomic"][key]
+        assert env["is_simulated"] is False
+        assert env["tier"] == "AUTO"
+        assert env["val"] == "42"
+
+    def test_zero_reading_is_an_honest_live_zero(self, key, wrapper, inner, err_fragment, monkeypatch):
+        monkeypatch.setattr(agg, inner, lambda records, repo_root, now=None: 0)
+        env = agg.build_pillars([])["bow"]["Autonomic"][key]
+        assert env["is_simulated"] is False
+        assert env["val"] == "0"
+
+    def test_missing_source_grades_simulated_never_zero(self, key, wrapper, inner, err_fragment, monkeypatch):
+        monkeypatch.setattr(agg, inner, lambda records, repo_root, now=None: -1)
+        result = getattr(agg, wrapper)([])
+        assert result["val"] is None
+        assert result["calibrated"] is False
+        assert "source unavailable" in result["error"]
+        assert err_fragment in result["error"]
+        env = agg.build_pillars([])["bow"]["Autonomic"][key]
+        assert env["is_simulated"] is True
+        assert env["tier"] == "SIMULATED"
+        assert env["val"] == "—"
+
+    def test_wrapper_ignores_records_and_reads_the_order_samurai_root(self, key, wrapper, inner, err_fragment, monkeypatch):
+        seen = {}
+
+        def fake(records, repo_root, now=None):
+            seen["records"] = records
+            seen["root"] = repo_root
+            return 7
+
+        monkeypatch.setattr(agg, inner, fake)
+        getattr(agg, wrapper)([{"total_cost": 1.0}] * 5)
+        assert seen["records"] == []  # telemetry is not this metric's source
+        assert seen["root"] == agg._ORDER_SAMURAI_ROOT
+
+
+class TestStaleBranchCountCache:
+    def test_second_call_inside_ttl_reuses_the_reading(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(agg, "_stale_branch_count", lambda records, repo_root, now=None: calls.append(1) or 88)
+        first = agg.r_stale_branch_count([])
+        second = agg.r_stale_branch_count([])
+        assert first == second == {"val": 88, "calibrated": True}
+        assert len(calls) == 1
+        second["val"] = 0  # callers get a copy; the cached envelope must not be mutable through it
+        assert agg.r_stale_branch_count([])["val"] == 88
+
+    def test_expired_ttl_rereads_and_a_missing_source_is_not_cached_as_live(self, monkeypatch):
+        readings = iter([88, -1])
+        monkeypatch.setattr(agg, "_stale_branch_count", lambda records, repo_root, now=None: next(readings))
+        assert agg.r_stale_branch_count([])["val"] == 88
+        agg._STALE_BRANCH_CACHE["t"] -= agg._STALE_BRANCH_TTL_S + 1
+        assert agg.r_stale_branch_count([])["val"] is None

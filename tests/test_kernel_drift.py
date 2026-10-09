@@ -51,6 +51,10 @@ SHARED_FUNCTIONS = [
     "_estimated_cost_savings",
     "_estimated_human_time_saved",
     "_pending_chain_proposals",
+    # hygiene trio (LIVE 2026-09-23): bodies live in aggregate.py, declared here
+    "_stale_branch_count",
+    "_lane_pending_age",
+    "_approved_unexecuted_hitl",
 ]
 
 # Both kernels use one of these field names for the metric identifier in REGISTRY dicts.
