@@ -19,8 +19,9 @@ rm -f "$out_zip" "$out_zip.sha256"
 
 # Exclusion patterns (grep -E, matched against each tracked path). Prior builds are
 # tracked (dist/ and the landing page's dashboard-ui/public/ copy); packing them would
-# nest every earlier zip inside the next one.
-exclude_re='^docs/productization/|^docs/INTERNAL_STRATEGY_MONETIZATION\.md$|(^|/)__pycache__/|\.pyc$|\.ps1$|(^|/)\.env(\.|$)|(^|/)order-samurai-core\.zip(\.sha256)?$'
+# nest every earlier zip inside the next one. build-record.json (dist/) is the release gate's
+# record of this build (it names the zip's own sha256), so no copy of it, at any depth, may be in the zip.
+exclude_re='^docs/productization/|^docs/INTERNAL_STRATEGY_MONETIZATION\.md$|(^|/)__pycache__/|\.pyc$|\.ps1$|(^|/)\.env(\.|$)|(^|/)order-samurai-core\.zip(\.sha256)?$|(^|/)build-record\.json$'
 
 tmp_list="$(mktemp)"
 trap 'rm -f "$tmp_list"' EXIT

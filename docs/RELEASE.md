@@ -29,7 +29,8 @@ bash bin/build_core_zip.sh    # -> dist/order-samurai-core.zip + .sha256
 ```
 The script bases the file list on `git ls-files` and excludes internal docs
 (`docs/productization/**`, `docs/INTERNAL_STRATEGY_MONETIZATION.md`, this file's
-internal siblings), `__pycache__`/`*.pyc`, `*.ps1`, and `.env*`.
+internal siblings), `__pycache__`/`*.pyc`, `*.ps1`, `.env*`, earlier zips, and any `build-record.json`
+(the release gate's record of this build, which names the zip's own sha256).
 Gate: `unzip -l dist/order-samurai-core.zip | grep -icE 'productization|__pycache__|\.pyc|\.ps1|INTERNAL_STRATEGY'` must print `0`.
 
 ## 4. Ship to the site (order-samurai-landing repo)
