@@ -336,3 +336,40 @@ def test_pre_fix_ehts_declaration_does_not_resolve(tmp_path):
     root = _ehts_fixture_repo(tmp_path)
     broken = "state/MEDITATION_STATE.json+vibe_alignment.json+doc_parity.json"
     assert vls._source_missing_tokens(broken, root) == ["vibe_alignment.json", "doc_parity.json"]
+
+
+# ── sources outside the Order Samurai root (../.. tokens) ────────────────────
+# The hygiene trio (2026-09-23) reads the factory ledger and the repo's .git,
+# both two levels above the Order Samurai root. They are declared with ../..
+# so the existence check still runs on them — a logical prefix would have
+# exempted them, which is the dishonesty this gate exists to catch.
+
+def _os_root(tmp_path):
+    os_root = tmp_path / "Governance" / "Order Samurai"
+    os_root.mkdir(parents=True)
+    return os_root
+
+
+def test_parent_relative_token_resolves_against_the_repo_root(tmp_path):
+    os_root = _os_root(tmp_path)
+    ledger = tmp_path / "Execution" / "factory" / "state" / "ledger.jsonl"
+    ledger.parent.mkdir(parents=True)
+    ledger.write_text("{}\n", encoding="utf-8")
+    (tmp_path / ".git").mkdir()
+    assert vls._source_missing_tokens("../../Execution/factory/state/ledger.jsonl", os_root) == []
+    assert vls._source_missing_tokens("../../.git", os_root) == []
+
+
+def test_parent_relative_glob_resolves(tmp_path):
+    os_root = _os_root(tmp_path)
+    state = tmp_path / "Execution" / "factory" / "state"
+    state.mkdir(parents=True)
+    (state / "ledger.jsonl").write_text("{}\n", encoding="utf-8")
+    assert vls._source_missing_tokens("../../Execution/factory/state/*.jsonl", os_root) == []
+
+
+def test_parent_relative_token_missing_is_reported_not_exempted(tmp_path):
+    os_root = _os_root(tmp_path)
+    token = "../../Execution/factory/state/ledger.jsonl"
+    assert vls._source_missing_tokens(token, os_root) == [token]
+    assert not vls._is_logical_source(token)

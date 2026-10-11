@@ -59,16 +59,22 @@ def cost(event, rate_card):
         return unknown("inconsistent_cache_buckets")
     buckets = {"input": ordinary, "cache_read": read, "output": output}
     if write:
-        short, long = event.get("cache_creation_5m_tokens"), event.get("cache_creation_1h_tokens")
-        if short is None or long is None:
-            return unknown("cache_write_ttl_unknown")
-        if not _valid_count(short) or not _valid_count(long) or short + long != write:
-            return unknown("inconsistent_cache_write_split")
-        buckets.update(cache_write_5m=short, cache_write_1h=long)
+        reason = _cache_write_buckets(event, write, buckets)
+        if reason is not None:
+            return unknown(reason)
     if any(not _valid_count(rates.get(key)) for key, count in buckets.items() if count):
         return unknown("invalid_or_missing_rate")
     return {**result, "value": sum(count * rates[key] for key, count in buckets.items() if count) / 1_000_000,
             "rate_card_as_of": rate_card["as_of"]}
+
+
+def _cache_write_buckets(event, write, buckets):
+    short, long = event.get("cache_creation_5m_tokens"), event.get("cache_creation_1h_tokens")
+    if short is None or long is None:
+        return "cache_write_ttl_unknown"
+    if not _valid_count(short) or not _valid_count(long) or short + long != write:
+        return "inconsistent_cache_write_split"
+    buckets.update(cache_write_5m=short, cache_write_1h=long)
 
 
 def _lines(path):
@@ -136,44 +142,56 @@ def _codex(path):
         inherited = started and current and current < started
         event_type = pl.get("type")
         if event_type == "token_count":
-            info = pl.get("info") or {}
-            totals = info.get("total_token_usage") or {}
-            if not totals:
-                continue
-            fields = ("input_tokens", "output_tokens", "cached_input_tokens", "cache_write_input_tokens")
-            now = {k: number(totals.get(k)) for k in fields}
-            # Rate-limit notifications repeat the last usage block. Only cumulative
-            # growth is new work. A counter reset starts another accumulation period.
-            reset = any(now[k] < previous.get(k, 0) for k in ("input_tokens", "output_tokens"))
-            delta = {k: max(0, now[k] - (0 if reset else previous.get(k, 0))) for k in fields}
-            known = all(_valid_count(totals.get(k)) for k in fields)
-            delta_known = known and (reset or not previous or previous_known)
-            previous, previous_known = now, known
-            if inherited or not any(delta.values()):
-                continue
-            if delta['cached_input_tokens'] > delta['input_tokens']:
-                delta['cached_input_tokens'] = delta['input_tokens']
-            key = f"{turn}:{stamp}:usage"
-            events[key] = _event(stamp, model, key,
-                context_max=number((info.get('last_token_usage') or {}).get('input_tokens')),
-                tokens_prompt=delta['input_tokens'], tokens_completion=delta['output_tokens'],
-                cache_read_tokens=delta['cached_input_tokens'],
-                cache_creation_tokens=delta['cache_write_input_tokens'],
-                usage_known=delta_known
-                    and now['cached_input_tokens'] + now['cache_write_input_tokens'] <= now['input_tokens'])
+            previous, previous_known = _codex_usage(
+                pl, stamp, model, turn, inherited, previous, previous_known, events)
         elif not inherited:
-            key = pl.get('call_id') or pl.get('id') or f'{turn}:{stamp}:{i}'
-            if kind == 'response_item' and event_type in {'function_call', 'custom_tool_call'}:
-                events[f'tool:{key}'] = _event(stamp, model, f'tool:{key}', tool_calls=1,
-                    **_tool_metadata(pl.get('name'), pl.get('arguments')))
-            elif kind == 'event_msg' and event_type == 'agent_message':
-                events[f'output:{key}'] = _event(stamp, model, f'output:{key}',
-                    output_words=len(str(pl.get('message') or '').split()))
-            elif kind == 'event_msg' and event_type == 'user_message':
-                events[f'user:{key}'] = _event(stamp, model, f'user:{key}', turns=1)
-            elif event_type == 'task_complete':
-                complete = True
+            complete = _codex_activity(
+                pl, kind, event_type, turn, stamp, i, model, events, complete)
     return sid, cwd, complete, list(events.values())
+
+
+def _codex_usage(pl, stamp, model, turn, inherited, previous, previous_known, events):
+    info = pl.get("info") or {}
+    totals = info.get("total_token_usage") or {}
+    if not totals:
+        return previous, previous_known
+    fields = ("input_tokens", "output_tokens", "cached_input_tokens", "cache_write_input_tokens")
+    now = {k: number(totals.get(k)) for k in fields}
+    # Rate-limit notifications repeat the last usage block. Only cumulative
+    # growth is new work. A counter reset starts another accumulation period.
+    reset = any(now[k] < previous.get(k, 0) for k in ("input_tokens", "output_tokens"))
+    delta = {k: max(0, now[k] - (0 if reset else previous.get(k, 0))) for k in fields}
+    known = all(_valid_count(totals.get(k)) for k in fields)
+    delta_known = known and (reset or not previous or previous_known)
+    previous, previous_known = now, known
+    if inherited or not any(delta.values()):
+        return previous, previous_known
+    if delta['cached_input_tokens'] > delta['input_tokens']:
+        delta['cached_input_tokens'] = delta['input_tokens']
+    key = f"{turn}:{stamp}:usage"
+    events[key] = _event(stamp, model, key,
+        context_max=number((info.get('last_token_usage') or {}).get('input_tokens')),
+        tokens_prompt=delta['input_tokens'], tokens_completion=delta['output_tokens'],
+        cache_read_tokens=delta['cached_input_tokens'],
+        cache_creation_tokens=delta['cache_write_input_tokens'],
+        usage_known=delta_known
+            and now['cached_input_tokens'] + now['cache_write_input_tokens'] <= now['input_tokens'])
+    return previous, previous_known
+
+
+def _codex_activity(pl, kind, event_type, turn, stamp, i, model, events, complete):
+    key = pl.get('call_id') or pl.get('id') or f'{turn}:{stamp}:{i}'
+    if kind == 'response_item' and event_type in {'function_call', 'custom_tool_call'}:
+        events[f'tool:{key}'] = _event(stamp, model, f'tool:{key}', tool_calls=1,
+            **_tool_metadata(pl.get('name'), pl.get('arguments')))
+    elif kind == 'event_msg' and event_type == 'agent_message':
+        events[f'output:{key}'] = _event(stamp, model, f'output:{key}',
+            output_words=len(str(pl.get('message') or '').split()))
+    elif kind == 'event_msg' and event_type == 'user_message':
+        events[f'user:{key}'] = _event(stamp, model, f'user:{key}', turns=1)
+    elif event_type == 'task_complete':
+        complete = True
+    return complete
 
 
 def _claude(path):
@@ -200,42 +218,50 @@ def _claude(path):
             request = msg.get('id') or row.get('requestId') or row.get('uuid') or f'{sid}:{i}'
             usage = msg.get('usage')
             if isinstance(usage, dict):
-                key = f'usage:{request}'
-                values = dict(tokens_prompt=number(usage.get('input_tokens')) + number(usage.get('cache_read_input_tokens')) + number(usage.get('cache_creation_input_tokens')),
-                    tokens_completion=number(usage.get('output_tokens')),
-                    cache_read_tokens=number(usage.get('cache_read_input_tokens')),
-                    cache_creation_tokens=number(usage.get('cache_creation_input_tokens')))
-                values["context_max"] = values["tokens_prompt"]
-                old = events.get(key, {})
-                # Streaming fragments repeat one request's usage; take its maxima once.
-                events[key] = _event(old.get('timestamp') or stamp, model, key,
-                    **{k: max(v, old.get(k, 0)) for k, v in values.items()})
-                required = ('input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens')
-                events[key]['usage_known'] = all(_valid_count(usage.get(k)) for k in required)
-                split = usage.get('cache_creation') or {}
-                for source, target in (('ephemeral_5m_input_tokens', 'cache_creation_5m_tokens'),
-                                       ('ephemeral_1h_input_tokens', 'cache_creation_1h_tokens')):
-                    value = split.get(source) if isinstance(split, dict) else None
-                    if _valid_count(value):
-                        events[key][target] = max(value, old.get(target, 0))
-                    elif target in old:
-                        events[key][target] = old[target]
-            content = msg.get('content') or []
-            if not isinstance(content, list):
-                continue
-            for n, block in enumerate(content):
-                if not isinstance(block, dict):
-                    continue
-                if block.get('type') == 'tool_use':
-                    key = f"tool:{block.get('id') or (str(request)+':'+str(n))}"
-                    events[key] = _event(stamp, model, key, tool_calls=1,
-                        **_tool_metadata(block.get('name'), block.get('input')))
-                elif block.get('type') == 'text':
-                    # UUID identifies each emitted text fragment across transcript copies.
-                    key = f"text:{row.get('uuid') or request}:{n}"
-                    events[key] = _event(stamp, model, key,
-                        output_words=len(str(block.get('text') or '').split()))
+                _claude_usage(usage, request, stamp, model, events)
+            _claude_content(msg, row, request, stamp, model, events)
     return sid, cwd, True, list(events.values())
+
+
+def _claude_usage(usage, request, stamp, model, events):
+    key = f'usage:{request}'
+    values = dict(tokens_prompt=number(usage.get('input_tokens')) + number(usage.get('cache_read_input_tokens')) + number(usage.get('cache_creation_input_tokens')),
+        tokens_completion=number(usage.get('output_tokens')),
+        cache_read_tokens=number(usage.get('cache_read_input_tokens')),
+        cache_creation_tokens=number(usage.get('cache_creation_input_tokens')))
+    values["context_max"] = values["tokens_prompt"]
+    old = events.get(key, {})
+    # Streaming fragments repeat one request's usage; take its maxima once.
+    events[key] = _event(old.get('timestamp') or stamp, model, key,
+        **{k: max(v, old.get(k, 0)) for k, v in values.items()})
+    required = ('input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens')
+    events[key]['usage_known'] = all(_valid_count(usage.get(k)) for k in required)
+    split = usage.get('cache_creation') or {}
+    for source, target in (('ephemeral_5m_input_tokens', 'cache_creation_5m_tokens'),
+                           ('ephemeral_1h_input_tokens', 'cache_creation_1h_tokens')):
+        value = split.get(source) if isinstance(split, dict) else None
+        if _valid_count(value):
+            events[key][target] = max(value, old.get(target, 0))
+        elif target in old:
+            events[key][target] = old[target]
+
+
+def _claude_content(msg, row, request, stamp, model, events):
+    content = msg.get('content') or []
+    if not isinstance(content, list):
+        return
+    for n, block in enumerate(content):
+        if not isinstance(block, dict):
+            continue
+        if block.get('type') == 'tool_use':
+            key = f"tool:{block.get('id') or (str(request)+':'+str(n))}"
+            events[key] = _event(stamp, model, key, tool_calls=1,
+                **_tool_metadata(block.get('name'), block.get('input')))
+        elif block.get('type') == 'text':
+            # UUID identifies each emitted text fragment across transcript copies.
+            key = f"text:{row.get('uuid') or request}:{n}"
+            events[key] = _event(stamp, model, key,
+                output_words=len(str(block.get('text') or '').split()))
 
 
 def enrich(platform, raw, runtime_root, *, source=None):
@@ -260,21 +286,7 @@ def enrich(platform, raw, runtime_root, *, source=None):
         except (OSError, ValueError, TypeError):
             continue
         found.add(sid)
-        unique = []
-        for e in events:
-            key = (platform, e['id'])
-            if key in seen:
-                if e['id'].startswith('usage:'):
-                    for f in (*FIELDS, "context_max", "cache_creation_5m_tokens", "cache_creation_1h_tokens"):
-                        if f in e:
-                            seen[key][f] = max(number(seen[key].get(f)), number(e[f]))
-                if 'usage_known' in e:
-                    seen[key]['usage_known'] = seen[key].get('usage_known') is True and e['usage_known'] is True
-                continue
-            if ts(e.get('timestamp')) and any(number(e.get(f)) for f in FIELDS):
-                event = dict(e)
-                seen[key] = event
-                unique.append(event)
+        unique = _unique_events(platform, events, seen)
         if not unique:
             continue
         base = dict(latest.get(sid, {}))
@@ -291,6 +303,29 @@ def enrich(platform, raw, runtime_root, *, source=None):
         else:
             sessions[sid] = base
             records.append(base)
+    return _session_summaries(records, latest, found)
+
+
+def _unique_events(platform, events, seen):
+    unique = []
+    for e in events:
+        key = (platform, e['id'])
+        if key in seen:
+            if e['id'].startswith('usage:'):
+                for f in (*FIELDS, "context_max", "cache_creation_5m_tokens", "cache_creation_1h_tokens"):
+                    if f in e:
+                        seen[key][f] = max(number(seen[key].get(f)), number(e[f]))
+            if 'usage_known' in e:
+                seen[key]['usage_known'] = seen[key].get('usage_known') is True and e['usage_known'] is True
+            continue
+        if ts(e.get('timestamp')) and any(number(e.get(f)) for f in FIELDS):
+            event = dict(e)
+            seen[key] = event
+            unique.append(event)
+    return unique
+
+
+def _session_summaries(records, latest, found):
     missing = [r for sid, r in latest.items() if sid not in found and any(number(r.get(f)) for f in FIELDS)]
     # Unrecoverable snapshots remain visible as coverage gaps, never precise day totals.
     for r in missing:
@@ -319,34 +354,53 @@ def window(records, start=None, end=None):
                   and (start is None or stamp >= start) and stamp <= end]
         if not events:
             continue
-        r = {k: v for k, v in raw.items() if k != '_usage_events'}
-        models = defaultdict(lambda: defaultdict(int))
-        for e in events:
-            for f in FIELDS:
-                if f in e:
-                    models[e.get('model')][f] += number(e[f])
-        for f in FIELDS:
-            if any(f in values for values in models.values()):
-                r[f] = sum(values.get(f, 0) for values in models.values())
-        usage_events = [e for e in events if any(f in e for f in FIELDS[:4])]
-        r['usage_known'] = bool(usage_events) and all(e.get('usage_known') is True for e in usage_events)
-        r['_activity'] = [e for e in events if e.get('tool_name')]
-        r['context_max'] = max((number(e.get('context_max')) for e in events), default=0)
-        for model, values in models.items():
-            model_events = [e for e in usage_events if e.get('model') == model]
-            values['usage_known'] = bool(model_events) and all(e.get('usage_known') is True for e in model_events)
-            values['context_max'] = max((number(e.get('context_max')) for e in events if e.get('model') == model), default=0)
-        r['timestamp'] = max(e['timestamp'] for e in events)
-        r['_model_usage'] = [dict(values, model=m, model_tier=model_tier(m)) for m, values in models.items()
-                             if any(values.get(f, 0) for f in ('tokens_prompt', 'tokens_completion', 'tool_calls', 'output_words'))]
-        model_names = [m for m in models if m]
-        r['model'] = model_names[0] if len(model_names) == 1 else None
-        tiers = {m['model_tier'] for m in r['_model_usage']}
-        if not tiers:
-            continue
-        r['model_tier'] = next(iter(tiers)) if len(tiers) == 1 else 'MIXED'
-        output.append(r)
+        record = _window_record(raw, events)
+        if record is not None:
+            output.append(record)
     return output
+
+
+def _window_record(raw, events):
+    r = {k: v for k, v in raw.items() if k != '_usage_events'}
+    usage_events = [e for e in events if any(f in e for f in FIELDS[:4])]
+    models = _window_models(events, usage_events)
+    for f in FIELDS:
+        if any(f in values for values in models.values()):
+            r[f] = sum(values.get(f, 0) for values in models.values())
+    r['usage_known'] = _usage_known(usage_events)
+    r['_activity'] = [e for e in events if e.get('tool_name')]
+    r['context_max'] = max((number(e.get('context_max')) for e in events), default=0)
+    r['timestamp'] = max(e['timestamp'] for e in events)
+    r['_model_usage'] = _active_model_usage(models)
+    model_names = [m for m in models if m]
+    r['model'] = model_names[0] if len(model_names) == 1 else None
+    tiers = {m['model_tier'] for m in r['_model_usage']}
+    if not tiers:
+        return None
+    r['model_tier'] = next(iter(tiers)) if len(tiers) == 1 else 'MIXED'
+    return r
+
+
+def _window_models(events, usage_events):
+    models = defaultdict(lambda: defaultdict(int))
+    for e in events:
+        for f in FIELDS:
+            if f in e:
+                models[e.get('model')][f] += number(e[f])
+    for model, values in models.items():
+        model_events = [e for e in usage_events if e.get('model') == model]
+        values['usage_known'] = _usage_known(model_events)
+        values['context_max'] = max((number(e.get('context_max')) for e in events if e.get('model') == model), default=0)
+    return models
+
+
+def _usage_known(events):
+    return bool(events) and all(e.get('usage_known') is True for e in events)
+
+
+def _active_model_usage(models):
+    return [dict(values, model=m, model_tier=model_tier(m)) for m, values in models.items()
+            if any(values.get(f, 0) for f in ('tokens_prompt', 'tokens_completion', 'tool_calls', 'output_words'))]
 
 
 def for_tier(records, tier):
