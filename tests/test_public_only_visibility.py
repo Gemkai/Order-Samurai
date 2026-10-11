@@ -261,3 +261,137 @@ def _assert_dotenv_values():
     assert os.environ["QUOTED"] == "v"
     assert os.environ["EXISTING"] == "environment wins"
     assert "# COMMENT" not in os.environ
+
+
+@pytest.mark.parametrize(
+    ("failure", "exception_type"),
+    [
+        ("nonzero", "CalledProcessError"),
+        ("timeout", "TimeoutExpired"),
+        ("permission", "PermissionError"),
+    ],
+)
+def test_refresh_dashboard_codex_emit_failure_is_visible(
+    failure, exception_type, tmp_path, monkeypatch, capsys,
+):
+    module = _load_module("refresh_dashboard.py", monkeypatch)
+    assert module._CODEX_EMIT == tmp_path / ".codex" / "scripts" / "codex_emit.py"
+    secret = "sk-live-W0BPUB-SENTINEL"
+    marker = tmp_path / "emitter-ran"
+    module._CODEX_EMIT.parent.mkdir(parents=True)
+    module._CODEX_EMIT.write_text(
+        "import sys\n"
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('ran', encoding='utf-8')\n"
+        f"print({secret!r})\n"
+        f"print({secret!r}, file=sys.stderr)\n"
+        "sys.exit(3)\n",
+        encoding="utf-8",
+    )
+    calls = []
+    if failure != "nonzero":
+        def fail_run(argv, **kwargs):
+            calls.append((argv, kwargs))
+            if failure == "timeout":
+                error = subprocess.TimeoutExpired(
+                    argv, 60, output=secret, stderr=secret,
+                )
+                # TimeoutExpired builds its message from cmd, not captured output.
+                error.cmd = f"{argv!r}: {secret}"
+                raise error
+            raise PermissionError(f"{secret}: {module._CODEX_EMIT}")
+
+        monkeypatch.setattr(module.subprocess, "run", fail_run)
+
+    real_calls = _refresh_dashboard_until_aggregate(module, monkeypatch)
+    if failure == "nonzero":
+        assert marker.read_text(encoding="utf-8") == "ran"
+        calls = real_calls
+    assert len(calls) == 1
+    assert calls[0][0] == [sys.executable, str(module._CODEX_EMIT)]
+    assert calls[0][1]["timeout"] == 60
+    output = capsys.readouterr()
+    assert "codex_emit" not in output.out
+    for value in (secret, str(module._CODEX_EMIT)):
+        assert value not in output.out + output.err
+    assert [line for line in output.err.splitlines() if "codex_emit" in line] == [
+        f"WARN: codex_emit failed: {exception_type}",
+    ]
+
+
+@pytest.mark.parametrize("present", [False, True], ids=["absent", "success"])
+def test_refresh_dashboard_codex_emit_controls(
+    present, tmp_path, monkeypatch, capsys,
+):
+    module = _load_module("refresh_dashboard.py", monkeypatch)
+    assert module._CODEX_EMIT == tmp_path / ".codex" / "scripts" / "codex_emit.py"
+    marker = tmp_path / "emitter-ran"
+    calls = []
+    if present:
+        module._CODEX_EMIT.parent.mkdir(parents=True)
+        module._CODEX_EMIT.write_text(
+            "from pathlib import Path\n"
+            f"Path({str(marker)!r}).write_text('ran', encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+    else:
+        assert not module._CODEX_EMIT.exists()
+
+        def record_run(argv, **kwargs):
+            calls.append((argv, kwargs))
+            return subprocess.CompletedProcess(argv, 0)
+
+        monkeypatch.setattr(module.subprocess, "run", record_run)
+
+    real_calls = _refresh_dashboard_until_aggregate(module, monkeypatch)
+    if present:
+        assert marker.read_text(encoding="utf-8") == "ran"
+        assert len(real_calls) == 1
+        assert real_calls[0][0] == [sys.executable, str(module._CODEX_EMIT)]
+        assert real_calls[0][1]["timeout"] == 60
+    else:
+        assert calls == []
+        assert not marker.exists()
+    output = capsys.readouterr()
+    assert "codex_emit" not in output.out + output.err
+
+
+def _refresh_dashboard_until_aggregate(module, monkeypatch):
+    class AggregateReached(Exception):
+        pass
+
+    aggregate_calls = []
+
+    def aggregate(**kwargs):
+        aggregate_calls.append(kwargs)
+        raise AggregateReached
+
+    stub = ModuleType("agentica_core.aggregate")
+    stub.aggregate = aggregate
+    stub.write_payload = lambda *args, **kwargs: None
+    monkeypatch.setitem(sys.modules, "agentica_core.aggregate", stub)
+    monkeypatch.setattr(sys, "argv", ["refresh_dashboard.py"])
+    monkeypatch.setattr(module, "_emit_mechanism_runs", lambda: None)
+
+    # Observe real run arguments without wrapping or delegating the loader call.
+    run_code = module.subprocess.run.__code__
+    real_calls = []
+
+    def record_call(frame, event, arg):
+        if event == "call" and frame.f_code is run_code:
+            values = frame.f_locals
+            if "popenargs" in values:
+                real_calls.append(
+                    (values["popenargs"][0], {"timeout": values["timeout"]})
+                )
+
+    previous_profile = sys.getprofile()
+    sys.setprofile(record_call)
+    try:
+        with pytest.raises(AggregateReached):
+            module.main()
+    finally:
+        sys.setprofile(previous_profile)
+    assert len(aggregate_calls) == 1
+    assert aggregate_calls[0]["write_history"] is False
+    return real_calls
