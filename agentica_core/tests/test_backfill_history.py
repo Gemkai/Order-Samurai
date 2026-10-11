@@ -1,6 +1,10 @@
 import json
+from threading import Event, Thread
+
+import pytest
 
 from agentica_core import backfill_history as bh
+from agentica_core import insights
 
 
 def test_week_monday_iso():
@@ -171,3 +175,124 @@ def test_backfill_ignores_unparseable_rows_when_carrying_forward(tmp_path, monke
 
     assert bh.backfill(store=store) == 2
     assert _rows(store)[1]["values"][_LIVE_ONLY] == 7.0
+
+
+def test_backfill_preserves_concurrent_live_append(tmp_path, monkeypatch):
+    """A live snapshot appended during carry-forward survives the rebuild."""
+    fcntl = pytest.importorskip("fcntl")
+    monkeypatch.setenv("BACKFILL_CARRY_FORWARD", "true")
+    _stub_two_weeks(monkeypatch)
+    store = tmp_path / "hist.jsonl"
+    _seed_live_row(store, "2026-06-10T00:00:00+00:00", 1.0)
+    newest_ts = "2026-06-11T00:00:00+00:00"
+    append_observed = Event()
+    errors = []
+    original_carry_forward = bh._carry_forward
+
+    def append_concurrently():
+        try:
+            # Signal either real lock contention or a completed append.
+            # This avoids relying on a sleep to arrange the race.
+            with store.open("r+", encoding="utf-8") as probe:
+                try:
+                    fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    append_observed.set()
+                else:
+                    fcntl.flock(probe, fcntl.LOCK_UN)
+            insights.append_snapshot(store, newest_ts, {_LIVE_ONLY: 2.0})
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            append_observed.set()
+
+    appender = Thread(target=append_concurrently, daemon=True)
+
+    def carry_forward_with_append(weekly_rows, prior_rows):
+        appender.start()
+        assert append_observed.wait(timeout=0.5), "Appender made no progress"
+        return original_carry_forward(weekly_rows, prior_rows)
+
+    monkeypatch.setattr(bh, "_carry_forward", carry_forward_with_append)
+    try:
+        assert bh.backfill(store=store) == 2
+    finally:
+        if appender.ident is not None:
+            appender.join(timeout=0.5)
+
+    assert appender.ident is not None, "Carry-forward hook was not reached"
+    assert not appender.is_alive(), "Appender did not finish after backfill"
+    assert not errors, f"Concurrent append failed: {errors!r}"
+
+    live_rows = [row for row in _rows(store) if row.get("kind") == "live"]
+    assert any(
+        row["ts"] == newest_ts and row["values"].get(_LIVE_ONLY) == 2.0
+        for row in live_rows
+    ), "Backfill erased the concurrent live snapshot"
+    newest = max(live_rows, key=lambda row: row["ts"])
+    assert newest["ts"] == newest_ts
+    assert newest["values"][_LIVE_ONLY] == 2.0
+
+    monkeypatch.setattr(bh, "_carry_forward", original_carry_forward)
+    assert bh.backfill(store=store) == 2
+    live_rows = [row for row in _rows(store) if row.get("kind") == "live"]
+    assert len(live_rows) == 1
+    assert live_rows[0]["ts"] == newest_ts
+    assert live_rows[0]["values"][_LIVE_ONLY] == 2.0
+
+
+@pytest.mark.parametrize("carry_forward", ["true", "false"])
+def test_empty_source_preserves_history_created_after_exists_check(
+    tmp_path, monkeypatch, carry_forward
+):
+    """An empty source preserves history populated after the existence check."""
+    monkeypatch.setattr(bh.agg, "list_platforms", lambda: [])
+    monkeypatch.setenv("BACKFILL_CARRY_FORWARD", carry_forward)
+    store = tmp_path / "hist.jsonl"
+    concurrent_text = "\n".join(
+        json.dumps(row)
+        for row in [
+            {
+                "ts": "2026-06-01T00:00:00+00:00",
+                "week": "2026-W23",
+                "kind": "weekly",
+                "values": {_WEEKLY: 4.0},
+            },
+            {
+                "ts": "2026-06-10T00:00:00+00:00",
+                "week": "2026-W24",
+                "kind": "live",
+                "values": {_LIVE_ONLY: 2.2},
+            },
+        ]
+    ) + "\n"
+    writer_ran = False
+
+    class PopulatedAfterExistsCheck(type(tmp_path)):
+        def exists(self):
+            nonlocal writer_ran
+            existed = super().exists()
+            if not existed and not writer_ran:
+                writer_ran = True
+                store.write_text(concurrent_text, encoding="utf-8")
+            return existed
+
+    assert not store.exists()
+    assert bh.backfill(store=PopulatedAfterExistsCheck(store)) == 0
+    assert writer_ran
+    assert store.read_text(encoding="utf-8") == concurrent_text
+
+
+@pytest.mark.parametrize("carry_forward", ["true", "false"])
+def test_empty_source_creates_missing_history_store(
+    tmp_path, monkeypatch, carry_forward
+):
+    """An empty source still creates a missing store without history rows."""
+    monkeypatch.setattr(bh.agg, "list_platforms", lambda: [])
+    monkeypatch.setenv("BACKFILL_CARRY_FORWARD", carry_forward)
+    store = tmp_path / "hist.jsonl"
+
+    assert not store.exists()
+    assert bh.backfill(store=store) == 0
+    assert store.exists()
+    assert _rows(store) == []

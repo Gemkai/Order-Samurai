@@ -68,12 +68,10 @@ def _sort_key(ts: str) -> tuple:
     return (0, dt)
 
 
-def _existing_rows(store: Path) -> list[dict]:
-    """Every parseable row already in the store, oldest first (best-effort)."""
-    if not store.exists():
-        return []
+def _existing_rows(text: str) -> list[dict]:
+    """Every parseable row in the store's text, oldest first (best-effort)."""
     rows = []
-    for ln in store.read_text(encoding="utf-8", errors="ignore").splitlines():
+    for ln in text.splitlines():
         try:
             row = json.loads(ln)
         except ValueError:
@@ -168,30 +166,6 @@ def backfill(store: Path | None = None) -> int:
     if not weekly_rows and store.exists():
         return 0
 
-    # Read the store BEFORE the lock (see below): merging happens here so the locked
-    # truncate-and-rewrite block stays exactly as reviewed. A live append racing this
-    # read is no worse off than before — the truncate already discarded it.
-    prior_rows = _existing_rows(store)
-    weekly_rows = _carry_forward(weekly_rows, prior_rows)
-
-    # Preserve the single most recent kind:"live" row across the rebuild (same
-    # BACKFILL_CARRY_FORWARD kill switch as _carry_forward — both exist to survive
-    # this truncate-and-rebuild; "false" restores the PURE rebuild neither one).
-    # max_live_rows=1 per scorecard's data_history_live_rows probe.
-    #
-    # Why this matters: refresh_dashboard.py calls backfill() BEFORE
-    # aggregate()/populate_history() on every --snapshot run. Without this, the live
-    # row the PRIOR cycle's aggregate() appended (this module's own comment below
-    # says "populate_history() still appends today's live value as the latest
-    # point") is wiped here before THIS cycle's populate_history() ever reads it.
-    # insights._comparable_history_rows() (kind in (None, "live")) then always finds
-    # zero rows to diff against, so delta/trend and the sigma-anomaly tier stay
-    # stuck at their neutral defaults forever instead of comparing against the last
-    # snapshot.
-    kill_switch = os.environ.get("BACKFILL_CARRY_FORWARD", "true").strip().lower() in ("false", "0", "no")
-    live_rows = [] if kill_switch else [r for r in prior_rows if r.get("kind") == "live"]
-    latest_live = [live_rows[-1]] if live_rows else []
-
     # Weekly cadence IS the canonical history series (one row per ISO week). Prior
     # sub-weekly live snapshots beyond the single preserved one are discarded — they
     # crowd the trailing window with near-identical intra-day refreshes and bury
@@ -199,15 +173,16 @@ def backfill(store: Path | None = None) -> int:
     # as the latest point at runtime, and the weekly --snapshot task extends this
     # series one row per week going forward.
     #
-    # Rewrite under the SAME flock insights.append_snapshot takes, so a concurrent
-    # live append cannot interleave with this truncate-and-rebuild (adversarial
-    # review 2026-07-26: the append path was locked but this rewrite was not).
+    # Read, merge and rewrite under the SAME flock insights.append_snapshot takes. A
+    # concurrent live append is then either visible to the read below (and kept as
+    # the latest live row) or lands after the rewrite; reading before the lock let
+    # the truncate erase a row appended in between and write back an older one.
     # Open "a+" then truncate — opening "w" would truncate BEFORE the lock is held.
     try:
         import fcntl
     except ImportError:  # non-POSIX host: fall back to unlocked rewrite
         fcntl = None
-    with store.open("a+", encoding="utf-8") as fh:
+    with store.open("a+", encoding="utf-8", errors="ignore") as fh:
         locked = False
         if fcntl is not None:
             try:
@@ -216,6 +191,31 @@ def backfill(store: Path | None = None) -> int:
             except OSError:  # filesystem without POSIX locks
                 pass
         try:
+            fh.seek(0)
+            text = fh.read()
+            # Same empty-source guard, re-checked under the lock: a writer may have
+            # created and filled the store after the unlocked exists() check above.
+            if not weekly_rows and text:
+                return 0
+            prior_rows = _existing_rows(text)
+            weekly_rows = _carry_forward(weekly_rows, prior_rows)
+
+            # Preserve the single most recent kind:"live" row across the rebuild (same
+            # BACKFILL_CARRY_FORWARD kill switch as _carry_forward — both exist to survive
+            # this truncate-and-rebuild; "false" restores the PURE rebuild neither one).
+            # max_live_rows=1 per scorecard's data_history_live_rows probe.
+            #
+            # Why this matters: refresh_dashboard.py calls backfill() BEFORE
+            # aggregate()/populate_history() on every --snapshot run. Without this, the
+            # live row the PRIOR cycle's aggregate() appended is wiped here before THIS
+            # cycle's populate_history() ever reads it. insights._comparable_history_rows()
+            # (kind in (None, "live")) then always finds zero rows to diff against, so
+            # delta/trend and the sigma-anomaly tier stay stuck at their neutral defaults
+            # forever instead of comparing against the last snapshot.
+            kill_switch = os.environ.get("BACKFILL_CARRY_FORWARD", "true").strip().lower() in ("false", "0", "no")
+            live_rows = [] if kill_switch else [r for r in prior_rows if r.get("kind") == "live"]
+            latest_live = [live_rows[-1]] if live_rows else []
+
             fh.seek(0)
             fh.truncate()
             fh.write("\n".join(json.dumps(r) for r in weekly_rows + latest_live) + "\n")
