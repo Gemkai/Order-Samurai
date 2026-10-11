@@ -68,9 +68,8 @@ METRIC_CONFIG: dict[str, dict] = {
     # no exec_log row); zero runs with NO heartbeat still grades 0 -> FAIL.
     "Mechanism_Liveness":       {"skill": "audit-mechanisms",             "command": "/audit-mechanisms",                    "dir": "higher", "warn": 2,     "fail": 0.5, "readonly": True, "auto_remediable": False, "weight": 1.0},
     # Git / factory hygiene trio (LIVE 2026-09-23; intake approved 2026-09-21). Counts,
-    # dir=lower, target 0. Thresholds are a FIRST GUESS against the 2026-09-20 readings
-    # 88 / 7 / 59 (all three open FAIL by design — that is the debt they were filed to
-    # expose); retune after two weekly readings. NOT auto_remediable: every remediation
+    # dir=lower, target 0. Thresholds are a FIRST GUESS; retune after two weekly
+    # readings. NOT auto_remediable: every remediation
     # is a human merge or a human archive by policy — /git-hygiene adjudicates branches
     # and triages the merge lane, /captain reads back and steers the factory's
     # approved-never-executed rows. Neither operates on the live session's context, so
