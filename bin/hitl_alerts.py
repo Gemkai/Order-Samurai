@@ -143,7 +143,10 @@ def _resend_key() -> str:
 
     launchd jobs never source ~/.zshrc, so the scheduled digest ran keyless and fell
     back to Mail.app (2026-08-16 secret-brokerage M1). Env still wins so tests and
-    one-off overrides work; empty string preserves the Mail.app fallback."""
+    one-off overrides work; empty string preserves the Mail.app fallback.
+
+    secret_env lives in the monorepo, not the public product, so a failed lookup says
+    why on stderr (never the key) instead of degrading to Mail.app unexplained."""
     key = os.environ.get("RESEND_API_KEY", "")
     if key:
         return key
@@ -153,7 +156,9 @@ def _resend_key() -> str:
     try:
         from secret_env import lookup
         return lookup("RESEND_API_KEY") or ""
-    except Exception:
+    except Exception as exc:
+        print(f"WARN: RESEND_API_KEY is not set and the Keychain lookup failed "
+              f"({type(exc).__name__}); the digest will use Mail.app", file=sys.stderr)
         return ""
 
 

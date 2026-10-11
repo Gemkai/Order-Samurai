@@ -46,6 +46,9 @@ def test_no_stale_support_emails_or_dead_checkout_links():
         text = p.read_text(encoding="utf-8")
         lower = text.lower()
         forbidden_agentica = "".join(["support@", "agentica"])
+        # The one sanctioned support/feedback address (owner decision 2026-10-07) starts
+        # with the same prefix, so remove it before looking for any other agentica address.
+        text = text.replace("support@agentica-llc.biz", "")
         assert "lemonsqueezy.com" not in lower, f"Found dead Lemon Squeezy checkout link in {p.name}"
         if p.name == "PRIVACY.md":
             mentions = [

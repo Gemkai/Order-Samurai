@@ -899,10 +899,10 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                 </p>
                 <div className="p-4 bg-slate-950 rounded-xl border border-white/5 space-y-2 text-xs font-mono">
                   <div className="text-slate-400">Direct Support &amp; Sales Channel:</div>
-                  <div className="text-white font-bold select-all">support@ordersamurai.ai</div>
+                  <div className="text-white font-bold select-all">support@agentica-llc.biz</div>
                 </div>
                 <a
-                  href="mailto:support@ordersamurai.ai?subject=Order%20Samurai%20Enterprise%20Compliance%20Inquiry"
+                  href="mailto:support@agentica-llc.biz?subject=Order%20Samurai%20Enterprise%20Compliance%20Inquiry"
                   className="w-full py-3 bg-[#ef4444] hover:bg-[#dc2626] text-white rounded-xl font-bold text-sm shadow-lg shadow-[#ef4444]/25 transition-all flex items-center justify-center gap-2 text-center"
                 >
                   Email Enterprise Sales
@@ -928,7 +928,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
             <a href="https://github.com/Gemkai/order-samurai/blob/main/TERMS.md" target="_blank" rel="noopener noreferrer" className="hover:text-slate-300">Terms &amp; EULA</a>
             <a href="https://github.com/Gemkai/order-samurai/blob/main/PRIVACY.md" target="_blank" rel="noopener noreferrer" className="hover:text-slate-300">Privacy Policy</a>
             <a href="https://github.com/Gemkai/order-samurai/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer" className="hover:text-slate-300">Security</a>
-            <a href="mailto:support@ordersamurai.ai" className="hover:text-slate-300">Support (support@ordersamurai.ai)</a>
+            <a href="mailto:support@agentica-llc.biz" className="hover:text-slate-300">Support (support@agentica-llc.biz)</a>
             <span className="text-slate-400 font-medium flex items-center gap-1">🛡️ 14-Day Money-Back Guarantee</span>
           </div>
         </div>

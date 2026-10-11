@@ -131,6 +131,19 @@ def _read_payload() -> dict:
     except Exception:
         return {}
 
+def _read_gemini_payload() -> dict:
+    """The payload, or an exception when stdin is non-empty but is not a JSON object.
+    Gemini CLI proceeds when a hook prints nothing and exits 0, so unlike _read_payload
+    this never turns unreadable input into "nothing to scan"."""
+    raw = sys.stdin.read()
+    if not raw.strip():
+        return {}
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise ValueError("hook input is not a JSON object")
+    return payload
+
+
 _SEMANTIC_DEADLINE_S = 3.5  # whole call, well inside the 10 s hook timeout
 
 _PATCH_HEADERS = ("*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: ")
@@ -243,35 +256,56 @@ def evaluate_input(input_str: str) -> tuple[float, str]:
 # Cursor hook events the guard answers. A Cursor payload is recognised by its event
 # name or its conversation_id; Claude and Codex payloads carry neither.
 _CURSOR_EVENTS = frozenset({"beforeShellExecution", "beforeMCPExecution", "preToolUse"})
+# Gemini CLI's blocking pre-tool event. AfterTool and the rest are non-blocking and are
+# never installed, so they are not answered in Gemini's format.
+_GEMINI_EVENTS = frozenset({"BeforeTool"})
 
 
-def _is_cursor(payload: dict) -> bool:
-    return payload.get("hook_event_name") in _CURSOR_EVENTS or "conversation_id" in payload
+def _harness_of(payload: dict) -> str | None:
+    """"gemini" or "cursor" for payloads that need a JSON verdict on stdout; None for
+    Claude Code and Codex, whose stdout stays silent."""
+    if payload.get("hook_event_name") in _GEMINI_EVENTS:
+        return "gemini"
+    if payload.get("hook_event_name") in _CURSOR_EVENTS or "conversation_id" in payload:
+        return "cursor"
+    return None
+
+
+def _collect_strings(value, found: list[str], decode_json: bool = False) -> None:
+    """Append every string (and key) inside value to found. With decode_json, a string
+    that is itself a JSON object or array is also walked decoded: an escape such as
+    backslash-u006a hides a letter from the raw-text patterns."""
+    if isinstance(value, str):
+        found.append(value)
+        if decode_json and value.lstrip()[:1] in ("{", "["):
+            try:
+                _collect_strings(json.loads(value), found, True)
+            except (ValueError, RecursionError):
+                pass
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            found.append(str(key))
+            _collect_strings(item, found, decode_json)
+    elif isinstance(value, list):
+        for item in value:
+            _collect_strings(item, found, decode_json)
 
 
 def _json_strings(text: str) -> str:
     """Every string (and key) inside a JSON document, space-joined; "" when text is not
-    JSON. beforeMCPExecution passes tool_input as a JSON-encoded string, where an escape
-    such as backslash-u006a hides a letter from the raw-text patterns."""
+    JSON. beforeMCPExecution passes tool_input as a JSON-encoded string."""
     try:
         document = json.loads(text)
     except (ValueError, RecursionError):
         return ""
     found: list[str] = []
-
-    def walk(value) -> None:
-        if isinstance(value, str):
-            found.append(value)
-        elif isinstance(value, dict):
-            for key, item in value.items():
-                found.append(str(key))
-                walk(item)
-        elif isinstance(value, list):
-            for item in value:
-                walk(item)
-
-    walk(document)
+    _collect_strings(document, found)
     return " ".join(found)
+
+
+def _write_json(verdict: dict) -> None:
+    sys.stdout.write(json.dumps(verdict) + "\n")
+    sys.stdout.flush()
 
 
 def _emit_cursor_verdict(blocked: bool, detail: str) -> None:
@@ -280,14 +314,24 @@ def _emit_cursor_verdict(blocked: bool, detail: str) -> None:
     is an explicit verdict."""
     if blocked:
         message = f"Order Samurai blocked this call: {detail}"
-        verdict = {"permission": "deny", "user_message": message, "agent_message": message}
+        _write_json({"permission": "deny", "user_message": message, "agent_message": message})
     else:
-        verdict = {"permission": "allow"}
-    sys.stdout.write(json.dumps(verdict) + "\n")
-    sys.stdout.flush()
+        _write_json({"permission": "allow"})
 
 
-def _scan(payload: dict, cursor: bool) -> tuple[int, str]:
+def _emit_gemini_verdict(blocked: bool, detail: str) -> None:
+    """Gemini CLI parses stdout as JSON on exit 0 and fails open on any exit code but 0
+    and 2 (exit 2 blocks and shows stderr). A block is exit 2 plus a deny document; an
+    allowed call prints an empty document, not "allow", so the guard never claims to
+    approve a call and cannot override Gemini's own confirmation flow."""
+    if blocked:
+        message = f"Order Samurai blocked this call: {detail}"
+        _write_json({"decision": "deny", "reason": message, "systemMessage": message})
+    else:
+        _write_json({})
+
+
+def _scan(payload: dict, harness: str | None) -> tuple[int, str]:
     """(exit code, reason) for one hook payload; 2 blocks."""
     tool_name = payload.get("tool_name") or payload.get("toolName") or ""
     tool_input = payload.get("tool_input") or payload.get("toolInput") or {}
@@ -298,14 +342,20 @@ def _scan(payload: dict, cursor: bool) -> tuple[int, str]:
     patch_text = _patch_scan_text(patch) if tool_name == "apply_patch" and isinstance(patch, str) else None
     if patch_text is not None:
         input_str = patch_text
+    elif harness == "gemini":
+        # Every string at any depth, plus JSON documents carried inside strings (MCP
+        # arguments can arrive JSON-encoded).
+        strings: list[str] = []
+        _collect_strings(tool_input, strings, decode_json=True)
+        input_str = " ".join(strings)
     elif isinstance(tool_input, dict):
         # Scan all values of the dict
         input_str = " ".join(str(v) for v in tool_input.values())
     elif isinstance(tool_input, str):
-        input_str = tool_input + (" " + _json_strings(tool_input) if cursor else "")
+        input_str = tool_input + (" " + _json_strings(tool_input) if harness == "cursor" else "")
     else:
         input_str = str(tool_input)
-    if cursor and isinstance(payload.get("command"), str):
+    if harness == "cursor" and isinstance(payload.get("command"), str):
         # beforeShellExecution's command (and a stdio MCP server's launch command)
         input_str += " " + payload["command"]
 
@@ -352,22 +402,27 @@ def _scan(payload: dict, cursor: bool) -> tuple[int, str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--test", action="store_true", help="Run self-test suite")
+    parser.add_argument("--gemini", action="store_true",
+                        help="Gemini CLI entry: answer in Gemini's format and fail closed on unreadable input")
     args, unknown = parser.parse_known_args()
 
     if args.test:
         return run_self_tests()
 
-    payload = _read_payload()
-    cursor = _is_cursor(payload)
+    harness = "gemini" if args.gemini else None
     try:
-        code, detail = _scan(payload, cursor)
+        payload = _read_gemini_payload() if args.gemini else _read_payload()
+        harness = harness or _harness_of(payload)
+        code, detail = _scan(payload, harness)
     except Exception as error:
-        if not cursor:
+        if harness is None:
             raise
         sys.stderr.write(f"\n[PROMPT INJECTION GUARD] Internal error, failing closed: {type(error).__name__}\n")
         code, detail = 2, "guard internal error (failing closed)"
-    if cursor:
+    if harness == "cursor":
         _emit_cursor_verdict(code == 2, detail)
+    elif harness == "gemini":
+        _emit_gemini_verdict(code == 2, detail)
     return code
 
 def run_self_tests() -> int:

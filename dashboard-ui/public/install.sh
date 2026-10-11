@@ -24,6 +24,7 @@ if [ -n "${SCRIPT_DIR}" ] && [ -f "${SAMURAI_BIN}" ]; then
   python3 "${SAMURAI_BIN}" doctor </dev/null
   echo "--------------------------------------------------------"
   echo "✅ Order Samurai installed and verified successfully!"
+  echo "   Feedback or problems: support@agentica-llc.biz"
 else
   echo "⚔️  Order Samurai Web Installer"
   echo "--------------------------------------------------------"
@@ -80,4 +81,5 @@ else
   python3 "${TARGET_DIR}/bin/samurai" doctor </dev/null
   echo "--------------------------------------------------------"
   echo "✅ Order Samurai installed and verified successfully!"
+  echo "   Feedback or problems: support@agentica-llc.biz"
 fi
