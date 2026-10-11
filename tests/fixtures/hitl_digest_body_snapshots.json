@@ -1,0 +1,541 @@
+{
+ "automation_variants": [
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "AUTOMATION HEALTH:",
+    "AUTOMATION HEALTH: has never written automation-health.json — the summarizer (substrate-preflight) has not produced a result",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "AUTOMATION HEALTH:",
+    "AUTOMATION HEALTH: automation-health.json unreadable — malformed",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "AUTOMATION HEALTH:",
+    "AUTOMATION HEALTH: monitor freshness could not be assessed (automation_health module unavailable)",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "AUTOMATION HEALTH: 5/6 healthy, 4 artifact-verified — monitor fresh, no stale/failed/blocked/interrupted/auth-failure/push-failure/missing-result jobs ✔",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": [
+    [
+     "automation-health.json",
+     1800
+    ]
+   ]
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "AUTOMATION HEALTH: 5/6 healthy, 4 artifact-verified",
+    "  • j1: failed",
+    "  • j2: retired-unverified",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": [
+    [
+     "automation-health.json",
+     1800
+    ]
+   ]
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "AUTOMATION HEALTH:",
+    "AUTOMATION HEALTH MONITOR DEAD: automation-health.json is missing, malformed, or stale — treat every job status below as unknown",
+    "  • j1: stale",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": [
+    [
+     "automation-health.json",
+     1800
+    ]
+   ]
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "AUTOMATION HEALTH: monitor fresh, no stale/failed/blocked/interrupted/auth-failure/push-failure/missing-result jobs ✔",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": [
+    [
+     "automation-health.json",
+     1800
+    ]
+   ]
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "AUTOMATION HEALTH: monitor fresh, no stale/failed/blocked/interrupted/auth-failure/push-failure/missing-result jobs ✔",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": [
+    [
+     "automation-health.json",
+     1800
+    ]
+   ]
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "AUTOMATION HEALTH: monitor fresh, no stale/failed/blocked/interrupted/auth-failure/push-failure/missing-result jobs ✔",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": [
+    [
+     "automation-health.json",
+     1800
+    ]
+   ]
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "AUTOMATION HEALTH: monitor fresh, no stale/failed/blocked/interrupted/auth-failure/push-failure/missing-result jobs ✔",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": [
+    [
+     "automation-health.json",
+     1800
+    ]
+   ]
+  }
+ ],
+ "automation_zero_counts": {
+  "body": [
+   "Order Samurai — HITL approval digest (2026-08-02)",
+   "",
+   "No approvals pending. ✔",
+   "",
+   "AUTOMATION HEALTH: 0/0 healthy, 0 artifact-verified — monitor fresh, no stale/failed/blocked/interrupted/auth-failure/push-failure/missing-result jobs ✔",
+   "",
+   "Review: http://localhost:4322/",
+   "— hitl_alerts.py (daily digest)"
+  ],
+  "monitor_status_calls": [
+   [
+    "automation-health.json",
+    1800
+   ]
+  ]
+ },
+ "backlog_variants": [
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "PROPOSED_BACKLOG: unreadable — permission denied",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "PROPOSED_BACKLOG (read-only): 4 pending (approved:false) · oldest ?",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "PROPOSED_BACKLOG (read-only): 2 pending (approved:false) · oldest 3d",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "PROPOSED_BACKLOG (read-only): 9 pending (approved:false) · oldest 4wk",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  }
+ ],
+ "doctor_variants": [
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "DOCTOR:",
+    "  • DOCTOR: has never written doctor_last.json — the daily com.agentica.os-doctor job has not produced a result (no health signal at all, not a clean one)",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "DOCTOR:",
+    "  • DOCTOR: doctor_last.json unreadable — bad json",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "DOCTOR:",
+    "  • DOCTOR: last result carries no readable generated_at — cannot tell whether its 1 FAIL row(s) are current",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "DOCTOR:",
+    "  • DOCTOR: has not run since 2026-07-30T00:00:00+00:00 (84h ago, stale past 36h) — last known 2 FAIL row(s); check the com.agentica.os-doctor job",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "DOCTOR:",
+    "  • DOCTOR FAIL: hooks — 2 broken",
+    "  • DOCTOR FAIL: ? — ",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "DOCTOR: no failing checks ✔ (OK=20 WARN=3 FAIL=0)",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "DOCTOR: no failing checks ✔ (OK=? WARN=? FAIL=0)",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  }
+ ],
+ "empty": {
+  "body": [
+   "Order Samurai — HITL approval digest (2026-08-02)",
+   "",
+   "No approvals pending. ✔",
+   "",
+   "Review: http://localhost:4322/",
+   "— hitl_alerts.py (daily digest)"
+  ],
+  "monitor_status_calls": []
+ },
+ "everything": {
+  "body": [
+   "Order Samurai — HITL approval digest (2026-08-02)",
+   "",
+   "AWAITING YOUR APPROVAL (1):",
+   "  • /debug — bow/Error_Rate · waiting 3d · blast: low",
+   "      short context",
+   "",
+   "VALIDATED PATCHES AWAITING REVIEW (1):",
+   "  • pending_remediation_a.patch · waiting 2d",
+   "      review: python3 bin/review_pending_patch.py --list / --show / --apply / --reject",
+   "",
+   "EXPIRED WITHOUT DECISION (1) — stays here until you decide:",
+   "  • h1 verify (reflex/arts) — expired 2026-07-01, 4wk ago",
+   "      decide: python3 bin/bushido_check.py --retire <id> --reason '…'  (or --reject / --approve while still pending)",
+   "",
+   "PROPOSED_BACKLOG (read-only): 1 pending (approved:false) · oldest 2wk",
+   "",
+   "FLEET HEALTH:",
+   "  • launchd job failing: job.c — 9d, tier hitl (HITL item raised — decide or it auto-disables)",
+   "",
+   "AUTO-DISABLED in the last 7d (1):",
+   "  • r — 2026-08-01: x",
+   "      revert: y",
+   "",
+   "ROLLBACK INCOMPLETE — MAY STILL BE DISABLED (1):",
+   "  • u — d",
+   "      revert: v",
+   "",
+   "DOCTOR: no failing checks ✔ (OK=1 WARN=? FAIL=0)",
+   "",
+   "AUTOMATION HEALTH:",
+   "  • j: push-failure",
+   "",
+   "Review: http://localhost:4322/",
+   "— hitl_alerts.py (daily digest)"
+  ],
+  "monitor_status_calls": [
+   [
+    "automation-health.json",
+    1800
+   ]
+  ]
+ },
+ "fleet_variants": [
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "FLEET HEALTH: unreadable — probe missing",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "FLEET HEALTH: all launchd jobs + local services OK ✔",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "FLEET HEALTH:",
+    "  • launchd job failing: job.a — 1d, tier banner (digest subject at day 3)",
+    "  • launchd job failing: job.b — 4d, tier digest (auto-disable? HITL item at day 7)",
+    "  • launchd job failing: job.c — 8d, tier hitl (HITL item raised — decide or it auto-disables)",
+    "  • launchd job failing: job.d",
+    "  • service unreachable: qdrant",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "FLEET HEALTH:",
+    "  • launchd job failing: job.z",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  }
+ ],
+ "patches_and_expired": {
+  "body": [
+   "Order Samurai — HITL approval digest (2026-08-02)",
+   "",
+   "No approvals pending. ✔",
+   "",
+   "VALIDATED PATCHES AWAITING REVIEW (2):",
+   "  • pending_remediation_a.patch · waiting 2d",
+   "  • pending_remediation_b.patch · waiting ?",
+   "      review: python3 bin/review_pending_patch.py --list / --show / --apply / --reject",
+   "",
+   "EXPIRED WITHOUT DECISION (3) — stays here until you decide:",
+   "  • h1 verify (reflex/arts) — expired 2026-07-01, 4wk ago",
+   "  • h2 /scan (?/?) — expired 2026-08-01, 1d ago",
+   "  • ? ? (?/?) — expired , ? ago",
+   "      decide: python3 bin/bushido_check.py --retire <id> --reason '…'  (or --reject / --approve while still pending)",
+   "",
+   "Review: http://localhost:4322/",
+   "— hitl_alerts.py (daily digest)"
+  ],
+  "monitor_status_calls": []
+ },
+ "queue_error_with_pending": {
+  "body": [
+   "Order Samurai — HITL approval digest (2026-08-02)",
+   "",
+   "QUEUE UNREADABLE — bad json",
+   "The approval counts below are NOT a reading of the queue.",
+   "",
+   "AWAITING YOUR APPROVAL (3):",
+   "  • /debug — bow/Error_Rate · waiting 3d · blast: low",
+   "      short context",
+   "  • /fix — sword/ · waiting 8wk",
+   "      xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "  • ? — ?/ · waiting ?",
+   "",
+   "Review: http://localhost:4322/",
+   "— hitl_alerts.py (daily digest)"
+  ],
+  "monitor_status_calls": []
+ },
+ "retirements_and_unreconciled": [
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "AUTO-DISABLED: None",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  },
+  {
+   "body": [
+    "Order Samurai — HITL approval digest (2026-08-02)",
+    "",
+    "No approvals pending. ✔",
+    "",
+    "AUTO-DISABLED in the last 7d (2):",
+    "  • com.x — 2026-07-30: failing 7d",
+    "      revert: launchctl load x",
+    "  • None — : None",
+    "      revert: None",
+    "",
+    "ROLLBACK INCOMPLETE — MAY STILL BE DISABLED (2):",
+    "  • com.y — bootout failed",
+    "      revert: load y",
+    "  • None — None",
+    "      revert: None",
+    "",
+    "Review: http://localhost:4322/",
+    "— hitl_alerts.py (daily digest)"
+   ],
+   "monitor_status_calls": []
+  }
+ ]
+}
