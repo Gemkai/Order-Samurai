@@ -367,3 +367,61 @@ def test_aggregate_wires_collect_into_build_pillars_and_limits_scope(tmp_path, m
     assert seen["build_pillars_calls"] >= 2
     assert "platforms" in payload
     assert payload["platforms"] == ["claude"]
+
+
+# RECON1PUB: usage_known propagation through usage_records.window()/for_tier().
+# The first test is the monorepo's test_native_usage_summary_propagates_all_known_only
+# (bee5b2b20, #587), referencing usage_records directly; the second covers the mixed-tier
+# case that the monorepo suite does not (a tier's flag must not inherit another tier's).
+def _usage_known_summary(*events):
+    from agentica_core import usage_records
+    stamp = "2026-09-13T12:00:00+00:00"
+    rows = [{
+        "id": f"usage-{index}", "timestamp": stamp, "model": model,
+        "tokens_prompt": 100, "tokens_completion": 10,
+        "cache_read_tokens": 20, "cache_creation_tokens": 0,
+        "usage_known": value,
+    } for index, (model, value) in enumerate(events)]
+    return usage_records, usage_records.window([{
+        "platform": "claude", "session_id": "s", "project": "p",
+        "_usage_events": rows,
+    }])[0]
+
+
+def test_native_usage_summary_propagates_all_known_only():
+    usage_records, complete = _usage_known_summary(("claude-sonnet", True), ("claude-sonnet", True))
+    _, mixed = _usage_known_summary(("claude-sonnet", True), ("claude-sonnet", False))
+
+    assert complete["usage_known"] is True
+    assert complete["_model_usage"][0]["usage_known"] is True
+    assert usage_records.for_tier([complete], "STANDARD")[0]["usage_known"] is True
+    assert mixed["usage_known"] is False
+    assert mixed["_model_usage"][0]["usage_known"] is False
+
+
+def test_for_tier_usage_known_is_computed_from_the_selected_tier_only():
+    usage_records, record = _usage_known_summary(
+        ("claude-sonnet-4-6", True), ("claude-haiku-4-5", False))
+
+    assert record["usage_known"] is False  # one unknown model makes the whole record unknown
+    assert usage_records.for_tier([record], "STANDARD")[0]["usage_known"] is True
+    assert usage_records.for_tier([record], "FAST")[0]["usage_known"] is False
+
+
+# RECON1PUB: strict provider_rate consumer (monorepo bee5b2b20, #587). Verbatim from the
+# monorepo test_provider_rate_requires_explicit_known_complete_usage_buckets, except that
+# the module comes from _require_knowledge_metrics() like the rest of this file.
+def test_provider_rate_requires_explicit_known_complete_usage_buckets():
+    km = _require_knowledge_metrics()
+    base = {"platform": "claude", "session_id": "s", "tokens_prompt": 100,
+            "cache_read_tokens": 20}
+
+    absent_marker = km.provider_rate([{**base, "cache_creation_tokens": 0}])
+    absent_creation = km.provider_rate([{**base, "usage_known": True}])
+    complete = km.provider_rate([
+        {**base, "cache_creation_tokens": 0, "usage_known": True},
+    ])
+
+    assert absent_marker["val"] is None and absent_marker["data_gap"] is True
+    assert absent_creation["val"] is None and absent_creation["data_gap"] is True
+    assert complete["val"] == 20.0 and complete.get("data_gap") is not True
