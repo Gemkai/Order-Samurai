@@ -81,6 +81,7 @@ def test_web_install_recovers_when_the_first_download_is_stale(tmp_path):
     assert any("?" in p for p in state["paths"][2:]), state["paths"]
     assert (tmp_path / "home" / ".samurai" / "core" / "bin" / "samurai").is_file(), out[-2000:]
     assert "CHECKSUM MISMATCH" not in out, out[-2000:]
+    assert out.rstrip().endswith("Feedback or problems: support@agentica-llc.biz"), out[-2000:]
 
 
 def test_web_install_still_refuses_a_zip_that_never_matches(tmp_path):
@@ -97,3 +98,14 @@ def test_web_install_still_refuses_a_zip_that_never_matches(tmp_path):
 
 def test_dashboard_copy_of_the_installer_matches():
     assert (ROOT / "dashboard-ui" / "public" / "install.sh").read_bytes() == (ROOT / "install.sh").read_bytes()
+
+
+def test_local_install_path_also_ends_with_the_feedback_line():
+    # The local path runs the real installer, so only its source is checked here: both
+    # success branches must end on the support address.
+    text = (ROOT / "install.sh").read_text()
+    line = 'echo "   Feedback or problems: support@agentica-llc.biz"'
+    assert text.count(line) == 2, "local and web success paths must each print the support line"
+    local, web = text.split("else\n  echo \"⚔️  Order Samurai Web Installer\"")
+    assert local.rstrip().endswith(line), "local path must end with the support line"
+    assert web.rstrip().splitlines()[-2].strip() == line.strip(), "web path must end with the support line"

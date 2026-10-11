@@ -345,10 +345,10 @@ def test_uninstall_refuses_an_edited_entry_and_keeps_state(machine):
 
 
 def test_cursor_is_no_longer_named_as_unprotected(machine):
-    machine.stub(machine.path / "gemini")
+    machine.stub(machine.path / "goose")
     machine.env["SAMURAI_HARNESS"] = ""
     for command in ("install", "doctor"):
         result = machine.run(command)
         note = next((row for row in result.stdout.splitlines() if "not protected by Order Samurai" in row), "")
-        assert "Gemini CLI" in note and "Cursor" not in note.split(". It protects")[0], result.stdout
-        assert "Claude Code, Codex and Cursor" in note
+        assert "Goose" in note and "Cursor" not in note.split(". It protects")[0], result.stdout
+        assert "Claude Code, Codex, Cursor and Gemini CLI" in note

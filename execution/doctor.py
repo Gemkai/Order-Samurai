@@ -820,6 +820,10 @@ def _run_claude_hook_health_checks(quarantine_path: "Path | None" = None,
     timings_path = timings_path or home / "data" / "hook_timings.jsonl"
     label = "claude-hook-health"
 
+    # Without the registry every quarantined hook reads criticality "unknown", so a
+    # silently-off blocking gate grades WARN, not FAIL. Every row says so; statuses
+    # are unchanged.
+    registry_note = ""
     if registry is None:
         scripts = str(home / "scripts")
         if scripts not in sys.path:
@@ -827,13 +831,16 @@ def _run_claude_hook_health_checks(quarantine_path: "Path | None" = None,
         try:
             import hook_registry as _hr  # type: ignore
             registry = dict(_hr.HOOKS)
-        except Exception:
+        except Exception as exc:
             registry = {}
+            registry_note = (f"; hook_registry unavailable ({type(exc).__name__}), "
+                             f"criticality cannot be read")
 
     if not timings_path.is_file():
         return [{"status": "WARN", "label": label,
                  "detail": f"no hook telemetry at {timings_path} — cannot tell whether "
-                           f"any hook is quarantined (dispatcher has never logged here)"}]
+                           f"any hook is quarantined (dispatcher has never logged here)"
+                           f"{registry_note}"}]
 
     quarantined: dict = {}
     if quarantine_path.is_file():
@@ -845,7 +852,8 @@ def _run_claude_hook_health_checks(quarantine_path: "Path | None" = None,
         except Exception as exc:
             return [{"status": "WARN", "label": label,
                      "detail": f"{quarantine_path} unreadable ({exc}) — quarantine state "
-                               f"cannot be measured; treat every advisory hook as suspect"}]
+                               f"cannot be measured; treat every advisory hook as suspect"
+                               f"{registry_note}"}]
 
     now = now or _dt.now(_tz.utc)
     cutoff = now.timestamp() - window_hours * 3600.0
@@ -876,12 +884,12 @@ def _run_claude_hook_health_checks(quarantine_path: "Path | None" = None,
     except Exception as exc:
         return [{"status": "WARN", "label": label,
                  "detail": f"{timings_path} unreadable ({exc}) — quarantine impact "
-                           f"cannot be measured"}]
+                           f"cannot be measured{registry_note}"}]
 
     if not quarantined:
         return [{"status": "OK", "label": label,
                  "detail": f"0 hooks quarantined; {total} dispatches in the last "
-                           f"{window_hours:.0f}h"}]
+                           f"{window_hours:.0f}h{registry_note}"}]
 
     rows: list[dict] = []
     for hook_id, info in sorted(quarantined.items()):
@@ -899,7 +907,7 @@ def _run_claude_hook_health_checks(quarantine_path: "Path | None" = None,
                                f"no-oped {noops.get(hook_id, 0)} dispatches in "
                                f"{window_hours:.0f}h; release: "
                                f"~/.claude/scripts/hook_circuit_breaker.py --release "
-                               f"{hook_id}, then dispatch it once"})
+                               f"{hook_id}, then dispatch it once{registry_note}"})
     quarantined_dispatches = sum(noops.values())
     share = (quarantined_dispatches / total) if total else 0.0
     if total and share > fail_share:
@@ -907,11 +915,11 @@ def _run_claude_hook_health_checks(quarantine_path: "Path | None" = None,
                      "detail": f"{quarantined_dispatches} of {total} dispatches in the last "
                                f"{window_hours:.0f}h were quarantine no-ops "
                                f"({share:.0%} > {fail_share:.0%}) — the hook layer is "
-                               f"largely silent, not healthy"})
+                               f"largely silent, not healthy{registry_note}"})
     else:
         rows.append({"status": "WARN", "label": f"{label}.share",
                      "detail": f"{len(quarantined)} hook(s) quarantined; {quarantined_dispatches} "
-                               f"of {total} dispatches no-oped ({share:.0%})"})
+                               f"of {total} dispatches no-oped ({share:.0%}){registry_note}"})
     return rows
 
 
