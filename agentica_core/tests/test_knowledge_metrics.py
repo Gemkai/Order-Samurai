@@ -406,3 +406,22 @@ def test_for_tier_usage_known_is_computed_from_the_selected_tier_only():
     assert record["usage_known"] is False  # one unknown model makes the whole record unknown
     assert usage_records.for_tier([record], "STANDARD")[0]["usage_known"] is True
     assert usage_records.for_tier([record], "FAST")[0]["usage_known"] is False
+
+
+# RECON1PUB: strict provider_rate consumer (monorepo bee5b2b20, #587). Verbatim from the
+# monorepo test_provider_rate_requires_explicit_known_complete_usage_buckets, except that
+# the module comes from _require_knowledge_metrics() like the rest of this file.
+def test_provider_rate_requires_explicit_known_complete_usage_buckets():
+    km = _require_knowledge_metrics()
+    base = {"platform": "claude", "session_id": "s", "tokens_prompt": 100,
+            "cache_read_tokens": 20}
+
+    absent_marker = km.provider_rate([{**base, "cache_creation_tokens": 0}])
+    absent_creation = km.provider_rate([{**base, "usage_known": True}])
+    complete = km.provider_rate([
+        {**base, "cache_creation_tokens": 0, "usage_known": True},
+    ])
+
+    assert absent_marker["val"] is None and absent_marker["data_gap"] is True
+    assert absent_creation["val"] is None and absent_creation["data_gap"] is True
+    assert complete["val"] == 20.0 and complete.get("data_gap") is not True
