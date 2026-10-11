@@ -2728,11 +2728,10 @@ def _daemon_restart_count(records: list[dict]) -> dict:  # noqa: ARG001
 
 # ---------------------------------------------------------------------------
 # Git / factory hygiene trio — Stale_Branch_Count, Lane_Pending_Age,
-# Approved_Unexecuted_HITL (bow/Autonomic, AUTO). Catalogued 2026-09-20 after the
-# 09-16 sweep found 338 branches, a 25-ticket merge-lane deadlock and 62 unexecuted
-# human approvals that none of the live metrics could see; intake approved
-# 2026-09-21; moved here from Research/proposed_hygiene_reducers.py on wiring
-# (that file re-exports these names so its tests stay the contract).
+# Approved_Unexecuted_HITL (bow/Autonomic, AUTO). Catalogued 2026-09-20 to surface
+# unmerged branches, a stuck merge lane and unexecuted human approvals that none of
+# the live metrics could see; intake approved 2026-09-21. The original proposal
+# module re-exports these names, so its tests stay the contract.
 #
 # Inner contract: reducer(records, repo_root) -> int, repo_root = the Order Samurai
 # root (the directory holding state/). `records` (telemetry) is ignored — each reads
