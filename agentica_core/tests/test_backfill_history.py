@@ -385,3 +385,63 @@ def test_backfill_write_failure_preserves_previous_bytes(tmp_path, monkeypatch):
 
     assert caught.value.errno == errno.EFBIG
     assert store.read_bytes() == previous
+
+
+@pytest.mark.parametrize("exception_type", [KeyboardInterrupt, SystemExit, MemoryError])
+def test_backfill_interrupted_fsync_preserves_previous_bytes(
+    tmp_path, monkeypatch, exception_type
+):
+    """A non-OSError during fsync propagates unchanged and preserves every previous byte."""
+    import os
+
+    _stub_two_weeks(monkeypatch)
+    monkeypatch.setenv("BACKFILL_CARRY_FORWARD", "true")
+    monkeypatch.setattr(bh.agg, "recorded_idle_still_valid", lambda _week: True)
+    store = tmp_path / "hist.jsonl"
+    previous = _seed_history_for_failed_rebuild(store)
+    original_fsync = os.fsync
+    interruption = exception_type("injected history fsync interruption")
+    failed = False
+
+    def interrupt_first_fsync(fd):
+        nonlocal failed
+        if not failed:
+            failed = True
+            raise interruption
+        return original_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", interrupt_first_fsync)
+    with pytest.raises(exception_type) as caught:
+        bh.backfill(store=store)
+
+    assert failed
+    assert caught.value is interruption
+    assert store.read_bytes() == previous
+
+
+def test_backfill_restore_failure_preserves_original_interruption(tmp_path, monkeypatch):
+    """An OSError while restoring history must not replace the original KeyboardInterrupt."""
+    import errno
+    import os
+
+    _stub_two_weeks(monkeypatch)
+    monkeypatch.setenv("BACKFILL_CARRY_FORWARD", "true")
+    monkeypatch.setattr(bh.agg, "recorded_idle_still_valid", lambda _week: True)
+    store = tmp_path / "hist.jsonl"
+    _seed_history_for_failed_rebuild(store)
+    interruption = KeyboardInterrupt("injected history fsync interruption")
+    failed = False
+
+    def interrupt_then_fail_fsync(fd):
+        nonlocal failed
+        if not failed:
+            failed = True
+            raise interruption
+        raise OSError(errno.EIO, "injected history restore fsync failure")
+
+    monkeypatch.setattr(os, "fsync", interrupt_then_fail_fsync)
+    with pytest.raises(KeyboardInterrupt) as caught:
+        bh.backfill(store=store)
+
+    assert failed
+    assert caught.value is interruption
