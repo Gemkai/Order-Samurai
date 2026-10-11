@@ -400,6 +400,7 @@ def test_critical_carriers_remain_protected_by_registry():
         "agentica.os-hitl-bridge", "agentica.morning-joe-refresh",
         "agentica.escalation-canary", "claude.reflex-poller",
         "agentica.substrate-preflight-watchdog", "agentica.brain3-file-bridge",
+        "agentica.substrate-preflight",
     } <= set(PROTECTED_JOBS)
 
 
