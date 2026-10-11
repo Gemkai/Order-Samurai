@@ -988,3 +988,95 @@ class TestStaleBranchCountCache:
         assert agg.r_stale_branch_count([])["val"] == 88
         agg._STALE_BRANCH_CACHE["t"] -= agg._STALE_BRANCH_TTL_S + 1
         assert agg.r_stale_branch_count([])["val"] is None
+
+
+class TestApprovedUnexecutedHitlSource:
+    @pytest.mark.parametrize("items", [
+        pytest.param([], id="empty"),
+        pytest.param([{"source": "factory", "status": "approved",
+                       "approved_at": "2026-01-01T00:00:00Z"}], id="stale-factory"),
+    ])
+    def test_buyer_queue_is_unavailable(self, tmp_path, monkeypatch, items):
+        monkeypatch.setattr(agg, "_in_monorepo_layout", lambda: False)
+        (tmp_path / "state").mkdir()
+        (tmp_path / "state" / "hitl_queue.json").write_text(
+            json.dumps({"items": items}), encoding="utf-8",
+        )
+
+        assert agg._approved_unexecuted_hitl(
+            [], tmp_path, now=datetime(2026, 10, 6, tzinfo=timezone.utc),
+        ) == -1
+
+    @pytest.mark.parametrize("items", [
+        pytest.param([], id="empty"),
+        pytest.param([{"source": "factory", "status": "approved",
+                       "approved_at": "2026-01-01T00:00:00Z"}], id="stale-factory"),
+    ])
+    def test_buyer_queue_builds_simulated_envelope(self, tmp_path, monkeypatch, items):
+        monkeypatch.setattr(agg, "_in_monorepo_layout", lambda: False)
+        (tmp_path / "state").mkdir()
+        (tmp_path / "state" / "hitl_queue.json").write_text(
+            json.dumps({"items": items}), encoding="utf-8",
+        )
+        monkeypatch.setattr(agg, "_ORDER_SAMURAI_ROOT", tmp_path)
+        # Exercise the real wrapper without reading unrelated metric sources.
+        monkeypatch.setattr(agg, "REGISTRY", [
+            row for row in agg.REGISTRY if row[2] == "Approved_Unexecuted_HITL"
+        ])
+        monkeypatch.setattr(agg, "_vault_health_metrics", lambda: None)
+
+        env = agg.build_pillars([])["bow"]["Autonomic"]["Approved_Unexecuted_HITL"]
+
+        assert env["is_simulated"] is True
+        assert env["val"] == "—"
+        assert env["tier"] == "SIMULATED"
+
+    @pytest.mark.parametrize("body", [
+        pytest.param({}, id="missing-items"),
+        pytest.param({"items": None}, id="null-items"),
+        pytest.param({"items": {}}, id="object-items"),
+        pytest.param([], id="top-level-list"),
+    ])
+    def test_queue_requires_items_list(self, tmp_path, monkeypatch, body):
+        monkeypatch.setattr(agg, "_in_monorepo_layout", lambda: True)
+        (tmp_path / "state").mkdir()
+        (tmp_path / "state" / "hitl_queue.json").write_text(json.dumps(body), encoding="utf-8")
+
+        assert agg._approved_unexecuted_hitl([], tmp_path) == -1
+
+    @pytest.mark.parametrize("items,expected", [
+        pytest.param([], 0, id="empty"),
+        pytest.param([{"source": "factory", "status": "approved",
+                       "approved_at": "2026-01-01T00:00:00Z"}], 1, id="stale-factory"),
+        pytest.param([{"source": "factory", "status": "approved",
+                       "approved_at": "2026-01-01T00:00:00Z",
+                       "executing_at": "2026-01-02T00:00:00Z"}], 0, id="executing"),
+        pytest.param([{"source": "manual", "status": "approved",
+                       "approved_at": "2026-01-01T00:00:00Z"}], 0, id="non-factory"),
+        pytest.param([{"source": "factory", "status": "pending",
+                       "approved_at": "2026-01-01T00:00:00Z"}], 0, id="not-approved"),
+    ])
+    def test_monorepo_counts_only_stale_unexecuted_factory_approvals(
+        self, tmp_path, monkeypatch, items, expected,
+    ):
+        monkeypatch.setattr(agg, "_in_monorepo_layout", lambda: True)
+        (tmp_path / "state").mkdir()
+        (tmp_path / "state" / "hitl_queue.json").write_text(
+            json.dumps({"items": items}), encoding="utf-8",
+        )
+
+        assert agg._approved_unexecuted_hitl(
+            [], tmp_path, now=datetime(2026, 10, 6, tzinfo=timezone.utc),
+        ) == expected
+
+    @pytest.mark.parametrize("body", [
+        pytest.param(None, id="missing-file"),
+        pytest.param('{"items": [', id="invalid-json"),
+    ])
+    def test_missing_or_invalid_queue_is_unavailable(self, tmp_path, monkeypatch, body):
+        monkeypatch.setattr(agg, "_in_monorepo_layout", lambda: True)
+        if body is not None:
+            (tmp_path / "state").mkdir()
+            (tmp_path / "state" / "hitl_queue.json").write_text(body, encoding="utf-8")
+
+        assert agg._approved_unexecuted_hitl([], tmp_path) == -1
