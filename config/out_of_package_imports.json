@@ -29,7 +29,7 @@
   },
   "sites": [
     {
-      "file": "agentica_core/aggregate.py",
+      "file": "agentica_core/aggregate_signals.py",
       "symbol": "_dead_rule_count",
       "imports": [
         "principle_audit"
