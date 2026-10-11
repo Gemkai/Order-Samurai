@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.4] - 2026-10-11
+
 ### Added
 
 - Support and feedback now go to one address, `support@agentica-llc.biz`, replacing the old ordersamurai.ai support address in the terms, EULA, onboarding guide, Gumroad receipt text and dashboard. It is also printed as the last line of `samurai doctor` (pass or fail; exit codes unchanged) and of both installer success paths, and has a "Feedback & support" section in the README and onboarding guide.
@@ -25,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Release builds never pack the release record (`dist/build-record.json`) into the zip, and the version test reads the expected version from `pyproject.toml`.
+- The source tree now carries an import-boundary test and registry (`tests/test_import_boundary.py`, `config/out_of_package_imports.json`) that fail CI when shipped code loads something from outside the package without a declared, visible fallback. Tests only; no runtime change.
 - Gemini CLI is no longer listed as an agent Order Samurai cannot protect.
 - The web installer (`install.sh`) now re-downloads the zip and its `.sha256` up to three times when they do not match, bypassing the CDN cache, so an install right after a release no longer fails because the cache paired an old zip with a new checksum. A zip that never matches is still refused with nothing extracted. `OS_CORE_BASE_URL` overrides the download location (used by tests).
 - Cursor is no longer listed as an agent Order Samurai cannot protect.
@@ -37,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The daily digest email no longer falls back to Mail.app silently. When `RESEND_API_KEY` is not set and the Keychain lookup fails, it prints one line on stderr first, `WARN: RESEND_API_KEY is not set and the Keychain lookup failed (<ExceptionType>); the digest will use Mail.app`. It never prints the key.
+- `samurai doctor` hook-health rows now say why criticality is unknown when the optional hook registry cannot be loaded: each `claude-hook-health` row ends with `; hook_registry unavailable (<ExceptionType>), criticality cannot be read`. Row statuses (OK/WARN/FAIL) do not change.
+- `execution/verify_falsifiability.py` no longer dies with a traceback when one check crashes. It reports that check as `error`, finishes the others, and exits 2 when there are only errors (still 1 when a check fails).
 - Config files `samurai` rewrites (`~/.claude/settings.json`, Codex, Cursor and Gemini configs, `install.json`) keep non-ASCII text as written instead of turning it into `\u` escapes; the meaning of the file is unchanged.
 - `samurai uninstall` kept reporting success and deleted `~/.samurai` when it could not deregister a hook. It now keeps the state and exits non-zero.
 - Install no longer replaces an unreadable `~/.claude/settings.json` with a new file.
