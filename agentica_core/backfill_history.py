@@ -142,6 +142,32 @@ def _keep_recorded_idle(weekly_rows: list[dict], prior_rows: list[dict]) -> None
         row["idle"] = sorted(keep | set(row.get("idle") or ()))
 
 
+def _rewrite(fh, data: bytes, prior: bytes) -> None:
+    """Replace the store's bytes in place and fsync them before the caller unlocks.
+
+    `fh` is backfill()'s locked, unbuffered "a+b" handle: rewriting in place keeps the
+    inode the flock covers, and no buffer is left to flush after a failed write. If the
+    write or the fsync fails, the prior bytes go back before the error propagates — the
+    carried-forward, recorded-idle and live rows a truncated store would lose cannot be
+    rebuilt from telemetry, and refresh_dashboard logs the error and carries on."""
+    def put(b: bytes) -> None:
+        fh.seek(0)  # appends land at EOF anyway, but macOS checks RLIMIT_FSIZE at this offset
+        fh.truncate()
+        view = memoryview(b)
+        while view:  # a short write is legal (e.g. a nearly full disk)
+            view = view[fh.write(view):]
+        os.fsync(fh.fileno())
+
+    try:
+        put(data)
+    except OSError:
+        try:
+            put(prior)
+        except OSError:
+            pass  # best effort; the original failure is the one to report
+        raise
+
+
 def backfill(store: Path | None = None) -> int:
     store = store or insights.default_history_path()
     store.parent.mkdir(parents=True, exist_ok=True)
@@ -177,12 +203,12 @@ def backfill(store: Path | None = None) -> int:
     # concurrent live append is then either visible to the read below (and kept as
     # the latest live row) or lands after the rewrite; reading before the lock let
     # the truncate erase a row appended in between and write back an older one.
-    # Open "a+" then truncate — opening "w" would truncate BEFORE the lock is held.
+    # Open "a+b" then truncate — opening "w" would truncate BEFORE the lock is held.
     try:
         import fcntl
     except ImportError:  # non-POSIX host: fall back to unlocked rewrite
         fcntl = None
-    with store.open("a+", encoding="utf-8", errors="ignore") as fh:
+    with store.open("a+b", buffering=0) as fh:
         locked = False
         if fcntl is not None:
             try:
@@ -192,7 +218,8 @@ def backfill(store: Path | None = None) -> int:
                 pass
         try:
             fh.seek(0)
-            text = fh.read()
+            prior = fh.read()
+            text = prior.decode("utf-8", errors="ignore")
             # Same empty-source guard, re-checked under the lock: a writer may have
             # created and filled the store after the unlocked exists() check above.
             if not weekly_rows and text:
@@ -216,13 +243,8 @@ def backfill(store: Path | None = None) -> int:
             live_rows = [] if kill_switch else [r for r in prior_rows if r.get("kind") == "live"]
             latest_live = [live_rows[-1]] if live_rows else []
 
-            fh.seek(0)
-            fh.truncate()
-            fh.write("\n".join(json.dumps(r) for r in weekly_rows + latest_live) + "\n")
-            # Flush + fsync BEFORE unlock, else the buffered tail lands after a
-            # concurrent locked append and tears the file (adversarial review).
-            fh.flush()
-            os.fsync(fh.fileno())
+            rebuilt = "\n".join(json.dumps(r) for r in weekly_rows + latest_live) + "\n"
+            _rewrite(fh, rebuilt.encode("utf-8"), prior)
         finally:
             if locked and fcntl is not None:
                 fcntl.flock(fh, fcntl.LOCK_UN)
