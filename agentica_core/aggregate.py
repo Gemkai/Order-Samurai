@@ -2272,8 +2272,9 @@ def _mechanism_liveness(records: list[dict]) -> dict:
     except OSError as e:
         return {"val": None, "error": f"source unavailable: {e}", "calibrated": False}
     starved = _starved_heartbeats(this_week) if this_count == 0 else 0
-    # == 0, not falsy: an unreadable exec_log (None) is missing evidence, not "no runs".
-    if starved and _week_record_count(_REFLEX_EXEC_LOG, this_week) == 0:
+    # == 0, not falsy: an unreadable or malformed exec_log (None) is missing evidence,
+    # not "no runs".
+    if starved and _week_record_count(_REFLEX_EXEC_LOG, this_week, strict=True) == 0:
         # Idle by design (owner decision 2026-10-07, option B): after F4 a cycle with
         # nothing eligible writes no exec_log row, so no mechanism_run is emitted.
         # Heartbeats prove the loop ran, so report that state ungraded instead of a
@@ -2291,8 +2292,8 @@ def _mechanism_liveness(records: list[dict]) -> dict:
 def recorded_idle_still_valid(week: str) -> bool:
     """Whether a week history recorded as Mechanism_Liveness idle_by_design may stay
     idle on rebuild. The heartbeats that proved idle rotate away, but any engine run
-    logged that week (or an unreadable exec_log) means the 0 is a real FAIL."""
-    return _week_record_count(_REFLEX_EXEC_LOG, week) == 0
+    logged that week (or an unreadable or malformed exec_log) means the 0 is a real FAIL."""
+    return _week_record_count(_REFLEX_EXEC_LOG, week, strict=True) == 0
 
 
 def _starved_heartbeats(week: str) -> int:
@@ -2303,10 +2304,13 @@ def _starved_heartbeats(week: str) -> int:
 
 
 def _week_record_count(path: Path, week: str,
-                       keep: Callable[[dict], bool] = lambda r: True) -> int | None:
+                       keep: Callable[[dict], bool] = lambda r: True,
+                       *, strict: bool = False) -> int | None:
     """Count JSONL records in ISO `week` that pass `keep`. A missing file counts 0 (it
     holds no records); any other read failure returns None, so callers can tell
-    "observed empty" from "could not observe"."""
+    "observed empty" from "could not observe". With `strict`, a non-blank line that is
+    not a JSON object also returns None: it may be a record from `week`, so a caller
+    that needs "no records" as evidence gets "unknown", not 0."""
     try:
         text = path.read_text(encoding="utf-8", errors="ignore")
     except FileNotFoundError:
@@ -2318,8 +2322,12 @@ def _week_record_count(path: Path, week: str,
         try:
             rec = json.loads(line)
         except json.JSONDecodeError:
+            rec = None
+        if not isinstance(rec, dict):
+            if strict and line.strip():
+                return None
             continue
-        if isinstance(rec, dict) and iso_week(rec.get("timestamp")) == week and keep(rec):
+        if iso_week(rec.get("timestamp")) == week and keep(rec):
             count += 1
     return count
 
@@ -2720,11 +2728,10 @@ def _daemon_restart_count(records: list[dict]) -> dict:  # noqa: ARG001
 
 # ---------------------------------------------------------------------------
 # Git / factory hygiene trio — Stale_Branch_Count, Lane_Pending_Age,
-# Approved_Unexecuted_HITL (bow/Autonomic, AUTO). Catalogued 2026-09-20 after the
-# 09-16 sweep found 338 branches, a 25-ticket merge-lane deadlock and 62 unexecuted
-# human approvals that none of the live metrics could see; intake approved
-# 2026-09-21; moved here from Research/proposed_hygiene_reducers.py on wiring
-# (that file re-exports these names so its tests stay the contract).
+# Approved_Unexecuted_HITL (bow/Autonomic, AUTO). Catalogued 2026-09-20 to surface
+# unmerged branches, a stuck merge lane and unexecuted human approvals that none of
+# the live metrics could see; intake approved 2026-09-21. The original proposal
+# module re-exports these names, so its tests stay the contract.
 #
 # Inner contract: reducer(records, repo_root) -> int, repo_root = the Order Samurai
 # root (the directory holding state/). `records` (telemetry) is ignored — each reads
@@ -2873,12 +2880,19 @@ def _lane_pending_age(records: list[dict], repo_root: Path, now: _dt.datetime | 
 
 
 def _approved_unexecuted_hitl(records: list[dict], repo_root: Path, now: _dt.datetime | None = None) -> int:  # noqa: ARG001
-    """HITL queue rows source=factory, status=approved, executing_at unset, approved older than one poll."""
+    """HITL queue rows source=factory, status=approved, executing_at unset, approved older than one poll.
+
+    Factory approvals exist only in the monorepo layout. Elsewhere (an export or a buyer
+    install, whose own HITL queue holds no factory rows) the metric reads SIMULATED (-1),
+    never a measured 0. A queue without an `items` list is malformed, also -1."""
+    if not _in_monorepo_layout():
+        return -1
     queue = _queue_path(repo_root)
     try:
-        items = json.loads(queue.read_text(encoding="utf-8")).get("items", [])
-    except (OSError, ValueError, AttributeError):
+        data = json.loads(queue.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         return -1
+    items = data.get("items") if isinstance(data, dict) else None
     if not isinstance(items, list):
         return -1
     cutoff = _now(now) - _dt.timedelta(seconds=POLL_SECONDS)

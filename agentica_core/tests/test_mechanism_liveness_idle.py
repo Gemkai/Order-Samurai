@@ -203,3 +203,77 @@ def test_same_week_engine_runs_override_a_recorded_idle_week(sources, tmp_path):
 
     assert out[0]["values"][_KEY] == 0
     assert "idle" not in out[0]
+
+
+@pytest.mark.parametrize("bad_line", [
+    pytest.param('{"timestamp": "2026-10-06T1', id="truncated-json"),
+    pytest.param("42", id="number"),
+    pytest.param("[]", id="list"),
+])
+@pytest.mark.parametrize("other_week", [False, True], ids=["alone", "mixed-other-week"])
+def test_malformed_exec_evidence_keeps_zero_graded(sources, tmp_path, bad_line, other_week):
+    _, heartbeat, write = sources
+    write(heartbeat, [_starved(_THIS_WEEK)])
+    old_record = json.dumps({"timestamp": _ts(_LAST_WEEK), "source": "reflex_engine"})
+    content = old_record + "\n" + bad_line + "\n" + old_record if other_week else bad_line
+    (tmp_path / "exec_log.jsonl").write_text(content + "\n", encoding="utf-8")
+
+    out = agg._mechanism_liveness(_RECORDS)
+
+    assert out["val"] == 0
+    assert "state" not in out
+    assert _graded(out)["status"] == "FAIL"
+
+
+@pytest.mark.parametrize("bad_line", [
+    pytest.param('{"timestamp": "2026-10-06T1', id="truncated-json"),
+    pytest.param("42", id="number"),
+    pytest.param("[]", id="list"),
+])
+@pytest.mark.parametrize("other_week", [False, True], ids=["alone", "mixed-other-week"])
+def test_malformed_exec_evidence_invalidates_recorded_idle(sources, tmp_path, bad_line, other_week):
+    _, heartbeat, write = sources
+    write(heartbeat, [_starved(_THIS_WEEK)])
+    old_record = json.dumps({"timestamp": _ts(_LAST_WEEK), "source": "reflex_engine"})
+    content = old_record + "\n" + bad_line + "\n" + old_record if other_week else bad_line
+    (tmp_path / "exec_log.jsonl").write_text(content + "\n", encoding="utf-8")
+
+    assert agg.recorded_idle_still_valid("2026-W41") is False
+
+
+def test_blank_exec_lines_and_other_week_records_preserve_idle(sources, tmp_path):
+    _, heartbeat, write = sources
+    write(heartbeat, [_starved(_THIS_WEEK)])
+    old_record = json.dumps({"timestamp": _ts(_LAST_WEEK), "source": "reflex_engine"})
+    (tmp_path / "exec_log.jsonl").write_text("\n \t\n" + old_record + "\n\n", encoding="utf-8")
+
+    out = agg._mechanism_liveness(_RECORDS)
+
+    assert out["val"] is None
+    assert out["state"] == "idle_by_design"
+    assert agg.recorded_idle_still_valid("2026-W41") is True
+
+
+def test_missing_exec_log_preserves_live_and_recorded_idle(sources, tmp_path):
+    _, heartbeat, write = sources
+    write(heartbeat, [_starved(_THIS_WEEK)])
+    assert not (tmp_path / "exec_log.jsonl").exists()
+
+    out = agg._mechanism_liveness(_RECORDS)
+
+    assert out["val"] is None
+    assert out["state"] == "idle_by_design"
+    assert agg.recorded_idle_still_valid("2026-W41") is True
+
+
+def test_malformed_heartbeat_line_preserves_valid_starved_heartbeat(sources):
+    _, heartbeat, _ = sources
+    heartbeat.write_text(
+        '{"timestamp": "2026-10-06T1\n' + json.dumps(_starved(_THIS_WEEK)) + "\n",
+        encoding="utf-8",
+    )
+
+    out = agg._mechanism_liveness(_RECORDS)
+
+    assert out["val"] is None
+    assert out["state"] == "idle_by_design"

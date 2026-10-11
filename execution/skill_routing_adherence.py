@@ -33,8 +33,8 @@ INVOKE = CLAUDE_HOME / "data" / "skill_invocations.jsonl"
 
 # The UserPromptSubmit nudge (~/.claude/scripts/skill_router_nudge.py, HIRING_CATEGORY)
 # logs the nightly hiring review's recommendations as detections on every prompt. They
-# are the router's own suggestions, not critical-work intent, and were 96% of in-window
-# pairs on 2026-09-30 — so both reducers exclude them.
+# are the router's own suggestions, not critical-work intent, and dominated the
+# in-window pairs, so both reducers exclude them.
 HIRING_CATEGORY = "hiring-review"
 
 
