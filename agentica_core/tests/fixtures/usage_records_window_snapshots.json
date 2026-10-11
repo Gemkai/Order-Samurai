@@ -1,0 +1,187 @@
+{
+ "events_outside_window_dropped": [],
+ "mixed_models_unbounded_start": [
+  {
+   "_activity": [
+    {
+     "id": "usage:2026-09-01T12:00:00Z:opus",
+     "model": "opus",
+     "output_words": 0,
+     "timestamp": "2026-09-01T12:00:00Z",
+     "tool_calls": 1,
+     "tool_name": "Bash"
+    }
+   ],
+   "_model_usage": [
+    {
+     "cache_read_tokens": 5,
+     "context_max": 900,
+     "model": "opus",
+     "model_tier": "PREMIUM",
+     "output_words": 0,
+     "tokens_completion": 20,
+     "tokens_prompt": 1099,
+     "tool_calls": 1,
+     "usage_known": false
+    },
+    {
+     "cache_creation_tokens": 7,
+     "context_max": 400,
+     "model": "sonnet",
+     "model_tier": "STANDARD",
+     "tokens_prompt": 50,
+     "usage_known": false
+    },
+    {
+     "context_max": 0,
+     "model": null,
+     "model_tier": "UNKNOWN",
+     "output_words": 30,
+     "turns": 1,
+     "usage_known": false
+    }
+   ],
+   "cache_creation_tokens": 7,
+   "cache_read_tokens": 5,
+   "context_max": 900,
+   "model": null,
+   "model_tier": "MIXED",
+   "output_words": 30,
+   "platform": "claude",
+   "project": "p",
+   "session_id": "s1",
+   "subagent_spawns": 0,
+   "timestamp": "2026-09-01T13:00:00Z",
+   "tokens_completion": 20,
+   "tokens_prompt": 1149,
+   "tool_calls": 1,
+   "turns": 1,
+   "usage_known": false
+  }
+ ],
+ "mixed_models_windowed": [
+  {
+   "_activity": [
+    {
+     "id": "usage:2026-09-01T12:00:00Z:opus",
+     "model": "opus",
+     "output_words": 0,
+     "timestamp": "2026-09-01T12:00:00Z",
+     "tool_calls": 1,
+     "tool_name": "Bash"
+    }
+   ],
+   "_model_usage": [
+    {
+     "cache_read_tokens": 5,
+     "context_max": 900,
+     "model": "opus",
+     "model_tier": "PREMIUM",
+     "output_words": 0,
+     "tokens_completion": 20,
+     "tokens_prompt": 100,
+     "tool_calls": 1,
+     "usage_known": true
+    },
+    {
+     "cache_creation_tokens": 7,
+     "context_max": 400,
+     "model": "sonnet",
+     "model_tier": "STANDARD",
+     "tokens_prompt": 50,
+     "usage_known": false
+    },
+    {
+     "context_max": 0,
+     "model": null,
+     "model_tier": "UNKNOWN",
+     "output_words": 30,
+     "turns": 1,
+     "usage_known": false
+    }
+   ],
+   "cache_creation_tokens": 7,
+   "cache_read_tokens": 5,
+   "context_max": 900,
+   "model": null,
+   "model_tier": "MIXED",
+   "output_words": 30,
+   "platform": "claude",
+   "project": "p",
+   "session_id": "s1",
+   "subagent_spawns": 0,
+   "timestamp": "2026-09-01T13:00:00Z",
+   "tokens_completion": 20,
+   "tokens_prompt": 150,
+   "tool_calls": 1,
+   "turns": 1,
+   "usage_known": false
+  }
+ ],
+ "no_billable_usage_dropped": [],
+ "no_usage_fields_only_activity": [
+  {
+   "_activity": [
+    {
+     "id": "usage:2026-09-01T10:00:00Z:opus",
+     "model": "opus",
+     "timestamp": "2026-09-01T10:00:00Z",
+     "tool_calls": 2,
+     "tool_name": "Read"
+    }
+   ],
+   "_model_usage": [
+    {
+     "context_max": 0,
+     "model": "opus",
+     "model_tier": "PREMIUM",
+     "tool_calls": 2,
+     "usage_known": false
+    }
+   ],
+   "context_max": 0,
+   "model": "opus",
+   "model_tier": "PREMIUM",
+   "session_id": "s5",
+   "timestamp": "2026-09-01T10:00:00Z",
+   "tool_calls": 2,
+   "usage_known": false
+  }
+ ],
+ "plain_records_no_start": [
+  {
+   "session_id": "b",
+   "timestamp": "2026-08-01T09:00:00Z"
+  }
+ ],
+ "plain_records_without_events": [
+  {
+   "session_id": "a",
+   "timestamp": "2026-09-01T09:00:00Z",
+   "tokens_prompt": 3
+  }
+ ],
+ "single_model_all_known": [
+  {
+   "_activity": [],
+   "_model_usage": [
+    {
+     "context_max": 0,
+     "model": "sonnet",
+     "model_tier": "STANDARD",
+     "tokens_completion": 4,
+     "tokens_prompt": 10,
+     "usage_known": true
+    }
+   ],
+   "context_max": 0,
+   "model": "sonnet",
+   "model_tier": "STANDARD",
+   "session_id": "s2",
+   "timestamp": "2026-09-01T10:05:00Z",
+   "tokens_completion": 4,
+   "tokens_prompt": 10,
+   "usage_known": true
+  }
+ ]
+}

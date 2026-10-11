@@ -1,0 +1,619 @@
+{
+ "enrich:claude_projects": [
+  {
+   "_activity": [
+    {
+     "agent_type": "Explore",
+     "id": "tool:tu1",
+     "model": "opus",
+     "subagent_spawns": 1,
+     "timestamp": "2026-09-01T11:00:04Z",
+     "tool_calls": 1,
+     "tool_name": "Task"
+    },
+    {
+     "id": "tool:req1:3",
+     "model": "opus",
+     "skill_name": "verify",
+     "timestamp": "2026-09-01T11:00:04Z",
+     "tool_calls": 1,
+     "tool_name": "Skill"
+    }
+   ],
+   "_model_usage": [
+    {
+     "cache_creation_tokens": 0,
+     "cache_read_tokens": 0,
+     "context_max": 7,
+     "model": "sonnet",
+     "model_tier": "STANDARD",
+     "tokens_completion": 3,
+     "tokens_prompt": 10,
+     "usage_known": false
+    },
+    {
+     "cache_creation_tokens": 25,
+     "cache_read_tokens": 100,
+     "context_max": 130,
+     "model": "opus",
+     "model_tier": "PREMIUM",
+     "output_words": 2,
+     "subagent_spawns": 1,
+     "tokens_completion": 5,
+     "tokens_prompt": 130,
+     "tool_calls": 2,
+     "usage_known": true
+    }
+   ],
+   "_usage_events": [
+    {
+     "cache_creation_tokens": 0,
+     "cache_read_tokens": 0,
+     "context_max": 7,
+     "id": "usage:req9",
+     "model": "sonnet",
+     "timestamp": "2026-09-01T13:00:00Z",
+     "tokens_completion": 2,
+     "tokens_prompt": 7,
+     "usage_known": true
+    },
+    {
+     "id": "user:u1",
+     "model": null,
+     "timestamp": "2026-09-01T11:00:00Z",
+     "turns": 1
+    },
+    {
+     "cache_creation_1h_tokens": 7,
+     "cache_creation_5m_tokens": 20,
+     "cache_creation_tokens": 25,
+     "cache_read_tokens": 100,
+     "context_max": 130,
+     "id": "usage:req1",
+     "model": "opus",
+     "timestamp": "2026-09-01T11:00:04Z",
+     "tokens_completion": 5,
+     "tokens_prompt": 130,
+     "usage_known": true
+    },
+    {
+     "id": "text:a1:0",
+     "model": "opus",
+     "output_words": 2,
+     "timestamp": "2026-09-01T11:00:04Z"
+    },
+    {
+     "agent_type": "Explore",
+     "id": "tool:tu1",
+     "model": "opus",
+     "subagent_spawns": 1,
+     "timestamp": "2026-09-01T11:00:04Z",
+     "tool_calls": 1,
+     "tool_name": "Task"
+    },
+    {
+     "id": "tool:req1:3",
+     "model": "opus",
+     "skill_name": "verify",
+     "timestamp": "2026-09-01T11:00:04Z",
+     "tool_calls": 1,
+     "tool_name": "Skill"
+    },
+    {
+     "cache_creation_tokens": 0,
+     "cache_read_tokens": 0,
+     "context_max": 3,
+     "id": "usage:req2",
+     "model": "sonnet",
+     "timestamp": "2026-09-01T11:00:06Z",
+     "tokens_completion": 1,
+     "tokens_prompt": 3,
+     "usage_known": false
+    }
+   ],
+   "cache_creation_tokens": 25,
+   "cache_read_tokens": 100,
+   "context_max": 130,
+   "cost_basis": "unavailable",
+   "model": null,
+   "model_tier": "MIXED",
+   "output_words": 2,
+   "platform": "claude",
+   "project": "kept-project",
+   "session_id": "s1",
+   "status": "success",
+   "subagent_spawns": 1,
+   "timestamp": "2026-09-01T13:00:00Z",
+   "tokens_completion": 8,
+   "tokens_prompt": 140,
+   "tool_calls": 2,
+   "turns": 1,
+   "usage_known": false,
+   "usage_source": "request-usage-v6"
+  },
+  {
+   "_usage_events": [],
+   "session_id": "gone",
+   "timestamp": "2026-09-01T12:00:00Z",
+   "tokens_prompt": 5,
+   "usage_missing": true,
+   "usage_source": "request-usage-v6"
+  }
+ ],
+ "enrich:codex_sessions": [
+  {
+   "_activity": [
+    {
+     "id": "tool:c1",
+     "model": "gpt-6",
+     "timestamp": "2026-09-01T10:00:09Z",
+     "tool_calls": 1,
+     "tool_name": "shell"
+    },
+    {
+     "agent_type": "reviewer",
+     "id": "tool:c2",
+     "model": "gpt-6",
+     "subagent_spawns": 1,
+     "timestamp": "2026-09-01T10:00:10Z",
+     "tool_calls": 1,
+     "tool_name": "spawn_agent"
+    },
+    {
+     "id": "tool:t1:2026-09-01T10:00:11Z:13",
+     "model": "gpt-6",
+     "timestamp": "2026-09-01T10:00:11Z",
+     "tool_calls": 1,
+     "tool_name": "multi.Skill"
+    }
+   ],
+   "_model_usage": [
+    {
+     "cache_creation_tokens": 0,
+     "cache_read_tokens": 0,
+     "context_max": 0,
+     "model": null,
+     "model_tier": "UNKNOWN",
+     "tokens_completion": 1,
+     "tokens_prompt": 4,
+     "turns": 2,
+     "usage_known": true
+    },
+    {
+     "cache_creation_tokens": 5,
+     "cache_read_tokens": 100,
+     "context_max": 160,
+     "model": "gpt-6",
+     "model_tier": "PREMIUM",
+     "output_words": 3,
+     "subagent_spawns": 1,
+     "tokens_completion": 34,
+     "tokens_prompt": 199,
+     "tool_calls": 3,
+     "turns": 1,
+     "usage_known": false
+    }
+   ],
+   "_usage_events": [
+    {
+     "id": "user::2026-09-01T09:59:00Z:0",
+     "model": null,
+     "timestamp": "2026-09-01T09:59:00Z",
+     "turns": 1
+    },
+    {
+     "id": "user:t1:2026-09-01T10:00:02Z:4",
+     "model": "gpt-6",
+     "timestamp": "2026-09-01T10:00:02Z",
+     "turns": 1
+    },
+    {
+     "cache_creation_tokens": 5,
+     "cache_read_tokens": 40,
+     "context_max": 100,
+     "id": "t1:2026-09-01T10:00:03Z:usage",
+     "model": "gpt-6",
+     "timestamp": "2026-09-01T10:00:03Z",
+     "tokens_completion": 10,
+     "tokens_prompt": 100,
+     "usage_known": true
+    },
+    {
+     "cache_creation_tokens": 0,
+     "cache_read_tokens": 60,
+     "context_max": 160,
+     "id": "t1:2026-09-01T10:00:05Z:usage",
+     "model": "gpt-6",
+     "timestamp": "2026-09-01T10:00:05Z",
+     "tokens_completion": 15,
+     "tokens_prompt": 60,
+     "usage_known": false
+    },
+    {
+     "cache_creation_tokens": 0,
+     "cache_read_tokens": 0,
+     "context_max": 30,
+     "id": "t1:2026-09-01T10:00:07Z:usage",
+     "model": "gpt-6",
+     "timestamp": "2026-09-01T10:00:07Z",
+     "tokens_completion": 2,
+     "tokens_prompt": 30,
+     "usage_known": true
+    },
+    {
+     "cache_creation_tokens": 0,
+     "cache_read_tokens": 0,
+     "context_max": 50,
+     "id": "t1:2026-09-01T10:00:08Z:usage",
+     "model": "gpt-6",
+     "timestamp": "2026-09-01T10:00:08Z",
+     "tokens_completion": 4,
+     "tokens_prompt": 0,
+     "usage_known": false
+    },
+    {
+     "id": "tool:c1",
+     "model": "gpt-6",
+     "timestamp": "2026-09-01T10:00:09Z",
+     "tool_calls": 1,
+     "tool_name": "shell"
+    },
+    {
+     "agent_type": "reviewer",
+     "id": "tool:c2",
+     "model": "gpt-6",
+     "subagent_spawns": 1,
+     "timestamp": "2026-09-01T10:00:10Z",
+     "tool_calls": 1,
+     "tool_name": "spawn_agent"
+    },
+    {
+     "id": "tool:t1:2026-09-01T10:00:11Z:13",
+     "model": "gpt-6",
+     "timestamp": "2026-09-01T10:00:11Z",
+     "tool_calls": 1,
+     "tool_name": "multi.Skill"
+    },
+    {
+     "id": "output:t1:2026-09-01T10:00:12Z:14",
+     "model": "gpt-6",
+     "output_words": 3,
+     "timestamp": "2026-09-01T10:00:12Z"
+    },
+    {
+     "id": "user::2026-09-01T20:00:01Z:1",
+     "model": null,
+     "timestamp": "2026-09-01T20:00:01Z",
+     "turns": 1
+    },
+    {
+     "cache_creation_tokens": 0,
+     "cache_read_tokens": 0,
+     "context_max": 0,
+     "id": ":2026-09-01T20:00:02Z:usage",
+     "model": null,
+     "timestamp": "2026-09-01T20:00:02Z",
+     "tokens_completion": 1,
+     "tokens_prompt": 4,
+     "usage_known": true
+    },
+    {
+     "cache_creation_tokens": 0,
+     "cache_read_tokens": 0,
+     "context_max": 0,
+     "id": "t9:2026-09-02T08:00:02Z:usage",
+     "model": "gpt-6",
+     "timestamp": "2026-09-02T08:00:02Z",
+     "tokens_completion": 3,
+     "tokens_prompt": 9,
+     "usage_known": true
+    }
+   ],
+   "cache_creation_tokens": 5,
+   "cache_read_tokens": 100,
+   "context_max": 160,
+   "cost_basis": "unavailable",
+   "model": "gpt-6",
+   "model_tier": "MIXED",
+   "output_words": 3,
+   "platform": "codex",
+   "project": "order-samurai",
+   "session_id": "codex-sess",
+   "status": "success",
+   "subagent_spawns": 1,
+   "timestamp": "2026-09-02T08:00:02Z",
+   "tokens_completion": 35,
+   "tokens_prompt": 203,
+   "tool_calls": 3,
+   "turns": 3,
+   "usage_known": false,
+   "usage_source": "request-usage-v6"
+  }
+ ],
+ "enrich:explicit_source": [
+  {
+   "_activity": [
+    {
+     "agent_type": "Explore",
+     "id": "tool:tu1",
+     "model": "opus",
+     "subagent_spawns": 1,
+     "timestamp": "2026-09-01T11:00:04Z",
+     "tool_calls": 1,
+     "tool_name": "Task"
+    },
+    {
+     "id": "tool:req1:3",
+     "model": "opus",
+     "skill_name": "verify",
+     "timestamp": "2026-09-01T11:00:04Z",
+     "tool_calls": 1,
+     "tool_name": "Skill"
+    }
+   ],
+   "_model_usage": [
+    {
+     "cache_creation_tokens": 25,
+     "cache_read_tokens": 100,
+     "context_max": 130,
+     "model": "opus",
+     "model_tier": "PREMIUM",
+     "output_words": 2,
+     "subagent_spawns": 1,
+     "tokens_completion": 5,
+     "tokens_prompt": 130,
+     "tool_calls": 2,
+     "usage_known": true
+    },
+    {
+     "cache_creation_tokens": 0,
+     "cache_read_tokens": 0,
+     "context_max": 3,
+     "model": "sonnet",
+     "model_tier": "STANDARD",
+     "tokens_completion": 1,
+     "tokens_prompt": 3,
+     "usage_known": false
+    }
+   ],
+   "_usage_events": [
+    {
+     "id": "user:u1",
+     "model": null,
+     "timestamp": "2026-09-01T11:00:00Z",
+     "turns": 1
+    },
+    {
+     "cache_creation_1h_tokens": 7,
+     "cache_creation_5m_tokens": 20,
+     "cache_creation_tokens": 25,
+     "cache_read_tokens": 100,
+     "context_max": 130,
+     "id": "usage:req1",
+     "model": "opus",
+     "timestamp": "2026-09-01T11:00:04Z",
+     "tokens_completion": 5,
+     "tokens_prompt": 130,
+     "usage_known": true
+    },
+    {
+     "id": "text:a1:0",
+     "model": "opus",
+     "output_words": 2,
+     "timestamp": "2026-09-01T11:00:04Z"
+    },
+    {
+     "agent_type": "Explore",
+     "id": "tool:tu1",
+     "model": "opus",
+     "subagent_spawns": 1,
+     "timestamp": "2026-09-01T11:00:04Z",
+     "tool_calls": 1,
+     "tool_name": "Task"
+    },
+    {
+     "id": "tool:req1:3",
+     "model": "opus",
+     "skill_name": "verify",
+     "timestamp": "2026-09-01T11:00:04Z",
+     "tool_calls": 1,
+     "tool_name": "Skill"
+    },
+    {
+     "cache_creation_tokens": 0,
+     "cache_read_tokens": 0,
+     "context_max": 3,
+     "id": "usage:req2",
+     "model": "sonnet",
+     "timestamp": "2026-09-01T11:00:06Z",
+     "tokens_completion": 1,
+     "tokens_prompt": 3,
+     "usage_known": false
+    }
+   ],
+   "cache_creation_tokens": 25,
+   "cache_read_tokens": 100,
+   "context_max": 130,
+   "cost_basis": "unavailable",
+   "model": null,
+   "model_tier": "MIXED",
+   "output_words": 2,
+   "platform": "claude",
+   "project": "repo",
+   "session_id": "s1",
+   "status": "success",
+   "subagent_spawns": 1,
+   "timestamp": "2026-09-01T11:00:06Z",
+   "tokens_completion": 6,
+   "tokens_prompt": 133,
+   "tool_calls": 2,
+   "turns": 1,
+   "usage_known": false,
+   "usage_source": "request-usage-v6"
+  }
+ ],
+ "enrich:non_native_platform": [
+  {
+   "session_id": "g",
+   "timestamp": "2026-09-01T10:00:00Z"
+  }
+ ],
+ "parser:claude": [
+  "s1",
+  "/work/repo",
+  true,
+  [
+   {
+    "id": "user:u1",
+    "model": null,
+    "timestamp": "2026-09-01T11:00:00Z",
+    "turns": 1
+   },
+   {
+    "cache_creation_1h_tokens": 7,
+    "cache_creation_5m_tokens": 20,
+    "cache_creation_tokens": 25,
+    "cache_read_tokens": 100,
+    "context_max": 130,
+    "id": "usage:req1",
+    "model": "opus",
+    "timestamp": "2026-09-01T11:00:04Z",
+    "tokens_completion": 5,
+    "tokens_prompt": 130,
+    "usage_known": true
+   },
+   {
+    "id": "text:a1:0",
+    "model": "opus",
+    "output_words": 2,
+    "timestamp": "2026-09-01T11:00:04Z"
+   },
+   {
+    "agent_type": "Explore",
+    "id": "tool:tu1",
+    "model": "opus",
+    "subagent_spawns": 1,
+    "timestamp": "2026-09-01T11:00:04Z",
+    "tool_calls": 1,
+    "tool_name": "Task"
+   },
+   {
+    "id": "tool:req1:3",
+    "model": "opus",
+    "skill_name": "verify",
+    "timestamp": "2026-09-01T11:00:04Z",
+    "tool_calls": 1,
+    "tool_name": "Skill"
+   },
+   {
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "context_max": 3,
+    "id": "usage:req2",
+    "model": "sonnet",
+    "timestamp": "2026-09-01T11:00:06Z",
+    "tokens_completion": 1,
+    "tokens_prompt": 3,
+    "usage_known": false
+   },
+   {
+    "id": "text:req3:0",
+    "model": "sonnet",
+    "output_words": 0,
+    "timestamp": "2026-09-01T11:00:08Z"
+   }
+  ]
+ ],
+ "parser:codex": [
+  "codex-sess",
+  "/work/order-samurai",
+  true,
+  [
+   {
+    "id": "user::2026-09-01T09:59:00Z:0",
+    "model": null,
+    "timestamp": "2026-09-01T09:59:00Z",
+    "turns": 1
+   },
+   {
+    "id": "user:t1:2026-09-01T10:00:02Z:4",
+    "model": "gpt-6",
+    "timestamp": "2026-09-01T10:00:02Z",
+    "turns": 1
+   },
+   {
+    "cache_creation_tokens": 5,
+    "cache_read_tokens": 40,
+    "context_max": 100,
+    "id": "t1:2026-09-01T10:00:03Z:usage",
+    "model": "gpt-6",
+    "timestamp": "2026-09-01T10:00:03Z",
+    "tokens_completion": 10,
+    "tokens_prompt": 100,
+    "usage_known": true
+   },
+   {
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 60,
+    "context_max": 160,
+    "id": "t1:2026-09-01T10:00:05Z:usage",
+    "model": "gpt-6",
+    "timestamp": "2026-09-01T10:00:05Z",
+    "tokens_completion": 15,
+    "tokens_prompt": 60,
+    "usage_known": false
+   },
+   {
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "context_max": 30,
+    "id": "t1:2026-09-01T10:00:07Z:usage",
+    "model": "gpt-6",
+    "timestamp": "2026-09-01T10:00:07Z",
+    "tokens_completion": 2,
+    "tokens_prompt": 30,
+    "usage_known": true
+   },
+   {
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "context_max": 50,
+    "id": "t1:2026-09-01T10:00:08Z:usage",
+    "model": "gpt-6",
+    "timestamp": "2026-09-01T10:00:08Z",
+    "tokens_completion": 4,
+    "tokens_prompt": 0,
+    "usage_known": false
+   },
+   {
+    "id": "tool:c1",
+    "model": "gpt-6",
+    "timestamp": "2026-09-01T10:00:09Z",
+    "tool_calls": 1,
+    "tool_name": "shell"
+   },
+   {
+    "agent_type": "reviewer",
+    "id": "tool:c2",
+    "model": "gpt-6",
+    "subagent_spawns": 1,
+    "timestamp": "2026-09-01T10:00:10Z",
+    "tool_calls": 1,
+    "tool_name": "spawn_agent"
+   },
+   {
+    "id": "tool:t1:2026-09-01T10:00:11Z:13",
+    "model": "gpt-6",
+    "timestamp": "2026-09-01T10:00:11Z",
+    "tool_calls": 1,
+    "tool_name": "multi.Skill"
+   },
+   {
+    "id": "output:t1:2026-09-01T10:00:12Z:14",
+    "model": "gpt-6",
+    "output_words": 3,
+    "timestamp": "2026-09-01T10:00:12Z"
+   }
+  ]
+ ]
+}
