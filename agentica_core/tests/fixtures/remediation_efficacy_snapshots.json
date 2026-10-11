@@ -1,0 +1,1470 @@
+{
+ "defaults_from_module_paths": {
+  "applied": 5,
+  "applied_lifetime": 7,
+  "attempted": 9,
+  "attempted_lifetime": 12,
+  "by_skill": {
+   "debug": {
+    "applied": 2,
+    "attempted": 5,
+    "improved": 2
+   },
+   "simplify": {
+    "applied": 1,
+    "attempted": 1,
+    "improved": 1
+   },
+   "verify": {
+    "applied": 2,
+    "attempted": 3,
+    "improved": 1
+   }
+  },
+  "completed": 7,
+  "completed_lifetime": 9,
+  "data_gap": false,
+  "data_gap_detail": null,
+  "events": [
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 30.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-07T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 30.0,
+    "before": 40.0,
+    "command": "/verify",
+    "evidence": "fire_time",
+    "metric": "Self_Correction_Rate",
+    "outcome": "regressed",
+    "skill": "verify",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/simplify",
+    "evidence": "engine_verdict",
+    "metric": "Slop_Density",
+    "outcome": "improved",
+    "skill": "simplify",
+    "used_at": "2026-08-31T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/verify",
+    "evidence": "engine_verdict",
+    "late_rejudge": true,
+    "metric": "correlation:cost_and_quality",
+    "outcome": "improved",
+    "skill": "verify",
+    "used_at": "2026-08-31T12:00:00+00:00"
+   }
+  ],
+  "execution_success_rate": 77.8,
+  "flat": 0,
+  "human_correlated": 5,
+  "human_correlated_improved": 3,
+  "human_events": [
+   {
+    "actor": "human",
+    "after": 25.0,
+    "before": 25.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "flat",
+    "skill": "debug",
+    "used_at": "2026-08-12T12:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 5.0,
+    "before": 10.0,
+    "command": "/verify",
+    "evidence": "snapshot_correlation",
+    "metric": "Self_Correction_Rate",
+    "outcome": "regressed",
+    "skill": "verify",
+    "used_at": "2026-08-13T00:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 1.0,
+    "before": 6.0,
+    "command": "/simplify",
+    "evidence": "snapshot_correlation",
+    "metric": "Slop_Density",
+    "outcome": "improved",
+    "skill": "simplify",
+    "used_at": "2026-08-19T00:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 2.0,
+    "before": 25.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-20T12:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 6.0,
+    "before": 12.0,
+    "command": "",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "improved": 4,
+  "improved_lifetime": 4,
+  "improvement_rate": 44.4,
+  "note": "fire-time before/after where recorded; else the engine's own `improved` verdict on a SETTLED run (evidence=engine_verdict; done/no_change only \u2014 error/timeout runs stay attempts and are never graded; a false verdict grades flat, since a boolean cannot distinguish a regression from a no-op, unless the late re-judgment sidecar upgraded that entry_hash \u2014 those events carry late_rejudge=true); else correlation not causation (flag -> skill used -> next snapshot moved healthy); headline fields contain live autonomous ReflexEngine remediations only; human correlations, read-only diagnoses, and proposal-only candidates are separate; attempted counts autonomous no_change/error/timeout runs; improvement_rate = improved/attempted (the honest headline) over window_days when set, with the pre-windowing totals kept in the *_lifetime fields; success_rate = improved/applied is observational-only, scheduled for deletion; proposal-only candidate measurements are reported separately and never counted as live applications",
+  "proposal_events": [
+   {
+    "actor": "reflex",
+    "after": 4.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "proposal_improvement_rate": 100.0,
+  "proposed_count": 1,
+  "proposed_improved": 1,
+  "regressed": 1,
+  "success_rate": 80.0,
+  "window_days": 30
+ },
+ "engine_verdict_kill_switch": {
+  "applied": 4,
+  "applied_lifetime": 4,
+  "attempted": 12,
+  "attempted_lifetime": 12,
+  "by_skill": {
+   "cost-skill": {
+    "applied": 0,
+    "attempted": 1,
+    "improved": 0
+   },
+   "debug": {
+    "applied": 3,
+    "attempted": 7,
+    "improved": 2
+   },
+   "simplify": {
+    "applied": 0,
+    "attempted": 1,
+    "improved": 0
+   },
+   "verify": {
+    "applied": 1,
+    "attempted": 3,
+    "improved": 0
+   }
+  },
+  "completed": 9,
+  "completed_lifetime": 9,
+  "data_gap": false,
+  "data_gap_detail": null,
+  "events": [
+   {
+    "actor": "reflex",
+    "after": 8.0,
+    "before": 8.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "flat",
+    "skill": "debug",
+    "used_at": "2026-07-13T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 30.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-07T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 30.0,
+    "before": 40.0,
+    "command": "/verify",
+    "evidence": "fire_time",
+    "metric": "Self_Correction_Rate",
+    "outcome": "regressed",
+    "skill": "verify",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "execution_success_rate": 75.0,
+  "flat": 1,
+  "human_correlated": 5,
+  "human_correlated_improved": 3,
+  "human_events": [
+   {
+    "actor": "human",
+    "after": 25.0,
+    "before": 25.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "flat",
+    "skill": "debug",
+    "used_at": "2026-08-12T12:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 5.0,
+    "before": 10.0,
+    "command": "/verify",
+    "evidence": "snapshot_correlation",
+    "metric": "Self_Correction_Rate",
+    "outcome": "regressed",
+    "skill": "verify",
+    "used_at": "2026-08-13T00:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 1.0,
+    "before": 6.0,
+    "command": "/simplify",
+    "evidence": "snapshot_correlation",
+    "metric": "Slop_Density",
+    "outcome": "improved",
+    "skill": "simplify",
+    "used_at": "2026-08-19T00:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 2.0,
+    "before": 25.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-20T12:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 6.0,
+    "before": 12.0,
+    "command": "",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "improved": 2,
+  "improved_lifetime": 2,
+  "improvement_rate": 16.7,
+  "note": "fire-time before/after where recorded; else the engine's own `improved` verdict on a SETTLED run (evidence=engine_verdict; done/no_change only \u2014 error/timeout runs stay attempts and are never graded; a false verdict grades flat, since a boolean cannot distinguish a regression from a no-op, unless the late re-judgment sidecar upgraded that entry_hash \u2014 those events carry late_rejudge=true); else correlation not causation (flag -> skill used -> next snapshot moved healthy); headline fields contain live autonomous ReflexEngine remediations only; human correlations, read-only diagnoses, and proposal-only candidates are separate; attempted counts autonomous no_change/error/timeout runs; improvement_rate = improved/attempted (the honest headline) over window_days when set, with the pre-windowing totals kept in the *_lifetime fields; success_rate = improved/applied is observational-only, scheduled for deletion; proposal-only candidate measurements are reported separately and never counted as live applications",
+  "proposal_events": [
+   {
+    "actor": "reflex",
+    "after": 4.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "proposal_improvement_rate": 100.0,
+  "proposed_count": 1,
+  "proposed_improved": 1,
+  "regressed": 1,
+  "success_rate": 50.0,
+  "window_days": null
+ },
+ "lifetime_all_tiers": {
+  "applied": 7,
+  "applied_lifetime": 7,
+  "attempted": 12,
+  "attempted_lifetime": 12,
+  "by_skill": {
+   "cost-skill": {
+    "applied": 1,
+    "attempted": 1,
+    "improved": 0
+   },
+   "debug": {
+    "applied": 3,
+    "attempted": 7,
+    "improved": 2
+   },
+   "simplify": {
+    "applied": 1,
+    "attempted": 1,
+    "improved": 1
+   },
+   "verify": {
+    "applied": 2,
+    "attempted": 3,
+    "improved": 1
+   }
+  },
+  "completed": 9,
+  "completed_lifetime": 9,
+  "data_gap": false,
+  "data_gap_detail": null,
+  "events": [
+   {
+    "actor": "reflex",
+    "after": 8.0,
+    "before": 8.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "flat",
+    "skill": "debug",
+    "used_at": "2026-07-13T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/cost-skill",
+    "evidence": "engine_verdict",
+    "metric": "cost-skill",
+    "outcome": "flat",
+    "skill": "cost-skill",
+    "used_at": "2026-07-18T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 30.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-07T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 30.0,
+    "before": 40.0,
+    "command": "/verify",
+    "evidence": "fire_time",
+    "metric": "Self_Correction_Rate",
+    "outcome": "regressed",
+    "skill": "verify",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/simplify",
+    "evidence": "engine_verdict",
+    "metric": "Slop_Density",
+    "outcome": "improved",
+    "skill": "simplify",
+    "used_at": "2026-08-31T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/verify",
+    "evidence": "engine_verdict",
+    "late_rejudge": true,
+    "metric": "correlation:cost_and_quality",
+    "outcome": "improved",
+    "skill": "verify",
+    "used_at": "2026-08-31T12:00:00+00:00"
+   }
+  ],
+  "execution_success_rate": 75.0,
+  "flat": 2,
+  "human_correlated": 5,
+  "human_correlated_improved": 3,
+  "human_events": [
+   {
+    "actor": "human",
+    "after": 25.0,
+    "before": 25.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "flat",
+    "skill": "debug",
+    "used_at": "2026-08-12T12:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 5.0,
+    "before": 10.0,
+    "command": "/verify",
+    "evidence": "snapshot_correlation",
+    "metric": "Self_Correction_Rate",
+    "outcome": "regressed",
+    "skill": "verify",
+    "used_at": "2026-08-13T00:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 1.0,
+    "before": 6.0,
+    "command": "/simplify",
+    "evidence": "snapshot_correlation",
+    "metric": "Slop_Density",
+    "outcome": "improved",
+    "skill": "simplify",
+    "used_at": "2026-08-19T00:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 2.0,
+    "before": 25.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-20T12:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 6.0,
+    "before": 12.0,
+    "command": "",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "improved": 4,
+  "improved_lifetime": 4,
+  "improvement_rate": 33.3,
+  "note": "fire-time before/after where recorded; else the engine's own `improved` verdict on a SETTLED run (evidence=engine_verdict; done/no_change only \u2014 error/timeout runs stay attempts and are never graded; a false verdict grades flat, since a boolean cannot distinguish a regression from a no-op, unless the late re-judgment sidecar upgraded that entry_hash \u2014 those events carry late_rejudge=true); else correlation not causation (flag -> skill used -> next snapshot moved healthy); headline fields contain live autonomous ReflexEngine remediations only; human correlations, read-only diagnoses, and proposal-only candidates are separate; attempted counts autonomous no_change/error/timeout runs; improvement_rate = improved/attempted (the honest headline) over window_days when set, with the pre-windowing totals kept in the *_lifetime fields; success_rate = improved/applied is observational-only, scheduled for deletion; proposal-only candidate measurements are reported separately and never counted as live applications",
+  "proposal_events": [
+   {
+    "actor": "reflex",
+    "after": 4.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "proposal_improvement_rate": 100.0,
+  "proposed_count": 1,
+  "proposed_improved": 1,
+  "regressed": 1,
+  "success_rate": 57.1,
+  "window_days": null
+ },
+ "more_than_twenty_events": {
+  "applied": 23,
+  "applied_lifetime": 23,
+  "attempted": 23,
+  "attempted_lifetime": 23,
+  "by_skill": {
+   "debug": {
+    "applied": 23,
+    "attempted": 23,
+    "improved": 11
+   }
+  },
+  "completed": 23,
+  "completed_lifetime": 23,
+  "data_gap": false,
+  "data_gap_detail": null,
+  "events": [
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T17:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 25.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "regressed",
+    "skill": "debug",
+    "used_at": "2026-08-30T18:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T19:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 25.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "regressed",
+    "skill": "debug",
+    "used_at": "2026-08-30T20:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T21:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 25.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "regressed",
+    "skill": "debug",
+    "used_at": "2026-08-30T22:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T23:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 25.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "regressed",
+    "skill": "debug",
+    "used_at": "2026-08-31T00:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-31T01:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 25.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "regressed",
+    "skill": "debug",
+    "used_at": "2026-08-31T02:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-31T03:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 25.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "regressed",
+    "skill": "debug",
+    "used_at": "2026-08-31T04:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-31T05:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 25.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "regressed",
+    "skill": "debug",
+    "used_at": "2026-08-31T06:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-31T07:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 25.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "regressed",
+    "skill": "debug",
+    "used_at": "2026-08-31T08:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-31T09:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 25.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "regressed",
+    "skill": "debug",
+    "used_at": "2026-08-31T10:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-31T11:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 25.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "regressed",
+    "skill": "debug",
+    "used_at": "2026-08-31T12:00:00+00:00"
+   }
+  ],
+  "execution_success_rate": 100.0,
+  "flat": 0,
+  "human_correlated": 0,
+  "human_correlated_improved": 0,
+  "human_events": [],
+  "improved": 11,
+  "improved_lifetime": 11,
+  "improvement_rate": 47.8,
+  "note": "fire-time before/after where recorded; else the engine's own `improved` verdict on a SETTLED run (evidence=engine_verdict; done/no_change only \u2014 error/timeout runs stay attempts and are never graded; a false verdict grades flat, since a boolean cannot distinguish a regression from a no-op, unless the late re-judgment sidecar upgraded that entry_hash \u2014 those events carry late_rejudge=true); else correlation not causation (flag -> skill used -> next snapshot moved healthy); headline fields contain live autonomous ReflexEngine remediations only; human correlations, read-only diagnoses, and proposal-only candidates are separate; attempted counts autonomous no_change/error/timeout runs; improvement_rate = improved/attempted (the honest headline) over window_days when set, with the pre-windowing totals kept in the *_lifetime fields; success_rate = improved/applied is observational-only, scheduled for deletion; proposal-only candidate measurements are reported separately and never counted as live applications",
+  "proposal_events": [],
+  "proposal_improvement_rate": null,
+  "proposed_count": 0,
+  "proposed_improved": 0,
+  "regressed": 12,
+  "success_rate": 47.8,
+  "window_days": null
+ },
+ "no_inputs": {
+  "applied": 0,
+  "applied_lifetime": 0,
+  "attempted": 0,
+  "attempted_lifetime": 0,
+  "by_skill": {},
+  "completed": 0,
+  "completed_lifetime": 0,
+  "data_gap": true,
+  "data_gap_detail": "no autonomous attempts in 7d",
+  "events": [],
+  "execution_success_rate": null,
+  "flat": 0,
+  "human_correlated": 0,
+  "human_correlated_improved": 0,
+  "human_events": [],
+  "improved": 0,
+  "improved_lifetime": 0,
+  "improvement_rate": null,
+  "note": "fire-time before/after where recorded; else the engine's own `improved` verdict on a SETTLED run (evidence=engine_verdict; done/no_change only \u2014 error/timeout runs stay attempts and are never graded; a false verdict grades flat, since a boolean cannot distinguish a regression from a no-op, unless the late re-judgment sidecar upgraded that entry_hash \u2014 those events carry late_rejudge=true); else correlation not causation (flag -> skill used -> next snapshot moved healthy); headline fields contain live autonomous ReflexEngine remediations only; human correlations, read-only diagnoses, and proposal-only candidates are separate; attempted counts autonomous no_change/error/timeout runs; improvement_rate = improved/attempted (the honest headline) over window_days when set, with the pre-windowing totals kept in the *_lifetime fields; success_rate = improved/applied is observational-only, scheduled for deletion; proposal-only candidate measurements are reported separately and never counted as live applications",
+  "proposal_events": [],
+  "proposal_improvement_rate": null,
+  "proposed_count": 0,
+  "proposed_improved": 0,
+  "regressed": 0,
+  "success_rate": null,
+  "window_days": 7
+ },
+ "rejudge_sidecar_disabled": {
+  "applied": 7,
+  "applied_lifetime": 7,
+  "attempted": 12,
+  "attempted_lifetime": 12,
+  "by_skill": {
+   "cost-skill": {
+    "applied": 1,
+    "attempted": 1,
+    "improved": 0
+   },
+   "debug": {
+    "applied": 3,
+    "attempted": 7,
+    "improved": 2
+   },
+   "simplify": {
+    "applied": 1,
+    "attempted": 1,
+    "improved": 1
+   },
+   "verify": {
+    "applied": 2,
+    "attempted": 3,
+    "improved": 0
+   }
+  },
+  "completed": 9,
+  "completed_lifetime": 9,
+  "data_gap": false,
+  "data_gap_detail": null,
+  "events": [
+   {
+    "actor": "reflex",
+    "after": 8.0,
+    "before": 8.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "flat",
+    "skill": "debug",
+    "used_at": "2026-07-13T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/cost-skill",
+    "evidence": "engine_verdict",
+    "metric": "cost-skill",
+    "outcome": "flat",
+    "skill": "cost-skill",
+    "used_at": "2026-07-18T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 30.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-07T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 30.0,
+    "before": 40.0,
+    "command": "/verify",
+    "evidence": "fire_time",
+    "metric": "Self_Correction_Rate",
+    "outcome": "regressed",
+    "skill": "verify",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/simplify",
+    "evidence": "engine_verdict",
+    "metric": "Slop_Density",
+    "outcome": "improved",
+    "skill": "simplify",
+    "used_at": "2026-08-31T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/verify",
+    "evidence": "engine_verdict",
+    "metric": "correlation:cost_and_quality",
+    "outcome": "flat",
+    "skill": "verify",
+    "used_at": "2026-08-31T12:00:00+00:00"
+   }
+  ],
+  "execution_success_rate": 75.0,
+  "flat": 3,
+  "human_correlated": 5,
+  "human_correlated_improved": 3,
+  "human_events": [
+   {
+    "actor": "human",
+    "after": 25.0,
+    "before": 25.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "flat",
+    "skill": "debug",
+    "used_at": "2026-08-12T12:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 5.0,
+    "before": 10.0,
+    "command": "/verify",
+    "evidence": "snapshot_correlation",
+    "metric": "Self_Correction_Rate",
+    "outcome": "regressed",
+    "skill": "verify",
+    "used_at": "2026-08-13T00:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 1.0,
+    "before": 6.0,
+    "command": "/simplify",
+    "evidence": "snapshot_correlation",
+    "metric": "Slop_Density",
+    "outcome": "improved",
+    "skill": "simplify",
+    "used_at": "2026-08-19T00:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 2.0,
+    "before": 25.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-20T12:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 6.0,
+    "before": 12.0,
+    "command": "",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "improved": 3,
+  "improved_lifetime": 3,
+  "improvement_rate": 25.0,
+  "note": "fire-time before/after where recorded; else the engine's own `improved` verdict on a SETTLED run (evidence=engine_verdict; done/no_change only \u2014 error/timeout runs stay attempts and are never graded; a false verdict grades flat, since a boolean cannot distinguish a regression from a no-op, unless the late re-judgment sidecar upgraded that entry_hash \u2014 those events carry late_rejudge=true); else correlation not causation (flag -> skill used -> next snapshot moved healthy); headline fields contain live autonomous ReflexEngine remediations only; human correlations, read-only diagnoses, and proposal-only candidates are separate; attempted counts autonomous no_change/error/timeout runs; improvement_rate = improved/attempted (the honest headline) over window_days when set, with the pre-windowing totals kept in the *_lifetime fields; success_rate = improved/applied is observational-only, scheduled for deletion; proposal-only candidate measurements are reported separately and never counted as live applications",
+  "proposal_events": [
+   {
+    "actor": "reflex",
+    "after": 4.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "proposal_improvement_rate": 100.0,
+  "proposed_count": 1,
+  "proposed_improved": 1,
+  "regressed": 1,
+  "success_rate": 42.9,
+  "window_days": null
+ },
+ "windowed_7d": {
+  "applied": 4,
+  "applied_lifetime": 7,
+  "attempted": 8,
+  "attempted_lifetime": 12,
+  "by_skill": {
+   "debug": {
+    "applied": 1,
+    "attempted": 4,
+    "improved": 1
+   },
+   "simplify": {
+    "applied": 1,
+    "attempted": 1,
+    "improved": 1
+   },
+   "verify": {
+    "applied": 2,
+    "attempted": 3,
+    "improved": 1
+   }
+  },
+  "completed": 6,
+  "completed_lifetime": 9,
+  "data_gap": false,
+  "data_gap_detail": null,
+  "events": [
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 30.0,
+    "before": 40.0,
+    "command": "/verify",
+    "evidence": "fire_time",
+    "metric": "Self_Correction_Rate",
+    "outcome": "regressed",
+    "skill": "verify",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/simplify",
+    "evidence": "engine_verdict",
+    "metric": "Slop_Density",
+    "outcome": "improved",
+    "skill": "simplify",
+    "used_at": "2026-08-31T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/verify",
+    "evidence": "engine_verdict",
+    "late_rejudge": true,
+    "metric": "correlation:cost_and_quality",
+    "outcome": "improved",
+    "skill": "verify",
+    "used_at": "2026-08-31T12:00:00+00:00"
+   }
+  ],
+  "execution_success_rate": 75.0,
+  "flat": 0,
+  "human_correlated": 1,
+  "human_correlated_improved": 1,
+  "human_events": [
+   {
+    "actor": "human",
+    "after": 6.0,
+    "before": 12.0,
+    "command": "",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "improved": 3,
+  "improved_lifetime": 4,
+  "improvement_rate": 37.5,
+  "note": "fire-time before/after where recorded; else the engine's own `improved` verdict on a SETTLED run (evidence=engine_verdict; done/no_change only \u2014 error/timeout runs stay attempts and are never graded; a false verdict grades flat, since a boolean cannot distinguish a regression from a no-op, unless the late re-judgment sidecar upgraded that entry_hash \u2014 those events carry late_rejudge=true); else correlation not causation (flag -> skill used -> next snapshot moved healthy); headline fields contain live autonomous ReflexEngine remediations only; human correlations, read-only diagnoses, and proposal-only candidates are separate; attempted counts autonomous no_change/error/timeout runs; improvement_rate = improved/attempted (the honest headline) over window_days when set, with the pre-windowing totals kept in the *_lifetime fields; success_rate = improved/applied is observational-only, scheduled for deletion; proposal-only candidate measurements are reported separately and never counted as live applications",
+  "proposal_events": [
+   {
+    "actor": "reflex",
+    "after": 4.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "proposal_improvement_rate": 100.0,
+  "proposed_count": 1,
+  "proposed_improved": 1,
+  "regressed": 1,
+  "success_rate": 75.0,
+  "window_days": 7
+ },
+ "windowed_kill_switch": {
+  "applied": 7,
+  "applied_lifetime": 7,
+  "attempted": 12,
+  "attempted_lifetime": 12,
+  "by_skill": {
+   "cost-skill": {
+    "applied": 1,
+    "attempted": 1,
+    "improved": 0
+   },
+   "debug": {
+    "applied": 3,
+    "attempted": 7,
+    "improved": 2
+   },
+   "simplify": {
+    "applied": 1,
+    "attempted": 1,
+    "improved": 1
+   },
+   "verify": {
+    "applied": 2,
+    "attempted": 3,
+    "improved": 1
+   }
+  },
+  "completed": 9,
+  "completed_lifetime": 9,
+  "data_gap": false,
+  "data_gap_detail": null,
+  "events": [
+   {
+    "actor": "reflex",
+    "after": 8.0,
+    "before": 8.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "flat",
+    "skill": "debug",
+    "used_at": "2026-07-13T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/cost-skill",
+    "evidence": "engine_verdict",
+    "metric": "cost-skill",
+    "outcome": "flat",
+    "skill": "cost-skill",
+    "used_at": "2026-07-18T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 30.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-07T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 30.0,
+    "before": 40.0,
+    "command": "/verify",
+    "evidence": "fire_time",
+    "metric": "Self_Correction_Rate",
+    "outcome": "regressed",
+    "skill": "verify",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/simplify",
+    "evidence": "engine_verdict",
+    "metric": "Slop_Density",
+    "outcome": "improved",
+    "skill": "simplify",
+    "used_at": "2026-08-31T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/verify",
+    "evidence": "engine_verdict",
+    "late_rejudge": true,
+    "metric": "correlation:cost_and_quality",
+    "outcome": "improved",
+    "skill": "verify",
+    "used_at": "2026-08-31T12:00:00+00:00"
+   }
+  ],
+  "execution_success_rate": 75.0,
+  "flat": 2,
+  "human_correlated": 5,
+  "human_correlated_improved": 3,
+  "human_events": [
+   {
+    "actor": "human",
+    "after": 25.0,
+    "before": 25.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "flat",
+    "skill": "debug",
+    "used_at": "2026-08-12T12:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 5.0,
+    "before": 10.0,
+    "command": "/verify",
+    "evidence": "snapshot_correlation",
+    "metric": "Self_Correction_Rate",
+    "outcome": "regressed",
+    "skill": "verify",
+    "used_at": "2026-08-13T00:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 1.0,
+    "before": 6.0,
+    "command": "/simplify",
+    "evidence": "snapshot_correlation",
+    "metric": "Slop_Density",
+    "outcome": "improved",
+    "skill": "simplify",
+    "used_at": "2026-08-19T00:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 2.0,
+    "before": 25.0,
+    "command": "/debug",
+    "evidence": "snapshot_correlation",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-20T12:00:00+00:00"
+   },
+   {
+    "actor": "human",
+    "after": 6.0,
+    "before": 12.0,
+    "command": "",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "improved": 4,
+  "improved_lifetime": 4,
+  "improvement_rate": 33.3,
+  "note": "fire-time before/after where recorded; else the engine's own `improved` verdict on a SETTLED run (evidence=engine_verdict; done/no_change only \u2014 error/timeout runs stay attempts and are never graded; a false verdict grades flat, since a boolean cannot distinguish a regression from a no-op, unless the late re-judgment sidecar upgraded that entry_hash \u2014 those events carry late_rejudge=true); else correlation not causation (flag -> skill used -> next snapshot moved healthy); headline fields contain live autonomous ReflexEngine remediations only; human correlations, read-only diagnoses, and proposal-only candidates are separate; attempted counts autonomous no_change/error/timeout runs; improvement_rate = improved/attempted (the honest headline) over window_days when set, with the pre-windowing totals kept in the *_lifetime fields; success_rate = improved/applied is observational-only, scheduled for deletion; proposal-only candidate measurements are reported separately and never counted as live applications",
+  "proposal_events": [
+   {
+    "actor": "reflex",
+    "after": 4.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "proposal_improvement_rate": 100.0,
+  "proposed_count": 1,
+  "proposed_improved": 1,
+  "regressed": 1,
+  "success_rate": 57.1,
+  "window_days": null
+ },
+ "windowed_naive_clock": {
+  "applied": 5,
+  "applied_lifetime": 8,
+  "attempted": 9,
+  "attempted_lifetime": 13,
+  "by_skill": {
+   "debug": {
+    "applied": 2,
+    "attempted": 5,
+    "improved": 2
+   },
+   "simplify": {
+    "applied": 1,
+    "attempted": 1,
+    "improved": 1
+   },
+   "verify": {
+    "applied": 2,
+    "attempted": 3,
+    "improved": 1
+   }
+  },
+  "completed": 7,
+  "completed_lifetime": 10,
+  "data_gap": false,
+  "data_gap_detail": null,
+  "events": [
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 30.0,
+    "before": 40.0,
+    "command": "/verify",
+    "evidence": "fire_time",
+    "metric": "Self_Correction_Rate",
+    "outcome": "regressed",
+    "skill": "verify",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": 3.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-31T12:00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/simplify",
+    "evidence": "engine_verdict",
+    "metric": "Slop_Density",
+    "outcome": "improved",
+    "skill": "simplify",
+    "used_at": "2026-08-31T12:00:00+00:00"
+   },
+   {
+    "actor": "reflex",
+    "after": null,
+    "before": null,
+    "command": "/verify",
+    "evidence": "engine_verdict",
+    "late_rejudge": true,
+    "metric": "correlation:cost_and_quality",
+    "outcome": "improved",
+    "skill": "verify",
+    "used_at": "2026-08-31T12:00:00+00:00"
+   }
+  ],
+  "execution_success_rate": 77.8,
+  "flat": 0,
+  "human_correlated": 1,
+  "human_correlated_improved": 1,
+  "human_events": [
+   {
+    "actor": "human",
+    "after": 6.0,
+    "before": 12.0,
+    "command": "",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "improved": 4,
+  "improved_lifetime": 5,
+  "improvement_rate": 44.4,
+  "note": "fire-time before/after where recorded; else the engine's own `improved` verdict on a SETTLED run (evidence=engine_verdict; done/no_change only \u2014 error/timeout runs stay attempts and are never graded; a false verdict grades flat, since a boolean cannot distinguish a regression from a no-op, unless the late re-judgment sidecar upgraded that entry_hash \u2014 those events carry late_rejudge=true); else correlation not causation (flag -> skill used -> next snapshot moved healthy); headline fields contain live autonomous ReflexEngine remediations only; human correlations, read-only diagnoses, and proposal-only candidates are separate; attempted counts autonomous no_change/error/timeout runs; improvement_rate = improved/attempted (the honest headline) over window_days when set, with the pre-windowing totals kept in the *_lifetime fields; success_rate = improved/applied is observational-only, scheduled for deletion; proposal-only candidate measurements are reported separately and never counted as live applications",
+  "proposal_events": [
+   {
+    "actor": "reflex",
+    "after": 4.0,
+    "before": 20.0,
+    "command": "/debug",
+    "evidence": "fire_time",
+    "metric": "Error_Rate",
+    "outcome": "improved",
+    "skill": "debug",
+    "used_at": "2026-08-30T12:00:00+00:00"
+   }
+  ],
+  "proposal_improvement_rate": 100.0,
+  "proposed_count": 1,
+  "proposed_improved": 1,
+  "regressed": 1,
+  "success_rate": 80.0,
+  "window_days": 7
+ },
+ "windowed_zero_attempts": {
+  "applied": 0,
+  "applied_lifetime": 1,
+  "attempted": 0,
+  "attempted_lifetime": 1,
+  "by_skill": {},
+  "completed": 0,
+  "completed_lifetime": 1,
+  "data_gap": true,
+  "data_gap_detail": "no autonomous attempts in 7d",
+  "events": [],
+  "execution_success_rate": null,
+  "flat": 0,
+  "human_correlated": 0,
+  "human_correlated_improved": 0,
+  "human_events": [],
+  "improved": 0,
+  "improved_lifetime": 1,
+  "improvement_rate": null,
+  "note": "fire-time before/after where recorded; else the engine's own `improved` verdict on a SETTLED run (evidence=engine_verdict; done/no_change only \u2014 error/timeout runs stay attempts and are never graded; a false verdict grades flat, since a boolean cannot distinguish a regression from a no-op, unless the late re-judgment sidecar upgraded that entry_hash \u2014 those events carry late_rejudge=true); else correlation not causation (flag -> skill used -> next snapshot moved healthy); headline fields contain live autonomous ReflexEngine remediations only; human correlations, read-only diagnoses, and proposal-only candidates are separate; attempted counts autonomous no_change/error/timeout runs; improvement_rate = improved/attempted (the honest headline) over window_days when set, with the pre-windowing totals kept in the *_lifetime fields; success_rate = improved/applied is observational-only, scheduled for deletion; proposal-only candidate measurements are reported separately and never counted as live applications",
+  "proposal_events": [],
+  "proposal_improvement_rate": null,
+  "proposed_count": 0,
+  "proposed_improved": 0,
+  "regressed": 0,
+  "success_rate": null,
+  "window_days": 7
+ }
+}
