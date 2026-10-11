@@ -116,15 +116,7 @@ def _parse_reflex_id(reflex_id: str) -> tuple[str, str]:
 # Core analysis
 # ---------------------------------------------------------------------------
 
-def analyze(log_path: Path, out_path: Path | None = None) -> dict:
-    """Analyze exec_log and write findings to out_path.
-
-    Returns a summary dict: {total_entries, skill_metric_pairs, gotchas, rules, context}.
-    Always writes the output file — even if exec_log is empty (writes a 'no data' notice).
-    """
-    out_path = out_path or _findings_file()
-    records = _load_exec_log(log_path)
-
+def _group_runs(records: list[dict]) -> dict[tuple[str, str, str], list[dict]]:
     # Group runs by (skill, pillar, metric)
     groups: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
     for r in records:
@@ -141,7 +133,10 @@ def analyze(log_path: Path, out_path: Path | None = None) -> dict:
             "has_improved":   "improved" in r,         # track data-quality coverage
             "files_changed":  r.get("files_changed", []),
         })
+    return groups
 
+
+def _compute_stats(groups: dict[tuple[str, str, str], list[dict]]) -> list[dict]:
     # Compute per-(skill, metric) stats
     stats: list[dict] = []
     for (skill, pillar, metric), runs in groups.items():
@@ -163,7 +158,10 @@ def analyze(log_path: Path, out_path: Path | None = None) -> dict:
     # Sort ascending by rate so worst offenders appear first in GOTCHA section
     stats.sort(key=lambda x: (x["effectiveness_rate"] is None, x["effectiveness_rate"] or 0,
                                -x["total_runs"]))
+    return stats
 
+
+def _classify_stats(stats: list[dict]) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
     # Classify by effectiveness (only count pairs with enough data)
     mature = [s for s in stats if s["total_runs"] >= _MIN_RUNS]
     # rate is never None for a mature pair (total_runs >= _MIN_RUNS > 0), but guard
@@ -175,23 +173,13 @@ def analyze(log_path: Path, out_path: Path | None = None) -> dict:
     rules   = [s for s in mature if (s["effectiveness_rate"] or 0) >= _HIGH_IMPROVEMENT_THRESHOLD]
     context = [s for s in mature
                if _LOW_IMPROVEMENT_THRESHOLD <= (s["effectiveness_rate"] or 0) < _HIGH_IMPROVEMENT_THRESHOLD]
+    return mature, gotchas, rules, context
 
-    # ── Write findings ────────────────────────────────────────────────────────
-    # Only the directory of the file actually being written -- never the runtime
-    # home wholesale (see _claude_home above).
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    with_improved = sum(1 for r in records if "improved" in r)
 
-    lines: list[str] = [
-        "# Auto Eureka — Reflex Skill Effectiveness",
-        f"_Generated: {ts}_",
-        (f"_Source: exec_log.jsonl — {len(records)} reflex entries, "
-         f"{len(groups)} skill-metric pairs, "
-         f"{with_improved}/{len(records)} entries with explicit `improved` field_"),
-        "",
-    ]
-
+def _append_findings(
+    lines: list[str], records: list[dict], stats: list[dict],
+    gotchas: list[dict], rules: list[dict], context: list[dict],
+) -> None:
     if not records:
         lines += [
             "_No reflex engine exec_log entries found yet._",
@@ -265,6 +253,39 @@ def analyze(log_path: Path, out_path: Path | None = None) -> dict:
                     f"({s['total_runs']} run{'s' if s['total_runs'] != 1 else ''}, {rate_pct})"
                 )
             lines.append("")
+
+
+def analyze(log_path: Path, out_path: Path | None = None) -> dict:
+    """Analyze exec_log and write findings to out_path.
+
+    Returns a summary dict: {total_entries, skill_metric_pairs, gotchas, rules, context}.
+    Always writes the output file — even if exec_log is empty (writes a 'no data' notice).
+    """
+    out_path = out_path or _findings_file()
+    records = _load_exec_log(log_path)
+
+    groups = _group_runs(records)
+    stats = _compute_stats(groups)
+
+    mature, gotchas, rules, context = _classify_stats(stats)
+
+    # ── Write findings ────────────────────────────────────────────────────────
+    # Only the directory of the file actually being written -- never the runtime
+    # home wholesale (see _claude_home above).
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with_improved = sum(1 for r in records if "improved" in r)
+
+    lines: list[str] = [
+        "# Auto Eureka — Reflex Skill Effectiveness",
+        f"_Generated: {ts}_",
+        (f"_Source: exec_log.jsonl — {len(records)} reflex entries, "
+         f"{len(groups)} skill-metric pairs, "
+         f"{with_improved}/{len(records)} entries with explicit `improved` field_"),
+        "",
+    ]
+
+    _append_findings(lines, records, stats, gotchas, rules, context)
 
     lines += [
         "## Data-Quality Coverage",

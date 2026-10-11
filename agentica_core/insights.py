@@ -1173,6 +1173,79 @@ def _comparable_history_rows(rows: list[dict]) -> list[dict]:
     return [r for r in rows if isinstance(r, dict) and r.get("kind") in (None, "live")]
 
 
+def _set_trajectory_breach(
+    env: dict,
+    hist_vals: list[float],
+    slope_per_day: float,
+    fail_val: float,
+    rule: dict,
+) -> None:
+    direction = rule.get("dir", "lower")
+    current_v = hist_vals[-1]
+    breach_days: float | None = None
+    if direction == "lower" and slope_per_day > 0:
+        # Value rising toward fail threshold (bad direction)
+        breach_days = (fail_val - current_v) / slope_per_day
+    elif direction == "higher" and slope_per_day < 0:
+        # Value falling toward fail threshold (bad direction)
+        breach_days = (current_v - fail_val) / (-slope_per_day)
+    if breach_days is not None and breach_days > 0:
+        # Guard: if the most recent 3 points show no worsening trend,
+        # the full-history regression is an artifact of an earlier spike.
+        # Suppress the prediction to avoid false "imminent breach" alerts.
+        recent = hist_vals[-3:]
+        if len(recent) >= 2:
+            recent_slope = (recent[-1] - recent[0]) / max(len(recent) - 1, 1)
+            if direction == "lower" and recent_slope <= 0:
+                breach_days = None
+            elif direction == "higher" and recent_slope >= 0:
+                breach_days = None
+    if breach_days is not None and breach_days > 0:
+        env["trajectory_breach_days"] = round(breach_days, 1)
+
+
+def _set_history_trajectory(env: dict, rule: dict | None) -> None:
+    env["trajectory_breach_days"] = None
+    if rule and len(env["history"]) >= 3:
+        hist_vals = env["history"]
+        n = len(hist_vals)
+        x_mean = (n - 1) / 2.0
+        y_mean = sum(hist_vals) / n
+        denom = sum((i - x_mean) ** 2 for i in range(n))
+        if denom > 0:
+            slope = (
+                sum((i - x_mean) * (h - y_mean) for i, h in enumerate(hist_vals))
+                / denom
+            )
+            # History snapshots are weekly → slope per week → ÷7 for per-day slope
+            slope_per_day = slope / 7
+            fail_val = rule.get("fail")
+            if fail_val is not None and slope_per_day != 0:
+                _set_trajectory_breach(env, hist_vals, slope_per_day, fail_val, rule)
+
+
+def _history_values(rows: list[dict], key: str, per_session: bool) -> list[float]:
+    hist: list[float] = []
+    for r in rows:
+        vals = r.get("values", {})
+        if key not in vals:
+            continue
+        raw_hist_v = vals[key]
+        if per_session:
+            row_sessions = next(
+                (float(v2) for k2, v2 in vals.items()
+                 if k2.split("/")[-1] == "Session_Count"
+                 and isinstance(v2, (int, float)) and v2 > 0),
+                None,
+            )
+            if row_sessions is None:
+                continue  # can't normalize this snapshot -> can't honestly compare
+            hist.append(raw_hist_v / row_sessions)
+        else:
+            hist.append(raw_hist_v)
+    return hist
+
+
 def populate_history(pillars: dict, store: Path | None = None, max_points: int = 7) -> dict:
     """Read prior snapshots and set each metric's history[]/delta/trend.
     Returns the current snapshot dict (caller persists it via append_snapshot)."""
@@ -1208,24 +1281,7 @@ def populate_history(pillars: dict, store: Path | None = None, max_points: int =
                 # below), so a session-volume jump alone reads as a sigma-anomaly or an
                 # imminent breach even when the real per-session rate is flat (2026-09-05).
                 per_session = bool(rule and rule.get("per") == "session")
-                hist: list[float] = []
-                for r in rows:
-                    vals = r.get("values", {})
-                    if key not in vals:
-                        continue
-                    raw_hist_v = vals[key]
-                    if per_session:
-                        row_sessions = next(
-                            (float(v2) for k2, v2 in vals.items()
-                             if k2.split("/")[-1] == "Session_Count"
-                             and isinstance(v2, (int, float)) and v2 > 0),
-                            None,
-                        )
-                        if row_sessions is None:
-                            continue  # can't normalize this snapshot -> can't honestly compare
-                        hist.append(raw_hist_v / row_sessions)
-                    else:
-                        hist.append(raw_hist_v)
+                hist = _history_values(rows, key, per_session)
                 # `v` is the payload's 30-day window, and _comparable_history_rows has
                 # already restricted `rows` to that same population, so appending it is
                 # sound. The defect this fixes was appending it to a base of one-week
@@ -1247,44 +1303,7 @@ def populate_history(pillars: dict, store: Path | None = None, max_points: int =
                 # Trajectory alerting (#G3): linear regression over history to project
                 # days until the fail threshold is breached.  Stored in env so reflexes.py
                 # can generate early-warning reflex entries (HIGH ≤3 days, MEDIUM ≤7 days).
-                env["trajectory_breach_days"] = None
-                if rule and len(env["history"]) >= 3:
-                    hist_vals = env["history"]
-                    n = len(hist_vals)
-                    x_mean = (n - 1) / 2.0
-                    y_mean = sum(hist_vals) / n
-                    denom = sum((i - x_mean) ** 2 for i in range(n))
-                    if denom > 0:
-                        slope = (
-                            sum((i - x_mean) * (h - y_mean) for i, h in enumerate(hist_vals))
-                            / denom
-                        )
-                        # History snapshots are weekly → slope per week → ÷7 for per-day slope
-                        slope_per_day = slope / 7
-                        fail_val = rule.get("fail")
-                        if fail_val is not None and slope_per_day != 0:
-                            direction = rule.get("dir", "lower")
-                            current_v = hist_vals[-1]
-                            breach_days: float | None = None
-                            if direction == "lower" and slope_per_day > 0:
-                                # Value rising toward fail threshold (bad direction)
-                                breach_days = (fail_val - current_v) / slope_per_day
-                            elif direction == "higher" and slope_per_day < 0:
-                                # Value falling toward fail threshold (bad direction)
-                                breach_days = (current_v - fail_val) / (-slope_per_day)
-                            if breach_days is not None and breach_days > 0:
-                                # Guard: if the most recent 3 points show no worsening trend,
-                                # the full-history regression is an artifact of an earlier spike.
-                                # Suppress the prediction to avoid false "imminent breach" alerts.
-                                recent = hist_vals[-3:]
-                                if len(recent) >= 2:
-                                    recent_slope = (recent[-1] - recent[0]) / max(len(recent) - 1, 1)
-                                    if direction == "lower" and recent_slope <= 0:
-                                        breach_days = None
-                                    elif direction == "higher" and recent_slope >= 0:
-                                        breach_days = None
-                            if breach_days is not None and breach_days > 0:
-                                env["trajectory_breach_days"] = round(breach_days, 1)
+                _set_history_trajectory(env, rule)
 
     # Pillar-score history retired 2026-07-19 with the weighted mean itself: no new
     # `_pillar_score/{pk}` keys are written (old snapshot rows keep theirs — read-only
