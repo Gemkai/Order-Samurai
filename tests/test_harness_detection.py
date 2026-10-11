@@ -147,6 +147,7 @@ def test_detect_harnesses_reads_only_allowed_locations(machine, monkeypatch, kin
         machine.claude.parent, machine.codex.parent, machine.path,
         machine.path / "claude", machine.path / "codex", machine.app,
         machine.home / ".cursor", machine.path / "cursor", machine.path / "cursor-agent",
+        machine.home / ".gemini", machine.path / "gemini",
         machine.cwd / "Applications" / "Cursor.app",
     }
     touched = []
@@ -173,6 +174,7 @@ def test_detect_harnesses_reads_only_allowed_locations(machine, monkeypatch, kin
     assert result["codex"]["present"] is codex
     assert result["codex"]["config_only"] is config_only
     assert result["cursor"] == {"present": False, "evidence": result["cursor"]["evidence"], "config_only": False}
+    assert result["gemini"] == {"present": False, "evidence": result["gemini"]["evidence"], "config_only": False}
     assert isinstance(result["claude"]["evidence"], str)
     assert isinstance(result["codex"]["evidence"], str)
 
@@ -240,7 +242,7 @@ def test_install_uses_relocated_codex_home(machine, default_exists):
     ("codex", "claude", {"codex"}),
     (None, "claude", {"claude"}),
     (None, "codex", {"codex"}),
-    ("claude", "gemini", {"claude"}),
+    ("claude", "goose", {"claude"}),
 ], ids=["flag-claude", "flag-codex", "env-claude", "env-codex", "flag-beats-invalid-env"])
 def test_harness_selection_precedence(machine, flag, env, selected):
     """Case 3: The flag overrides the environment, which overrides auto-detection."""
@@ -272,8 +274,8 @@ def test_comma_list_trims_whitespace_and_ignores_duplicates(machine, source):
 def test_unknown_harness_rejected_before_any_write(machine, source):
     """Case 3: An unknown list member exits 2 before writing any install state."""
     _prepare(machine, "both")
-    args = ("--harness", "claude,gemini") if source == "flag" else ()
-    result = _run(machine, "install", *args, selection="claude,gemini" if source == "env" else None)
+    args = ("--harness", "claude,goose") if source == "flag" else ()
+    result = _run(machine, "install", *args, selection="claude,goose" if source == "env" else None)
     assert result.returncode == 2, result.stdout + result.stderr
     assert "unknown harness" in (result.stdout + result.stderr).lower()
     assert not machine.manifest.parent.exists()
@@ -384,8 +386,8 @@ UNPROTECTED_NOTE = "not protected by Order Samurai"
 
 
 def _add_other_agents(machine):
-    """Gemini CLI on PATH, a Goose config dir and a Windsurf app bundle."""
-    _runtime(machine.path / "gemini")
+    """Cline on PATH, a Goose config dir and a Windsurf app bundle."""
+    _runtime(machine.path / "cline")
     (machine.home / ".config" / "goose").mkdir(parents=True)
     (machine.cwd / "Applications" / "Windsurf.app").mkdir(parents=True)
 
@@ -398,7 +400,7 @@ def test_install_and_doctor_name_detected_agents_they_cannot_protect(machine):
     doctor = _run(machine, "doctor")
     for result in (install, doctor):
         line = next((l for l in result.stdout.splitlines() if UNPROTECTED_NOTE in l), "")
-        for label in ("Gemini CLI", "Goose", "Windsurf"):
+        for label in ("Cline", "Goose", "Windsurf"):
             assert label in line, result.stdout
         assert "Cursor" not in line.split(". It protects")[0], "Cursor is protected now"
 
@@ -411,10 +413,10 @@ def test_no_unprotected_note_when_only_supported_harnesses_exist(machine):
 
 
 def test_unprotected_agents_named_when_no_supported_harness_exists(machine):
-    (machine.home / ".gemini").mkdir()
+    (machine.home / ".config" / "goose").mkdir(parents=True)
     result = _run(machine, "install")
     assert result.returncode == 1, result.stdout + result.stderr
-    assert "Gemini CLI" in next(l for l in result.stdout.splitlines() if UNPROTECTED_NOTE in l)
+    assert "Goose" in next(l for l in result.stdout.splitlines() if UNPROTECTED_NOTE in l)
 
 
 @pytest.mark.parametrize("evidence", ["cn-on-path", "continue-dir"])
