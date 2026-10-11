@@ -1,0 +1,34 @@
+{
+ "empty_root": {},
+ "full_inputs": {
+  "archive_ratio_pct": 25.0,
+  "graph_age_days": 0.5,
+  "index_drift": 2,
+  "knowledge_staleness_days": 1.2,
+  "okf_conformance_pct": 66.7,
+  "okf_total_concepts": 3,
+  "orphan_concepts": 1,
+  "soji_broken_links": 2,
+  "soji_orphan_notes": 1
+ },
+ "graph_nodes_not_a_list": {},
+ "graph_without_memory_nodes": {
+  "graph_age_days": 2.0
+ },
+ "me_without_index": {
+  "knowledge_staleness_days": 10.0
+ },
+ "okf_module_broken": {},
+ "okf_present_but_no_vault": {},
+ "okf_raises_oserror": {},
+ "okf_without_concepts": {},
+ "soji_findings_not_a_list": {},
+ "soji_naive_fresh_timestamp": {
+  "soji_broken_links": 0,
+  "soji_orphan_notes": 0
+ },
+ "soji_stale": {},
+ "soji_ten_days_old": {},
+ "soji_unparseable_timestamp": {},
+ "soji_without_timestamp": {}
+}

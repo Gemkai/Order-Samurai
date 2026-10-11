@@ -129,142 +129,26 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
     # rule_violations removed from scout: now a per-session DERIVED metric emitted by
     # agentica_emit.py, enabling tier/project breakdown. See aggregate.py REGISTRY.
 
-    sg = data / "security_gate_log.jsonl"
-    if sg.exists():
-        fires = 0
-        for ln in sg.read_text(encoding="utf-8", errors="ignore").splitlines():
-            ln = ln.strip()
-            if not ln:
-                continue
-            try:
-                rec = json.loads(ln)
-            except ValueError:
-                continue
-            if not isinstance(rec, dict):
-                continue
-            if rec.get("findings") or rec.get("finding_count") or rec.get("exit_code"):
-                fires += 1
-        out["gate_fires"] = fires
+    _security_gate_fires(data, out)
 
-    dep = _read_json(data / "dependency_audit.json")
-    if isinstance(dep, dict):
-        expected = ("pip", "pip_audit", "npm")
-        failed = sum(
-            not _dependency_scanner_ok(dep, scanner)
-            and not _dependency_scanner_skipped(dep, scanner)
-            for scanner in expected
-        )
-        out["dependency_scanner_failures"] = failed
-
-        # Completeness is required before publishing an exact zero or count.
-        # A partial lower bound would still understate risk and look authoritative.
-        # "Complete" means every scanner that RAN is healthy: a skipped npm scan
-        # contributes an empty npm_audits, not unknown coverage of a dead scanner.
-        if (_dependency_scanner_ok(dep, "pip_audit")
-                and (_dependency_scanner_ok(dep, "npm")
-                     or _dependency_scanner_skipped(dep, "npm"))):
-            out["open_cves"] = (
-                _pip_cve_count(dep.get("pip_cves"))
-                + _npm_cve_count(dep.get("npm_audits"))
-            )
-        if _dependency_scanner_ok(dep, "pip"):
-            outdated = dep.get("pip_outdated")
-            if isinstance(outdated, list):
-                # Unintended drift only: subtract the accepted-pinned allowlist
-                # (see _DEPRECATED_DEPS_ALLOWLIST_PATH above). Non-dict rows keep
-                # counting — legacy fixtures represent one outdated package as a
-                # scalar, and an unparseable row must not vanish from the count.
-                allow = _deprecated_deps_allowlist()
-                out["deprecated_deps"] = sum(
-                    1 for p in outdated
-                    if not (isinstance(p, dict)
-                            and _normalize_pkg_name(p.get("name")) in allow)
-                )
+    _dependency_signals(data, out)
 
     # canary_failures RETIRED 2026-07-11 (C/D/F plan step 5): behavioral_canary.py
     # was never scheduled on this host, so canary_status.json is permanently absent —
     # a dark weight-3 metric. Re-add only together with a scheduled canary run.
     # (The security-gate self-test below is a DIFFERENT canary and stays.)
 
-    # Sword: security-gate self-test. Fault if the gate failed its last canary OR the canary
-    # is older than its own freshness budget (a stale all-clear is not an all-clear).
-    gc = _read_json(data / "security_gate_canary.json")
-    if isinstance(gc, dict) and "gate_working" in gc:
-        fault = 0 if gc.get("gate_working") else 1
-        last, max_age = gc.get("last_run"), gc.get("max_age_days")
-        if not fault and last and isinstance(max_age, (int, float)):
-            try:
-                t = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
-                if t.tzinfo is None:
-                    t = t.replace(tzinfo=timezone.utc)
-                if (datetime.now(timezone.utc) - t).days > max_age:
-                    fault = 1
-            except ValueError:
-                pass
-        out["gate_canary_fault"] = fault
+    _gate_canary_signal(data, out)
 
     # loop_breaker_fires RETIRED 2026-07-19 (metric-surface review Part E item 3):
     # loop_breaker_state.json is never written on this host — the emitter never
     # fired and the graded metric was permanently dark. Removal, never faking.
 
-    ma = _read_json(data / "mechanism_audit.json")
-    if isinstance(ma, dict):
-        c = ma.get("counts") or {}
-        out["mechanism_orphans"] = int(c.get("orphan", 0)) + int(c.get("critical", 0))
-        # Scheduled_Job_Failures (2026-08-09): launchd jobs whose LAST RUN exited
-        # non-zero, from mechanism_audit's check_launchd_exit_status. Counted off the
-        # findings list rather than `counts` because that rollup is keyed by severity,
-        # not category, and these land under the shared "warning" bucket. Absent key
-        # (an older audit report predating the check) is left unset so the metric reads
-        # as a data gap rather than a fabricated 0 — the house rule for a dark source.
-        f = ma.get("findings")
-        if isinstance(f, list):
-            out["scheduled_job_failures"] = sum(
-                1 for x in f
-                if isinstance(x, dict) and x.get("category") == "launchd_failing"
-            )
+    _mechanism_signals(data, out)
 
-    # Static_Wiring_Orphans (2026-09-01): find_orphans.py's static producer/consumer
-    # dataflow audit (skills/find-orphan-mechanisms, scheduled weekly). Distinct from
-    # mechanism_orphans above: that one is mechanism_audit's own runtime orphan-script
-    # check; this is the wiring-graph audit — a script that writes a file nothing
-    # reads, or reads a file nothing writes. Until this block, that output had no
-    # scorecard consumer at all. Counts only "real" orphans (excludes doc-referenced
-    # producers and config/allowlist-pattern consumer reads, which the script itself
-    # already classifies as likely-OK). Absent file (audit never run on this host)
-    # is left unset, not a fabricated 0 -- and so is a present-but-malformed `counts`
-    # dict (renamed keys, or `{}`): both keys must actually be present, not just
-    # defaulted to 0 by `.get`, or an empty/renamed shape would silently report a
-    # false all-clear instead of leaving the signal absent (fixed 2026-09-02, review).
-    fo = _read_json(data / "orphan_mechanisms.json")
-    if isinstance(fo, dict):
-        c = fo.get("counts")
-        if (isinstance(c, dict) and "producer_orphans" in c
-                and "consumer_orphans_dead_end" in c):
-            try:
-                out["static_wiring_orphans"] = (
-                    int(c["producer_orphans"]) + int(c["consumer_orphans_dead_end"])
-                )
-            except (TypeError, ValueError):
-                pass
+    _static_wiring_signal(data, out)
 
-    dp = _read_json(data / "doc_parity.json")
-    if isinstance(dp, dict):
-        out["doc_parity_issues"] = (len(dp.get("broken_refs") or [])
-                                    + len(dp.get("undocumented_hooks") or [])
-                                    + len(dp.get("unwired_hooks") or []))
-
-    # ARTS-001: live documentation-parity scout (Order Samurai repo)
-    try:
-        from agentica_core.scouts.doc_parity import run as _dp
-        dp_live = _dp()
-        # `is not None`: the live scout returns None when its git query failed, and this
-        # line OVERWRITES the file-derived value computed just above — so a defaulted 0
-        # would not merely publish a fake healthy number, it would erase a real one.
-        if dp_live.get("doc_parity_issues") is not None:
-            out["doc_parity_issues"] = dp_live["doc_parity_issues"]
-    except Exception:
-        pass
+    _doc_parity_signal(data, out)
 
     # processes_reaped RETIRED 2026-07-08 audit: no reaper was ever ported to this
     # host (mcp_reaper.jsonl permanently absent) — the metric could only be fake.
@@ -311,25 +195,7 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
     if gov:
         out.update(gov)
 
-    # AUTO-001: Config Drift Rate — weekly count of config-file changes (added/changed/removed)
-    drift_log = data / "config_integrity_drift.jsonl"
-    if drift_log.exists():
-        this_week = datetime.now(timezone.utc).strftime("%G-W%V")
-        drift_count = 0
-        for ln in drift_log.read_text(encoding="utf-8", errors="ignore").splitlines():
-            ln = ln.strip()
-            if not ln:
-                continue
-            try:
-                obj = json.loads(ln)
-                ts = obj.get("ts", "")
-                if ts:
-                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                    if dt.strftime("%G-W%V") == this_week:
-                        drift_count += 1
-            except Exception:
-                continue
-        out["config_drift_rate"] = drift_count
+    _config_drift_signal(data, out)
 
     # AUTO-007: Vulnerability Window (Patch Latency) — age of the longest-open
     # unpatched CVE, from a PERSISTENT per-CVE first-seen ledger (scouts.
@@ -359,6 +225,168 @@ def security_signals(runtime_root: Path, platform: str | None = None) -> dict:
         pass
 
     return out
+
+
+def _security_gate_fires(data: Path, out: dict) -> None:
+    sg = data / "security_gate_log.jsonl"
+    if sg.exists():
+        fires = 0
+        for ln in sg.read_text(encoding="utf-8", errors="ignore").splitlines():
+            ln = ln.strip()
+            if not ln:
+                continue
+            try:
+                rec = json.loads(ln)
+            except ValueError:
+                continue
+            if not isinstance(rec, dict):
+                continue
+            if rec.get("findings") or rec.get("finding_count") or rec.get("exit_code"):
+                fires += 1
+        out["gate_fires"] = fires
+
+
+def _dependency_signals(data: Path, out: dict) -> None:
+    dep = _read_json(data / "dependency_audit.json")
+    if isinstance(dep, dict):
+        expected = ("pip", "pip_audit", "npm")
+        failed = sum(
+            not _dependency_scanner_ok(dep, scanner)
+            and not _dependency_scanner_skipped(dep, scanner)
+            for scanner in expected
+        )
+        out["dependency_scanner_failures"] = failed
+
+        # Completeness is required before publishing an exact zero or count.
+        # A partial lower bound would still understate risk and look authoritative.
+        # "Complete" means every scanner that RAN is healthy: a skipped npm scan
+        # contributes an empty npm_audits, not unknown coverage of a dead scanner.
+        if (_dependency_scanner_ok(dep, "pip_audit")
+                and (_dependency_scanner_ok(dep, "npm")
+                     or _dependency_scanner_skipped(dep, "npm"))):
+            out["open_cves"] = (
+                _pip_cve_count(dep.get("pip_cves"))
+                + _npm_cve_count(dep.get("npm_audits"))
+            )
+        if _dependency_scanner_ok(dep, "pip"):
+            outdated = dep.get("pip_outdated")
+            if isinstance(outdated, list):
+                # Unintended drift only: subtract the accepted-pinned allowlist
+                # (see _DEPRECATED_DEPS_ALLOWLIST_PATH above). Non-dict rows keep
+                # counting — legacy fixtures represent one outdated package as a
+                # scalar, and an unparseable row must not vanish from the count.
+                allow = _deprecated_deps_allowlist()
+                out["deprecated_deps"] = sum(
+                    1 for p in outdated
+                    if not (isinstance(p, dict)
+                            and _normalize_pkg_name(p.get("name")) in allow)
+                )
+
+
+def _gate_canary_signal(data: Path, out: dict) -> None:
+    # Sword: security-gate self-test. Fault if the gate failed its last canary OR the canary
+    # is older than its own freshness budget (a stale all-clear is not an all-clear).
+    gc = _read_json(data / "security_gate_canary.json")
+    if isinstance(gc, dict) and "gate_working" in gc:
+        fault = 0 if gc.get("gate_working") else 1
+        last, max_age = gc.get("last_run"), gc.get("max_age_days")
+        if not fault and last and isinstance(max_age, (int, float)):
+            try:
+                t = datetime.fromisoformat(str(last).replace("Z", "+00:00"))
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=timezone.utc)
+                if (datetime.now(timezone.utc) - t).days > max_age:
+                    fault = 1
+            except ValueError:
+                pass
+        out["gate_canary_fault"] = fault
+
+
+def _mechanism_signals(data: Path, out: dict) -> None:
+    ma = _read_json(data / "mechanism_audit.json")
+    if isinstance(ma, dict):
+        c = ma.get("counts") or {}
+        out["mechanism_orphans"] = int(c.get("orphan", 0)) + int(c.get("critical", 0))
+        # Scheduled_Job_Failures (2026-08-09): launchd jobs whose LAST RUN exited
+        # non-zero, from mechanism_audit's check_launchd_exit_status. Counted off the
+        # findings list rather than `counts` because that rollup is keyed by severity,
+        # not category, and these land under the shared "warning" bucket. Absent key
+        # (an older audit report predating the check) is left unset so the metric reads
+        # as a data gap rather than a fabricated 0 — the house rule for a dark source.
+        f = ma.get("findings")
+        if isinstance(f, list):
+            out["scheduled_job_failures"] = sum(
+                1 for x in f
+                if isinstance(x, dict) and x.get("category") == "launchd_failing"
+            )
+
+
+def _static_wiring_signal(data: Path, out: dict) -> None:
+    # Static_Wiring_Orphans (2026-09-01): find_orphans.py's static producer/consumer
+    # dataflow audit (skills/find-orphan-mechanisms, scheduled weekly). Distinct from
+    # mechanism_orphans above: that one is mechanism_audit's own runtime orphan-script
+    # check; this is the wiring-graph audit — a script that writes a file nothing
+    # reads, or reads a file nothing writes. Until this block, that output had no
+    # scorecard consumer at all. Counts only "real" orphans (excludes doc-referenced
+    # producers and config/allowlist-pattern consumer reads, which the script itself
+    # already classifies as likely-OK). Absent file (audit never run on this host)
+    # is left unset, not a fabricated 0 -- and so is a present-but-malformed `counts`
+    # dict (renamed keys, or `{}`): both keys must actually be present, not just
+    # defaulted to 0 by `.get`, or an empty/renamed shape would silently report a
+    # false all-clear instead of leaving the signal absent (fixed 2026-09-02, review).
+    fo = _read_json(data / "orphan_mechanisms.json")
+    if isinstance(fo, dict):
+        c = fo.get("counts")
+        if (isinstance(c, dict) and "producer_orphans" in c
+                and "consumer_orphans_dead_end" in c):
+            try:
+                out["static_wiring_orphans"] = (
+                    int(c["producer_orphans"]) + int(c["consumer_orphans_dead_end"])
+                )
+            except (TypeError, ValueError):
+                pass
+
+
+def _doc_parity_signal(data: Path, out: dict) -> None:
+    dp = _read_json(data / "doc_parity.json")
+    if isinstance(dp, dict):
+        out["doc_parity_issues"] = (len(dp.get("broken_refs") or [])
+                                    + len(dp.get("undocumented_hooks") or [])
+                                    + len(dp.get("unwired_hooks") or []))
+
+    # ARTS-001: live documentation-parity scout (Order Samurai repo)
+    try:
+        from agentica_core.scouts.doc_parity import run as _dp
+        dp_live = _dp()
+        # `is not None`: the live scout returns None when its git query failed, and this
+        # line OVERWRITES the file-derived value computed just above — so a defaulted 0
+        # would not merely publish a fake healthy number, it would erase a real one.
+        if dp_live.get("doc_parity_issues") is not None:
+            out["doc_parity_issues"] = dp_live["doc_parity_issues"]
+    except Exception:
+        pass
+
+
+def _config_drift_signal(data: Path, out: dict) -> None:
+    # AUTO-001: Config Drift Rate — weekly count of config-file changes (added/changed/removed)
+    drift_log = data / "config_integrity_drift.jsonl"
+    if drift_log.exists():
+        this_week = datetime.now(timezone.utc).strftime("%G-W%V")
+        drift_count = 0
+        for ln in drift_log.read_text(encoding="utf-8", errors="ignore").splitlines():
+            ln = ln.strip()
+            if not ln:
+                continue
+            try:
+                obj = json.loads(ln)
+                ts = obj.get("ts", "")
+                if ts:
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if dt.strftime("%G-W%V") == this_week:
+                        drift_count += 1
+            except Exception:
+                continue
+        out["config_drift_rate"] = drift_count
 
 
 # score_security_posture removed 2026-07-11 with the Security_Scorecard retirement
@@ -561,6 +589,11 @@ def knowledge_signals(repo_root: Path | None = None) -> dict:
             out["soji_broken_links"] = kinds.count("broken_link")
             out["soji_orphan_notes"] = kinds.count("orphan_note")
 
+    _knowledge_graph_signals(root, out)
+    return out
+
+
+def _knowledge_graph_signals(root: Path, out: dict) -> None:
     gpath = root / "Knowledge" / "dashboard" / "graph.json"
     g = _read_json(gpath)
     if isinstance(g, dict) and isinstance(g.get("nodes"), list):
@@ -581,4 +614,3 @@ def knowledge_signals(repo_root: Path | None = None) -> dict:
                 (datetime.now(timezone.utc).timestamp() - gpath.stat().st_mtime) / 86400.0, 2)
         except OSError:
             pass
-    return out

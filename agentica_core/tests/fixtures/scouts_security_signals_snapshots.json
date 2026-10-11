@@ -1,0 +1,76 @@
+{
+ "canary_without_age_budget": {
+  "gate_canary_fault": 0
+ },
+ "empty_data_dir": {},
+ "full_with_live_scouts": {
+  "config_drift_rate": 1,
+  "dependency_scanner_failures": 0,
+  "deprecated_deps": 2,
+  "doc_parity_issues": 4,
+  "gate_canary_fault": 1,
+  "gate_fires": 3,
+  "governance_findings_critical": 1,
+  "governance_findings_high": 2,
+  "governance_findings_total_ch": 3,
+  "kill_chain_candidates": 0,
+  "knowledge_prompted": 2,
+  "mcp_smoke_fails": 2,
+  "mechanism_orphans": 3,
+  "open_cves": 8,
+  "scheduled_job_failures": 1,
+  "skill_conflicts": 3,
+  "static_wiring_orphans": 7,
+  "vulnerability_window_days": 12
+ },
+ "legacy_health_and_bad_shapes": {
+  "dependency_scanner_failures": 3,
+  "gate_canary_fault": 0,
+  "skill_conflicts": 0
+ },
+ "live_scouts_raise": {
+  "config_drift_rate": 1,
+  "dependency_scanner_failures": 0,
+  "deprecated_deps": 2,
+  "doc_parity_issues": 3,
+  "gate_canary_fault": 1,
+  "gate_fires": 3,
+  "knowledge_prompted": 0,
+  "mcp_smoke_fails": 2,
+  "mechanism_orphans": 3,
+  "open_cves": 8,
+  "scheduled_job_failures": 1,
+  "skill_conflicts": 3,
+  "static_wiring_orphans": 7
+ },
+ "live_scouts_report_none": {
+  "config_drift_rate": 1,
+  "dependency_scanner_failures": 0,
+  "deprecated_deps": 2,
+  "doc_parity_issues": 3,
+  "gate_canary_fault": 1,
+  "gate_fires": 3,
+  "knowledge_prompted": 0,
+  "mcp_smoke_fails": 2,
+  "mechanism_orphans": 3,
+  "open_cves": 8,
+  "scheduled_job_failures": 1,
+  "skill_conflicts": 3,
+  "static_wiring_orphans": 7
+ },
+ "npm_skipped_and_fresh_naive_canary": {
+  "dependency_scanner_failures": 0,
+  "deprecated_deps": 0,
+  "gate_canary_fault": 0,
+  "open_cves": 5
+ },
+ "pip_ok_outdated_not_a_list": {
+  "dependency_scanner_failures": 0
+ },
+ "scanners_partial": {
+  "dependency_scanner_failures": 1,
+  "gate_canary_fault": 1,
+  "mechanism_orphans": 0,
+  "open_cves": 1
+ }
+}
