@@ -54,6 +54,40 @@ def test_none_when_no_usage_data(tmp_path, monkeypatch):
     assert agg.r_context_cliff_events([]) is None  # no usage-bearing assistant msgs -> gap, not 0
 
 
+def test_transcript_vanishing_before_stat_is_skipped(tmp_path, monkeypatch):
+    """A transcript deleted between rglob and stat (factory worktree cleanup) is skipped,
+    not raised — a FileNotFoundError here used to fail the whole aggregate() refresh."""
+    pd = _projects(tmp_path, monkeypatch)
+    _session(pd, "kept.jsonl", [150_000])
+    _session(pd, "gone.jsonl", [50_000])  # would drop the share to 50.0 if scanned
+    real_stat = agg.Path.stat
+
+    def racing_stat(self, *args, **kwargs):
+        if self.name == "gone.jsonl":
+            raise FileNotFoundError(2, "No such file or directory", str(self))
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(agg.Path, "stat", racing_stat)
+    assert agg.r_context_cliff_events([]) == 100.0  # only kept.jsonl scanned
+
+
+def test_transcript_vanishing_before_read_is_skipped(tmp_path, monkeypatch):
+    """Same race one step later: the file stats fine but is gone by open()."""
+    pd = _projects(tmp_path, monkeypatch)
+    _session(pd, "kept.jsonl", [150_000])
+    _session(pd, "gone.jsonl", [50_000])
+    real_open = open
+
+    def racing_open(path, *args, **kwargs):
+        if str(path).endswith("gone.jsonl"):
+            raise FileNotFoundError(2, "No such file or directory", str(path))
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(agg, "open", racing_open, raising=False)
+    assert agg.r_context_cliff_events([]) == 100.0
+    assert agg._CONTEXT_CLIFF_MEMO is None  # partial scan is not memoized
+
+
 def test_unchanged_transcripts_reuse_the_memo(tmp_path, monkeypatch):
     pd = _projects(tmp_path, monkeypatch)
     _session(pd, "a.jsonl", [100_000])

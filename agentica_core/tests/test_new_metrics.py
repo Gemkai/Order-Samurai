@@ -335,84 +335,99 @@ class TestLessonGraduationRate:
 
 
 # ── Cache_Hit_Rate (AUTO-009) ─────────────────────────────────────────────────
-# Requirement: the reducer consumes the already-windowed normalized records supplied by
-# aggregate(), deduplicates cumulative session snapshots, and reports cached input as a
-# share of total prompt input. It must not rescan transcripts or retain cross-call state.
-
+# Contract correction: this reducer is pure over the records explicitly supplied by
+# its caller. Native transcript sampling belongs to knowledge_metrics.collect.
 
 def _write_transcript(projects_dir, name, lines):
-    # Shared by transcript-backed metric tests below; Cache_Hit_Rate itself no longer scans here.
     proj = projects_dir / "proj1"
     proj.mkdir(parents=True, exist_ok=True)
     path = proj / name
-    path.write_text("\n".join(json.dumps(line) for line in lines) + "\n", encoding="utf-8")
+    path.write_text("\n".join(json.dumps(l) for l in lines) + "\n", encoding="utf-8")
     return path
 
 
+def _usage_line(input_tokens=0, cache_creation=0, cache_read=0, output_tokens=0):
+    return {
+        "type": "assistant",
+        "message": {"usage": {
+            "input_tokens": input_tokens,
+            "cache_creation_input_tokens": cache_creation,
+            "cache_read_input_tokens": cache_read,
+            "output_tokens": output_tokens,
+        }},
+    }
+
+
+def _cache_record(platform, session, prompt=None, cached=0, *, known=True, creation=0):
+    # Valid native summaries have an explicit all-events-known marker and all
+    # provider input buckets, including a known zero cache-creation bucket.
+    return {"platform": platform, "session_id": session,
+            "tokens_prompt": prompt, "cache_read_tokens": cached,
+            "cache_creation_tokens": creation, "usage_known": known}
+
+
 class TestCacheHitRate:
-    def test_records_without_valid_usage_returns_data_gap(self):
+    def test_missing_records_returns_data_gap_not_fake_zero(self, tmp_path, monkeypatch):
+        # Ambient transcript content must not affect this pure reducer.
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        _write_transcript(tmp_path / ".claude/projects", "s.jsonl",
+                          [_usage_line(input_tokens=1, cache_read=999)])
         result = agg._cache_hit_rate([])
         assert result["val"] is None
         assert result["data_gap"] is True
         assert result["calibrated"] is True
 
-    def test_distinct_sessions_are_aggregated_by_max_cumulative_tokens(self):
+    def test_is_token_weighted_across_distinct_platforms(self):
         result = agg._cache_hit_rate([
-            {"platform": "claude", "session_id": "s1", "tokens_prompt": 120, "cache_read_tokens": 10,
-             "cache_creation_tokens": 30},
-            {"platform": "claude", "session_id": "s1", "tokens_prompt": 200, "cache_read_tokens": 5,
-             "cache_creation_tokens": 60},
-            {"platform": "claude", "session_id": "s2", "tokens_prompt": 30, "cache_read_tokens": 10,
-             "cache_creation_tokens": 0},
-            {"platform": "codex", "session_id": "c1", "tokens_prompt": 120, "cache_read_tokens": 20,
-             "cache_creation_tokens": 60},
+            _cache_record("claude", "a", 900, 90),
+            _cache_record("codex", "b", 100, 100),
         ])
-        # s1 uses its largest cumulative prompt snapshot. Cached/total prompt input is
-        # (5 + 10 + 20) / (200 + 30 + 120) = 10%.
-        assert result["val"] == pytest.approx(10.0, abs=0.1)
+        assert result["val"] == pytest.approx(19.0)
 
-    def test_ignores_invalid_negative_or_bool_fields(self):
+    def test_deduplicates_cumulative_max_per_platform_session(self):
         result = agg._cache_hit_rate([
-            {"platform": "claude", "session_id": "s1", "tokens_prompt": True, "cache_read_tokens": 1,
-             "cache_creation_tokens": 1},
-            {"platform": "codex", "session_id": "s1", "tokens_prompt": -5, "cache_read_tokens": 2,
-             "cache_creation_tokens": 3},
-            {"platform": "codex", "session_id": "s2", "tokens_prompt": 100, "cache_read_tokens": float("nan"),
-             "cache_creation_tokens": 5},
-            {"platform": "claude", "session_id": "s3", "tokens_prompt": 100, "cache_read_tokens": 10,
-             "cache_creation_tokens": 0},
+            _cache_record("claude", "same", 1000, 50),
+            _cache_record("claude", "same", 1700, 200),
+            _cache_record("codex", "same", 500, 250),
         ])
-        assert result["val"] == pytest.approx(10.0, abs=0.1)
+        assert result["val"] == pytest.approx(20.45, abs=0.01)
 
-    def test_uses_only_the_provided_windowed_records(self):
-        first = agg._cache_hit_rate([{"platform": "codex", "session_id": "s1",
-                                      "tokens_prompt": 100, "cache_creation_tokens": 40,
-                                      "cache_read_tokens": 20}])
-        second = agg._cache_hit_rate([{"platform": "codex", "session_id": "s2",
-                                       "tokens_prompt": 100, "cache_creation_tokens": 0,
-                                       "cache_read_tokens": 0}])
-        assert first["val"] == pytest.approx(20.0, abs=0.1)
-        assert second["val"] == 0.0
+    def test_excludes_unknown_platforms_and_malformed_buckets(self):
+        result = agg._cache_hit_rate([
+            _cache_record("grok", "g", 10, 10),
+            _cache_record("claude", "negative", -1, 0),
+            _cache_record("claude", "bool", 100, True),
+            _cache_record("codex", "valid", 400, 100),
+        ])
+        assert result["val"] == pytest.approx(25.0)
 
-    def test_cached_hit_rate_is_registered_in_registry_under_brush_as_auto_percent(self):
+    def test_missing_cache_bucket_is_unknown_not_zero(self):
+        result = agg._cache_hit_rate([
+            _cache_record("claude", "missing", 100, None),
+        ])
+        assert result["val"] is None and result["data_gap"] is True
+
+    def test_legacy_summary_without_known_marker_or_creation_bucket_is_a_gap(self):
+        result = agg._cache_hit_rate([{
+            "platform": "claude", "session_id": "legacy",
+            "tokens_prompt": 100, "cache_read_tokens": 20,
+        }])
+        assert result["val"] is None and result["data_gap"] is True
+
+    def test_registered_under_brush_as_auto_percent(self):
         entry = next((e for e in agg.REGISTRY if e[2] == "Cache_Hit_Rate"), None)
-        assert entry is not None, "Cache_Hit_Rate must be registered in aggregate.REGISTRY"
+        assert entry is not None
         pillar, group, key, reducer, tier, is_percent, is_count = entry
-        assert pillar == "brush"
-        assert tier == "AUTO"
-        assert is_percent is True
-        assert is_count is False
+        assert (pillar, group, key, tier, is_percent, is_count) == (
+            "brush", "Token Efficiency", "Cache_Hit_Rate", "AUTO", True, False)
         assert reducer is agg._cache_hit_rate
 
-    def test_build_pillars_reports_live_not_simulated_when_records_present(self):
-        pillars = agg.build_pillars([
-            {"platform": "claude", "session_id": "s1", "tokens_prompt": 5,
-             "cache_creation_tokens": 4, "cache_read_tokens": 1}
-        ])
+    def test_build_pillars_consumes_pure_reducer_result(self):
+        pillars = agg.build_pillars([_cache_record("claude", "s", 1000, 250)])
         env = pillars["brush"]["Token Efficiency"]["Cache_Hit_Rate"]
-        assert env["is_simulated"] is False
-        assert env["tier"] == "AUTO"
-        assert env["val"] != "—"  # not the "—" placeholder
+        assert env["val"] == "25.0"
+        assert env["is_simulated"] is False and env["tier"] == "AUTO"
+
 
 def _exec_line(reflex_id, ts, improved):
     return json.dumps({
@@ -874,3 +889,194 @@ class TestDaemonRestartCount:
         assert env["is_simulated"] is False
         assert env["tier"] == "AUTO"
         assert env["val"] != "—"
+
+
+# ── Hygiene trio: Stale_Branch_Count / Lane_Pending_Age / Approved_Unexecuted_HITL ──
+# Each inner `_*` reducer returns an int, -1 = source missing; the r_* wrapper must
+# turn -1 into a SIMULATED envelope, never into a zero.
+
+_HYGIENE_TRIO = [
+    # (metric key, r_ wrapper name, inner reducer name, expected error fragment)
+    ("Stale_Branch_Count", "r_stale_branch_count", "_stale_branch_count", "not a git checkout"),
+    ("Lane_Pending_Age", "r_lane_pending_age", "_lane_pending_age", "ledger missing"),
+    ("Approved_Unexecuted_HITL", "r_approved_unexecuted_hitl", "_approved_unexecuted_hitl", "hitl_queue"),
+]
+
+
+@pytest.fixture(autouse=True)
+def _reset_stale_branch_cache(monkeypatch):
+    """r_stale_branch_count memoizes for 300s; every test here wants a fresh read."""
+    monkeypatch.setattr(agg, "_STALE_BRANCH_CACHE", {"t": 0.0, "v": None})
+
+
+@pytest.mark.parametrize("key,wrapper,inner,err_fragment", _HYGIENE_TRIO)
+class TestHygieneTrioWiring:
+    def test_registered_in_registry_under_bow_autonomic_as_auto_count(self, key, wrapper, inner, err_fragment):
+        entry = next((e for e in agg.REGISTRY if e[2] == key), None)
+        assert entry is not None, f"{key} must be a row in aggregate.REGISTRY (not the scout _set block)"
+        pillar, group, _key, reducer, tier, is_percent, is_count = entry
+        assert (pillar, group, tier) == ("bow", "Autonomic", "AUTO")
+        assert is_percent is False
+        assert is_count is True
+        assert callable(reducer)
+        assert reducer is getattr(agg, wrapper)
+
+    def test_metric_config_grades_lower_with_a_remediation_route(self, key, wrapper, inner, err_fragment):
+        from agentica_core import insights
+        cfg = insights.METRIC_CONFIG[key]
+        assert cfg["dir"] == "lower"
+        assert cfg["auto_remediable"] is False  # every fix here is a human merge/archive
+        assert key in insights.METRIC_RULES
+        assert insights.REMEDIATION[key]["command"].startswith("/")
+        assert insights._GRADED_METRIC_PILLARS[key] == ("bow",)
+
+    def test_non_negative_reading_emits_live_auto(self, key, wrapper, inner, err_fragment, monkeypatch):
+        monkeypatch.setattr(agg, inner, lambda records, repo_root, now=None: 42)
+        result = getattr(agg, wrapper)([])
+        assert result == {"val": 42, "calibrated": True}
+        env = agg.build_pillars([])["bow"]["Autonomic"][key]
+        assert env["is_simulated"] is False
+        assert env["tier"] == "AUTO"
+        assert env["val"] == "42"
+
+    def test_zero_reading_is_an_honest_live_zero(self, key, wrapper, inner, err_fragment, monkeypatch):
+        monkeypatch.setattr(agg, inner, lambda records, repo_root, now=None: 0)
+        env = agg.build_pillars([])["bow"]["Autonomic"][key]
+        assert env["is_simulated"] is False
+        assert env["val"] == "0"
+
+    def test_missing_source_grades_simulated_never_zero(self, key, wrapper, inner, err_fragment, monkeypatch):
+        monkeypatch.setattr(agg, inner, lambda records, repo_root, now=None: -1)
+        result = getattr(agg, wrapper)([])
+        assert result["val"] is None
+        assert result["calibrated"] is False
+        assert "source unavailable" in result["error"]
+        assert err_fragment in result["error"]
+        env = agg.build_pillars([])["bow"]["Autonomic"][key]
+        assert env["is_simulated"] is True
+        assert env["tier"] == "SIMULATED"
+        assert env["val"] == "—"
+
+    def test_wrapper_ignores_records_and_reads_the_order_samurai_root(self, key, wrapper, inner, err_fragment, monkeypatch):
+        seen = {}
+
+        def fake(records, repo_root, now=None):
+            seen["records"] = records
+            seen["root"] = repo_root
+            return 7
+
+        monkeypatch.setattr(agg, inner, fake)
+        getattr(agg, wrapper)([{"total_cost": 1.0}] * 5)
+        assert seen["records"] == []  # telemetry is not this metric's source
+        assert seen["root"] == agg._ORDER_SAMURAI_ROOT
+
+
+class TestStaleBranchCountCache:
+    def test_second_call_inside_ttl_reuses_the_reading(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(agg, "_stale_branch_count", lambda records, repo_root, now=None: calls.append(1) or 88)
+        first = agg.r_stale_branch_count([])
+        second = agg.r_stale_branch_count([])
+        assert first == second == {"val": 88, "calibrated": True}
+        assert len(calls) == 1
+        second["val"] = 0  # callers get a copy; the cached envelope must not be mutable through it
+        assert agg.r_stale_branch_count([])["val"] == 88
+
+    def test_expired_ttl_rereads_and_a_missing_source_is_not_cached_as_live(self, monkeypatch):
+        readings = iter([88, -1])
+        monkeypatch.setattr(agg, "_stale_branch_count", lambda records, repo_root, now=None: next(readings))
+        assert agg.r_stale_branch_count([])["val"] == 88
+        agg._STALE_BRANCH_CACHE["t"] -= agg._STALE_BRANCH_TTL_S + 1
+        assert agg.r_stale_branch_count([])["val"] is None
+
+
+class TestApprovedUnexecutedHitlSource:
+    @pytest.mark.parametrize("items", [
+        pytest.param([], id="empty"),
+        pytest.param([{"source": "factory", "status": "approved",
+                       "approved_at": "2026-01-01T00:00:00Z"}], id="stale-factory"),
+    ])
+    def test_buyer_queue_is_unavailable(self, tmp_path, monkeypatch, items):
+        monkeypatch.setattr(agg, "_in_monorepo_layout", lambda: False)
+        (tmp_path / "state").mkdir()
+        (tmp_path / "state" / "hitl_queue.json").write_text(
+            json.dumps({"items": items}), encoding="utf-8",
+        )
+
+        assert agg._approved_unexecuted_hitl(
+            [], tmp_path, now=datetime(2026, 10, 6, tzinfo=timezone.utc),
+        ) == -1
+
+    @pytest.mark.parametrize("items", [
+        pytest.param([], id="empty"),
+        pytest.param([{"source": "factory", "status": "approved",
+                       "approved_at": "2026-01-01T00:00:00Z"}], id="stale-factory"),
+    ])
+    def test_buyer_queue_builds_simulated_envelope(self, tmp_path, monkeypatch, items):
+        monkeypatch.setattr(agg, "_in_monorepo_layout", lambda: False)
+        (tmp_path / "state").mkdir()
+        (tmp_path / "state" / "hitl_queue.json").write_text(
+            json.dumps({"items": items}), encoding="utf-8",
+        )
+        monkeypatch.setattr(agg, "_ORDER_SAMURAI_ROOT", tmp_path)
+        # Exercise the real wrapper without reading unrelated metric sources.
+        monkeypatch.setattr(agg, "REGISTRY", [
+            row for row in agg.REGISTRY if row[2] == "Approved_Unexecuted_HITL"
+        ])
+        monkeypatch.setattr(agg, "_vault_health_metrics", lambda: None)
+
+        env = agg.build_pillars([])["bow"]["Autonomic"]["Approved_Unexecuted_HITL"]
+
+        assert env["is_simulated"] is True
+        assert env["val"] == "—"
+        assert env["tier"] == "SIMULATED"
+
+    @pytest.mark.parametrize("body", [
+        pytest.param({}, id="missing-items"),
+        pytest.param({"items": None}, id="null-items"),
+        pytest.param({"items": {}}, id="object-items"),
+        pytest.param([], id="top-level-list"),
+    ])
+    def test_queue_requires_items_list(self, tmp_path, monkeypatch, body):
+        monkeypatch.setattr(agg, "_in_monorepo_layout", lambda: True)
+        (tmp_path / "state").mkdir()
+        (tmp_path / "state" / "hitl_queue.json").write_text(json.dumps(body), encoding="utf-8")
+
+        assert agg._approved_unexecuted_hitl([], tmp_path) == -1
+
+    @pytest.mark.parametrize("items,expected", [
+        pytest.param([], 0, id="empty"),
+        pytest.param([{"source": "factory", "status": "approved",
+                       "approved_at": "2026-01-01T00:00:00Z"}], 1, id="stale-factory"),
+        pytest.param([{"source": "factory", "status": "approved",
+                       "approved_at": "2026-01-01T00:00:00Z",
+                       "executing_at": "2026-01-02T00:00:00Z"}], 0, id="executing"),
+        pytest.param([{"source": "manual", "status": "approved",
+                       "approved_at": "2026-01-01T00:00:00Z"}], 0, id="non-factory"),
+        pytest.param([{"source": "factory", "status": "pending",
+                       "approved_at": "2026-01-01T00:00:00Z"}], 0, id="not-approved"),
+    ])
+    def test_monorepo_counts_only_stale_unexecuted_factory_approvals(
+        self, tmp_path, monkeypatch, items, expected,
+    ):
+        monkeypatch.setattr(agg, "_in_monorepo_layout", lambda: True)
+        (tmp_path / "state").mkdir()
+        (tmp_path / "state" / "hitl_queue.json").write_text(
+            json.dumps({"items": items}), encoding="utf-8",
+        )
+
+        assert agg._approved_unexecuted_hitl(
+            [], tmp_path, now=datetime(2026, 10, 6, tzinfo=timezone.utc),
+        ) == expected
+
+    @pytest.mark.parametrize("body", [
+        pytest.param(None, id="missing-file"),
+        pytest.param('{"items": [', id="invalid-json"),
+    ])
+    def test_missing_or_invalid_queue_is_unavailable(self, tmp_path, monkeypatch, body):
+        monkeypatch.setattr(agg, "_in_monorepo_layout", lambda: True)
+        if body is not None:
+            (tmp_path / "state").mkdir()
+            (tmp_path / "state" / "hitl_queue.json").write_text(body, encoding="utf-8")
+
+        assert agg._approved_unexecuted_hitl([], tmp_path) == -1
