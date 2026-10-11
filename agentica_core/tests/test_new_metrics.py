@@ -877,9 +877,8 @@ class TestDaemonRestartCount:
 
 
 # ── Hygiene trio: Stale_Branch_Count / Lane_Pending_Age / Approved_Unexecuted_HITL ──
-# Wired live 2026-09-23 from Research/proposed_hygiene_reducers.py (intake approved
-# 2026-09-21). Each inner `_*` reducer returns an int, -1 = source missing; the r_*
-# wrapper must turn -1 into a SIMULATED envelope, never into a zero.
+# Each inner `_*` reducer returns an int, -1 = source missing; the r_* wrapper must
+# turn -1 into a SIMULATED envelope, never into a zero.
 
 _HYGIENE_TRIO = [
     # (metric key, r_ wrapper name, inner reducer name, expected error fragment)
