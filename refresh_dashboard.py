@@ -99,9 +99,10 @@ def main() -> int:
     if _CODEX_EMIT.exists():
         try:
             subprocess.run([sys.executable, str(_CODEX_EMIT)], timeout=60,
-                           capture_output=True, check=False)
-        except (OSError, subprocess.SubprocessError):
-            pass
+                           capture_output=True, check=True)
+        except (OSError, subprocess.SubprocessError) as _cx_err:
+            # Visible, not fatal. Type only: the emitter's output may carry secrets.
+            print(f"WARN: codex_emit failed: {type(_cx_err).__name__}", file=sys.stderr)
 
     # Bridge real autonomous skill runs (exec_log) -> mechanism_run autonomic events.
     try:
