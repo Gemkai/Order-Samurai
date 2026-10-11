@@ -275,3 +275,132 @@ def _assert_resend_warning(stderr, exception_names):
     assert "RESEND_API_KEY" in lines[0]
     assert "Mail.app" in lines[0]
     assert any(name in lines[0] for name in exception_names)
+
+
+# RED: exception messages must never become public verifier details.
+@pytest.mark.parametrize(
+    "exception_type,module_name",
+    [(RuntimeError, None), (ImportError, "some_mod"),
+     (ModuleNotFoundError, "some_mod"), (ImportError, None)],
+    ids=["runtime", "import", "module-not-found", "import-without-name"],
+)
+def test_falsifiability_error_detail_omits_secret(tmp_path, exception_type, module_name):
+    secret = "sk-test-SECRET-0001"
+    for kind in ("bad", "clean"):
+        (tmp_path / "raising" / kind).mkdir(parents=True)
+
+    def raising_check(path):
+        if module_name is None:
+            raise exception_type(secret)
+        raise exception_type(secret, name=module_name)
+
+    report = run_falsifiability(
+        checks={"raising": raising_check}, fixtures_root=tmp_path, verify_scripts=[],
+    )
+
+    result = report["checks"]["raising"]
+    assert result["status"] == "error"
+    assert exception_type.__name__ in result["detail"]
+    assert secret not in result["detail"]
+    assert len(result["detail"]) <= 200
+    expected = exception_type.__name__ + (f": {module_name}" if module_name else "")
+    assert result["detail"] == expected
+
+
+# RED: bound even a long ImportError.name, without falling back to the message.
+def test_falsifiability_error_detail_is_bounded(tmp_path):
+    for kind in ("bad", "clean"):
+        (tmp_path / "raising" / kind).mkdir(parents=True)
+
+    def raising_check(path):
+        raise ImportError("sk-test-SECRET-0001", name="some_mod" + "x" * 300)
+
+    report = run_falsifiability(
+        checks={"raising": raising_check}, fixtures_root=tmp_path, verify_scripts=[],
+    )
+    result = report["checks"]["raising"]
+    assert result["status"] == "error"
+    assert result["detail"].startswith("ImportError: some_mod")
+    assert len(result["detail"]) <= 200
+    assert "sk-test-SECRET-0001" not in result["detail"]
+
+
+@pytest.fixture
+def falsifiability_cli(tmp_path, monkeypatch):
+    from execution import verify_falsifiability as verifier
+
+    def configure(checks):
+        for name in checks:
+            for kind in ("bad", "clean"):
+                (tmp_path / name / kind).mkdir(parents=True)
+        monkeypatch.setattr(verifier, "CHECKS", checks)
+        monkeypatch.setattr(verifier, "FIXTURES_ROOT", tmp_path)
+        monkeypatch.setattr(verifier, "discover_verify_scripts", lambda: [])
+        monkeypatch.setattr(sys, "argv", ["verify_falsifiability", "--json"])
+        return verifier
+    return configure
+
+
+# RED: exercise the real JSON printer, not just the returned detail dictionary.
+def test_falsifiability_json_omits_secret(falsifiability_cli, capsys):
+    def raising_check(path):
+        raise RuntimeError("sk-test-SECRET-0001")
+
+    verifier = falsifiability_cli({"raising": raising_check})
+    assert verifier.main() == 2
+    output = capsys.readouterr().out
+    assert "sk-test-SECRET-0001" not in output
+    result = json.loads(output)["checks"]["raising"]
+    assert result["status"] == "error"
+    assert result["detail"] == "RuntimeError"
+
+
+# GREEN: an error does not prevent a later check from inspecting both fixtures.
+def test_falsifiability_continues_after_error(tmp_path):
+    calls = []
+    for name in ("raising", "following"):
+        for kind in ("bad", "clean"):
+            (tmp_path / name / kind).mkdir(parents=True)
+
+    def raising_check(path):
+        calls.append(("raising", path.name))
+        raise RuntimeError("unavailable")
+
+    def following_check(path):
+        calls.append(("following", path.name))
+        return path.name == "clean", "fixture checked"
+
+    report = run_falsifiability(
+        checks={"raising": raising_check, "following": following_check},
+        fixtures_root=tmp_path, verify_scripts=[],
+    )
+    assert calls == [("raising", "bad"), ("following", "bad"), ("following", "clean")]
+    assert {name: result["status"] for name, result in report["checks"].items()} == {
+        "raising": "error", "following": "pass",
+    }
+
+
+# GREEN: FAIL outranks ERROR; ERROR alone is not a clean exit.
+@pytest.mark.parametrize("case,expected", [("error", 2), ("fail-and-error", 1), ("pass", 0)])
+def test_falsifiability_main_exit_status(falsifiability_cli, capsys, case, expected):
+    def raising_check(path):
+        raise RuntimeError("unavailable")
+
+    def failing_check(path):
+        return True, "accepts even the bad fixture"
+
+    def passing_check(path):
+        return path.name == "clean", "fixture checked"
+
+    checks = {"passing": passing_check} if case == "pass" else {"raising": raising_check}
+    if case == "fail-and-error":
+        checks["failing"] = failing_check
+    verifier = falsifiability_cli(checks)
+    assert verifier.main() == expected
+    statuses = {name: result["status"] for name, result in
+                json.loads(capsys.readouterr().out)["checks"].items()}
+    assert statuses == {
+        "error": {"raising": "error"},
+        "fail-and-error": {"raising": "error", "failing": "fail"},
+        "pass": {"passing": "pass"},
+    }[case]
