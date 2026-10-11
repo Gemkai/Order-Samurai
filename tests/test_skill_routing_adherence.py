@@ -90,5 +90,220 @@ class ComputeAdherenceTests(unittest.TestCase):
         self.assertIsNone(result["val"])
 
 
+    def test_mixed_record_excludes_hiring_review_from_adherence(self) -> None:
+        ts = self._ts()
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": ts,
+            "categories": ["hiring-review", "review"],
+            "skills": ["/hire", "/security-audit"],
+        }])
+        self._write_jsonl(sra.INVOKE, [
+            {"session_id": "s1", "ts": ts, "skill": "/hire"},
+            {"session_id": "s1", "ts": ts, "skill": "/security-audit"},
+        ])
+        result = sra.compute_adherence()
+        self.assertEqual((result["sample_size"], result["routed"]), (1, 1))
+        self.assertEqual(result["val"], 100.0)
+
+    def test_mixed_record_excludes_hiring_review_from_work_volume(self) -> None:
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": self._ts(),
+            "categories": ["hiring-review", "review"],
+            "skills": ["/hire", "/security-audit"],
+        }])
+        self.assertEqual(sra.compute_work_volume()["val"], 1)
+
+    def test_hiring_review_exclusion_requires_exact_category(self) -> None:
+        ts = self._ts()
+        for category in ("Hiring-review", "hiring-review-extra"):
+            with self.subTest(category=category):
+                self._write_jsonl(sra.DETECT, [{
+                    "session_id": "s1", "ts": ts,
+                    "categories": [category], "skills": ["/hire"],
+                }])
+                self._write_jsonl(sra.INVOKE, [
+                    {"session_id": "s1", "ts": ts, "skill": "/hire"},
+                ])
+                result = sra.compute_adherence()
+                self.assertEqual((result["sample_size"], result["routed"]), (1, 1))
+                self.assertEqual(sra.compute_work_volume()["val"], 1)
+
+    def test_invocation_before_detection_does_not_credit(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        detection = datetime.now(timezone.utc) - timedelta(hours=1)
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": detection.isoformat(),
+            "categories": ["review"], "skills": ["/security-audit"],
+        }])
+        self._write_jsonl(sra.INVOKE, [{
+            "session_id": "s1", "ts": (detection - timedelta(minutes=1)).isoformat(),
+            "skill": "/security-audit",
+        }])
+        result = sra.compute_adherence()
+        self.assertEqual(result["sample_size"], 1)
+        self.assertEqual(result["routed"], 0)
+        self.assertEqual(result["val"], 0.0)
+
+    def test_invocation_at_detection_timestamp_credits(self) -> None:
+        ts = self._ts()
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": ts,
+            "categories": ["review"], "skills": ["/security-audit"],
+        }])
+        self._write_jsonl(sra.INVOKE, [{
+            "session_id": "s1", "ts": ts, "skill": "/security-audit",
+        }])
+        self.assertEqual(sra.compute_adherence()["routed"], 1)
+
+    def test_later_invocation_matches_normalized_leading_skill_slug(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        detection = datetime.now(timezone.utc) - timedelta(hours=1)
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": detection.isoformat(),
+            "categories": ["review"], "skills": ["/security-audit target"],
+        }])
+        self._write_jsonl(sra.INVOKE, [{
+            "session_id": "s1", "ts": (detection + timedelta(minutes=1)).isoformat(),
+            "skill": "security-audit other-target",
+        }])
+        self.assertEqual(sra.compute_adherence()["routed"], 1)
+
+    def test_invocation_in_other_session_does_not_credit(self) -> None:
+        ts = self._ts()
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": ts,
+            "categories": ["review"], "skills": ["/security-audit"],
+        }])
+        self._write_jsonl(sra.INVOKE, [{
+            "session_id": "s2", "ts": ts, "skill": "/security-audit",
+        }])
+        self.assertEqual(sra.compute_adherence()["routed"], 0)
+
+    def test_invocation_of_other_skill_does_not_credit(self) -> None:
+        ts = self._ts()
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": ts,
+            "categories": ["review"], "skills": ["/security-audit"],
+        }])
+        self._write_jsonl(sra.INVOKE, [{
+            "session_id": "s1", "ts": ts, "skill": "/other-skill",
+        }])
+        self.assertEqual(sra.compute_adherence()["routed"], 0)
+
+    def test_later_invocation_across_timestamp_formats_credits(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        offset = timezone(timedelta(hours=-4))
+        detection = (datetime.now(offset) - timedelta(days=2)).replace(
+            hour=23, minute=0, second=0, microsecond=0,
+        )
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": detection.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "categories": ["review"], "skills": ["/security-audit"],
+        }])
+        self._write_jsonl(sra.INVOKE, [{
+            "session_id": "s1",
+            "ts": (detection + timedelta(minutes=30)).astimezone(timezone.utc).isoformat(),
+            "skill": "/security-audit",
+        }])
+        result = sra.compute_adherence()
+        self.assertEqual(result["sample_size"], 1)
+        self.assertEqual(result["routed"], 1)
+
+    def test_earlier_invocation_across_timestamp_formats_does_not_credit(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        offset = timezone(timedelta(hours=-4))
+        detection = (datetime.now(offset) - timedelta(days=2)).replace(
+            hour=23, minute=0, second=0, microsecond=0,
+        )
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": detection.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "categories": ["review"], "skills": ["/security-audit"],
+        }])
+        # UTC's next calendar day still precedes this detection by 30 minutes.
+        self._write_jsonl(sra.INVOKE, [{
+            "session_id": "s1",
+            "ts": (detection - timedelta(minutes=30)).astimezone(timezone.utc).isoformat(),
+            "skill": "/security-audit",
+        }])
+        result = sra.compute_adherence()
+        self.assertEqual(result["sample_size"], 1)
+        self.assertEqual(result["routed"], 0)
+
+    def test_invocation_missing_timestamp_does_not_credit(self) -> None:
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": self._ts(),
+            "categories": ["review"], "skills": ["/security-audit"],
+        }])
+        self._write_jsonl(sra.INVOKE, [{
+            "session_id": "s1", "skill": "/security-audit",
+        }])
+        result = sra.compute_adherence()
+        self.assertEqual(result["sample_size"], 1)
+        self.assertEqual(result["routed"], 0)
+
+    def test_invocation_unparseable_timestamp_does_not_credit(self) -> None:
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": self._ts(),
+            "categories": ["review"], "skills": ["/security-audit"],
+        }])
+        self._write_jsonl(sra.INVOKE, [{
+            "session_id": "s1", "ts": "not-a-timestamp", "skill": "/security-audit",
+        }])
+        result = sra.compute_adherence()
+        self.assertEqual(result["sample_size"], 1)
+        self.assertEqual(result["routed"], 0)
+
+    def test_only_hiring_review_returns_no_adherence_data(self) -> None:
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": self._ts(),
+            "categories": ["hiring-review"], "skills": ["/hire"],
+        }])
+        self._write_jsonl(sra.INVOKE, [])
+        result = sra.compute_adherence()
+        self.assertIsNone(result["val"])
+        self.assertIs(result["is_simulated"], True)
+        self.assertEqual((result["sample_size"], result["routed"]), (0, 0))
+
+    def test_only_hiring_review_returns_no_work_volume_data(self) -> None:
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": self._ts(),
+            "categories": ["hiring-review"], "skills": ["/hire"],
+        }])
+        self.assertIsNone(sra.compute_work_volume()["val"])
+
+    def test_only_hiring_review_work_volume_is_simulated(self) -> None:
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": self._ts(),
+            "categories": ["hiring-review"], "skills": ["/hire"],
+        }])
+        self.assertIs(sra.compute_work_volume()["is_simulated"], True)
+
+    def test_hiring_review_exclusion_preserves_same_skill_in_other_category(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        detection = datetime.now(timezone.utc) - timedelta(hours=1)
+        self._write_jsonl(sra.DETECT, [{
+            "session_id": "s1", "ts": detection.isoformat(),
+            "categories": ["hiring-review", "review"],
+            "skills": ["/security-audit", "/security-audit"],
+        }])
+        self._write_jsonl(sra.INVOKE, [{
+            "session_id": "s1", "ts": (detection + timedelta(minutes=1)).isoformat(),
+            "skill": "/security-audit",
+        }])
+        result = sra.compute_adherence()
+        self.assertEqual(result["sample_size"], 1)
+        self.assertEqual(result["routed"], 1)
+
+    def test_parse_ts_accepts_colonless_offset_as_aware_datetime(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        offset = timezone(timedelta(hours=-4))
+        timestamp = (datetime.now(offset) - timedelta(hours=1)).replace(microsecond=0)
+        parsed = sra._parse_ts(timestamp.strftime("%Y-%m-%dT%H:%M:%S%z"))
+        self.assertIsInstance(parsed, datetime)
+        self.assertIsNotNone(parsed.tzinfo)
+        self.assertIsNotNone(parsed.utcoffset())
+        self.assertEqual(parsed, timestamp)
+
+
 if __name__ == "__main__":
     unittest.main()
