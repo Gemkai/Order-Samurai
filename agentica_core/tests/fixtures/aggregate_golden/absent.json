@@ -1,0 +1,4075 @@
+{
+  "advisory_reflexes": [],
+  "architecture": null,
+  "by_platform": {
+    "antigravity": {
+      "arts": {
+        "Craft": {
+          "Craft_Improvements": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Vibe no data \u00b7 Doc-parity 0d \u00b7 0 promos \u00b7 0 arts items",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0"
+          },
+          "Estimated_Human_Time_Saved": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Docs": {
+          "Doc_Parity_Issues": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Interaction": {
+          "Frustration_Signals": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Rework_Loops": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Stop_Hook_Loops": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Knowledge": {
+          "Raw_Pending": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Retrieval_Relevance": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Wiki_Article_Count": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Wiki_Health_Score": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Wiki_Orphans": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Output Quality": {
+          "Faithfulness_Score": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Refusal_Appropriateness": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Slop_Density": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Tool_Arg_Correctness": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Tool_Response_Utilization": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Tool_Selection_Accuracy": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Process": {
+          "Simplify_Age": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        }
+      },
+      "bow": {
+        "Activity": {
+          "Avg_Session_Turns": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Complexity_Weighted_Throughput": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Error_Rate": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Estimated_Agent_Time_Saved": {
+            "calibrated": false,
+            "delta": "0.0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0.0"
+          },
+          "Latency_P95": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Session_Count": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Tool_Calls": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Agent Operation": {
+          "Lesson_Graduation_Rate": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Autonomic": {
+          "Approved_Unexecuted_HITL": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Daemon_Restart_Count": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Lane_Pending_Age": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Mean_Time_To_Heal": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Mechanism_Liveness": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Mitigation_Route_Validity": {
+            "calibrated": true,
+            "delta": "0",
+            "detail": "26/57 registry metrics have a real, non-mis-routed remediation path",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "45.6"
+          },
+          "Remediation_Delta": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "no attempt scored on both sides \u2014 0 pending, 0 unscoreable (no pre-firing history \u2014 permanent), 0 unrated (no metric rule)",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Self_Correction_Rate": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "no autonomous attempts in 30d",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Stale_Branch_Count": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        }
+      },
+      "brush": {
+        "Architecture": {
+          "Architecture_Scorecard_Grade": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Code Health": {
+          "Dead_Rule_Count": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Revision_Ratio": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Unbounded_Wait_Count": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Orchestration": {
+          "Chain_Depth_Avg": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "MCP_vs_CLI_Ratio": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Subagent_Efficiency_Index": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Token Efficiency": {
+          "Cache_Hit_Rate": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "0/0 valid usage observations; 0/0 cached/total input tokens. Unknown buckets excluded; reuse does not establish quality or savings.",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Compaction_Events": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Context_Cliff_Events": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Cost_Per_Outcome": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Cost_Per_Task": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Estimated_Cost_Savings": {
+            "calibrated": false,
+            "data_gap": true,
+            "delta": "0.0",
+            "detail": "no prior-week cost-per-task baseline before 2026-W41",
+            "estimate_by_design": true,
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0.0"
+          },
+          "Local_Routing_Share": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Token_Execution_Density": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Token_Spend": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Total_Cost": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        }
+      },
+      "sword": {
+        "Code Security": {
+          "Boundary_Violations": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Governance": {
+          "Governance_Review_Findings": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Governance_Work_Volume": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Kill_Chains_Disrupted": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0"
+          },
+          "Kill_Chains_Open": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0"
+          },
+          "Pending_Chain_Proposals": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0"
+          },
+          "Rule_Violations": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Skill_Routing_Adherence": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Verifier_Falsifiability": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        }
+      }
+    },
+    "claude": {
+      "arts": {
+        "Craft": {
+          "Craft_Improvements": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Vibe no data \u00b7 Doc-parity 0d \u00b7 0 promos \u00b7 0 arts items",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0"
+          },
+          "Estimated_Human_Time_Saved": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Docs": {
+          "Doc_Parity_Issues": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Interaction": {
+          "Frustration_Signals": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Rework_Loops": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Stop_Hook_Loops": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Knowledge": {
+          "Raw_Pending": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Retrieval_Relevance": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Wiki_Article_Count": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Wiki_Health_Score": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Wiki_Orphans": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Output Quality": {
+          "Faithfulness_Score": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Refusal_Appropriateness": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Slop_Density": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Tool_Arg_Correctness": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Tool_Response_Utilization": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Tool_Selection_Accuracy": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Process": {
+          "Simplify_Age": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        }
+      },
+      "bow": {
+        "Activity": {
+          "Avg_Session_Turns": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Complexity_Weighted_Throughput": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Error_Rate": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Estimated_Agent_Time_Saved": {
+            "calibrated": false,
+            "delta": "0.0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0.0"
+          },
+          "Latency_P95": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Session_Count": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Tool_Calls": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Agent Operation": {
+          "Lesson_Graduation_Rate": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Autonomic": {
+          "Approved_Unexecuted_HITL": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Daemon_Restart_Count": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Lane_Pending_Age": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Mean_Time_To_Heal": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Mechanism_Liveness": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Mitigation_Route_Validity": {
+            "calibrated": true,
+            "delta": "0",
+            "detail": "26/57 registry metrics have a real, non-mis-routed remediation path",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "45.6"
+          },
+          "Remediation_Delta": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "no attempt scored on both sides \u2014 0 pending, 0 unscoreable (no pre-firing history \u2014 permanent), 0 unrated (no metric rule)",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Self_Correction_Rate": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "no autonomous attempts in 30d",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Stale_Branch_Count": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        }
+      },
+      "brush": {
+        "Architecture": {
+          "Architecture_Scorecard_Grade": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Code Health": {
+          "Dead_Rule_Count": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Revision_Ratio": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Unbounded_Wait_Count": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Knowledge Retrieval": {
+          "Embedding_Cache_Errors": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Embedding_Cache_Hit_Rate": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples. 0 hits / 0 lookups; 0 errors excluded from the rate.",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Embedding_Cache_Hits": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Embedding_Cache_Misses": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Injected_Context_Chars_P50": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Retrieval_Latency_P50_ms": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Retrieval_Latency_P95_ms": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Retrieval_Observations": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Retrieval_Search_Failures": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0 collection attempts with known status; ok and empty are successful searches.",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Orchestration": {
+          "Chain_Depth_Avg": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "MCP_vs_CLI_Ratio": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Subagent_Efficiency_Index": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Token Efficiency": {
+          "Cache_Hit_Rate": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Native retained sample: at most 60 recent complete transcripts per platform, 32 MiB per file, 128 MiB total; cached up to 5 minutes. Older or oversized files may be absent. 0/0 valid usage observations; 0/0 cached/total input tokens. Unknown buckets excluded; reuse does not establish quality or savings.",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Compaction_Events": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Context_Cliff_Events": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Cost_Per_Outcome": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Cost_Per_Task": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Estimated_Cost_Savings": {
+            "calibrated": false,
+            "data_gap": true,
+            "delta": "0.0",
+            "detail": "no prior-week cost-per-task baseline before 2026-W41",
+            "estimate_by_design": true,
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0.0"
+          },
+          "Local_Routing_Share": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Token_Execution_Density": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Token_Spend": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Total_Cost": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        }
+      },
+      "sword": {
+        "Code Security": {
+          "Boundary_Violations": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Governance": {
+          "Governance_Review_Findings": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Governance_Work_Volume": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Kill_Chains_Disrupted": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0"
+          },
+          "Kill_Chains_Open": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0"
+          },
+          "Pending_Chain_Proposals": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0"
+          },
+          "Rule_Violations": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Skill_Routing_Adherence": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Verifier_Falsifiability": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        }
+      }
+    },
+    "codex": {
+      "arts": {
+        "Craft": {
+          "Craft_Improvements": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Vibe no data \u00b7 Doc-parity 0d \u00b7 0 promos \u00b7 0 arts items",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0"
+          },
+          "Estimated_Human_Time_Saved": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Docs": {
+          "Doc_Parity_Issues": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Interaction": {
+          "Frustration_Signals": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Rework_Loops": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Stop_Hook_Loops": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Knowledge": {
+          "Raw_Pending": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Retrieval_Relevance": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Wiki_Article_Count": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Wiki_Health_Score": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Wiki_Orphans": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Output Quality": {
+          "Faithfulness_Score": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Refusal_Appropriateness": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Slop_Density": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Tool_Arg_Correctness": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Tool_Response_Utilization": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Tool_Selection_Accuracy": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Process": {
+          "Simplify_Age": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        }
+      },
+      "bow": {
+        "Activity": {
+          "Avg_Session_Turns": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Complexity_Weighted_Throughput": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Error_Rate": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Estimated_Agent_Time_Saved": {
+            "calibrated": false,
+            "delta": "0.0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0.0"
+          },
+          "Latency_P95": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Session_Count": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Tool_Calls": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Agent Operation": {
+          "Lesson_Graduation_Rate": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Autonomic": {
+          "Approved_Unexecuted_HITL": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Daemon_Restart_Count": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Lane_Pending_Age": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Mean_Time_To_Heal": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Mechanism_Liveness": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Mitigation_Route_Validity": {
+            "calibrated": true,
+            "delta": "0",
+            "detail": "26/57 registry metrics have a real, non-mis-routed remediation path",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "45.6"
+          },
+          "Remediation_Delta": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "no attempt scored on both sides \u2014 0 pending, 0 unscoreable (no pre-firing history \u2014 permanent), 0 unrated (no metric rule)",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Self_Correction_Rate": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "no autonomous attempts in 30d",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Stale_Branch_Count": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        }
+      },
+      "brush": {
+        "Architecture": {
+          "Architecture_Scorecard_Grade": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Code Health": {
+          "Dead_Rule_Count": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Revision_Ratio": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Unbounded_Wait_Count": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Knowledge Retrieval": {
+          "Embedding_Cache_Errors": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Embedding_Cache_Hit_Rate": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples. 0 hits / 0 lookups; 0 errors excluded from the rate.",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Embedding_Cache_Hits": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Embedding_Cache_Misses": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Injected_Context_Chars_P50": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Retrieval_Latency_P50_ms": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Retrieval_Latency_P95_ms": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Retrieval_Observations": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Retrieval_Search_Failures": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0 collection attempts with known status; ok and empty are successful searches.",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Orchestration": {
+          "Chain_Depth_Avg": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "MCP_vs_CLI_Ratio": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Subagent_Efficiency_Index": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Token Efficiency": {
+          "Cache_Hit_Rate": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Native retained sample: at most 60 recent complete transcripts per platform, 32 MiB per file, 128 MiB total; cached up to 5 minutes. Older or oversized files may be absent. 0/0 valid usage observations; 0/0 cached/total input tokens. Unknown buckets excluded; reuse does not establish quality or savings.",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Compaction_Events": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Context_Cliff_Events": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Cost_Per_Outcome": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Cost_Per_Task": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Estimated_Cost_Savings": {
+            "calibrated": false,
+            "data_gap": true,
+            "delta": "0.0",
+            "detail": "no prior-week cost-per-task baseline before 2026-W41",
+            "estimate_by_design": true,
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0.0"
+          },
+          "Local_Routing_Share": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Token_Execution_Density": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Token_Spend": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Total_Cost": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        }
+      },
+      "sword": {
+        "Code Security": {
+          "Boundary_Violations": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        },
+        "Governance": {
+          "Governance_Review_Findings": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Governance_Work_Volume": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Kill_Chains_Disrupted": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0"
+          },
+          "Kill_Chains_Open": {
+            "calibrated": true,
+            "data_gap": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0"
+          },
+          "Pending_Chain_Proposals": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": false,
+            "tier": "AUTO",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "0"
+          },
+          "Rule_Violations": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": true,
+            "is_percent": false,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Skill_Routing_Adherence": {
+            "calibrated": true,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          },
+          "Verifier_Falsifiability": {
+            "calibrated": false,
+            "delta": "0",
+            "history": [],
+            "is_count": false,
+            "is_percent": true,
+            "is_simulated": true,
+            "tier": "SIMULATED",
+            "timestamp": "",
+            "trend": "neutral",
+            "val": "\u2014"
+          }
+        }
+      }
+    }
+  },
+  "by_platform_scores": {
+    "antigravity": {
+      "arts": {
+        "coverage_pct": 0.0,
+        "flags": [],
+        "graded_count": 0,
+        "rollup": {
+          "graded": 0,
+          "passing": 0,
+          "worst": "PASS"
+        },
+        "total_gradeable": 19
+      },
+      "bow": {
+        "coverage_pct": 0.0,
+        "flags": [],
+        "graded_count": 0,
+        "rollup": {
+          "graded": 0,
+          "passing": 0,
+          "worst": "PASS"
+        },
+        "total_gradeable": 11
+      },
+      "brush": {
+        "coverage_pct": 0.0,
+        "flags": [],
+        "graded_count": 0,
+        "rollup": {
+          "graded": 0,
+          "passing": 0,
+          "worst": "PASS"
+        },
+        "total_gradeable": 7
+      },
+      "sword": {
+        "coverage_pct": 12.5,
+        "flags": [],
+        "graded_count": 1,
+        "rollup": {
+          "graded": 1,
+          "passing": 1,
+          "worst": "PASS"
+        },
+        "total_gradeable": 8
+      }
+    },
+    "claude": {
+      "arts": {
+        "coverage_pct": 0.0,
+        "flags": [],
+        "graded_count": 0,
+        "rollup": {
+          "graded": 0,
+          "passing": 0,
+          "worst": "PASS"
+        },
+        "total_gradeable": 19
+      },
+      "bow": {
+        "coverage_pct": 0.0,
+        "flags": [],
+        "graded_count": 0,
+        "rollup": {
+          "graded": 0,
+          "passing": 0,
+          "worst": "PASS"
+        },
+        "total_gradeable": 11
+      },
+      "brush": {
+        "coverage_pct": 0.0,
+        "flags": [],
+        "graded_count": 0,
+        "rollup": {
+          "graded": 0,
+          "passing": 0,
+          "worst": "PASS"
+        },
+        "total_gradeable": 7
+      },
+      "sword": {
+        "coverage_pct": 12.5,
+        "flags": [],
+        "graded_count": 1,
+        "rollup": {
+          "graded": 1,
+          "passing": 1,
+          "worst": "PASS"
+        },
+        "total_gradeable": 8
+      }
+    },
+    "codex": {
+      "arts": {
+        "coverage_pct": 0.0,
+        "flags": [],
+        "graded_count": 0,
+        "rollup": {
+          "graded": 0,
+          "passing": 0,
+          "worst": "PASS"
+        },
+        "total_gradeable": 19
+      },
+      "bow": {
+        "coverage_pct": 0.0,
+        "flags": [],
+        "graded_count": 0,
+        "rollup": {
+          "graded": 0,
+          "passing": 0,
+          "worst": "PASS"
+        },
+        "total_gradeable": 11
+      },
+      "brush": {
+        "coverage_pct": 0.0,
+        "flags": [],
+        "graded_count": 0,
+        "rollup": {
+          "graded": 0,
+          "passing": 0,
+          "worst": "PASS"
+        },
+        "total_gradeable": 7
+      },
+      "sword": {
+        "coverage_pct": 12.5,
+        "flags": [],
+        "graded_count": 1,
+        "rollup": {
+          "graded": 1,
+          "passing": 1,
+          "worst": "PASS"
+        },
+        "total_gradeable": 8
+      }
+    }
+  },
+  "by_project": {},
+  "by_tier": {},
+  "by_tier_scores": {},
+  "category_scores": {
+    "arts": {
+      "coverage_pct": 0.0,
+      "flags": [],
+      "graded_count": 0,
+      "rollup": {
+        "graded": 0,
+        "passing": 0,
+        "worst": "PASS"
+      },
+      "total_gradeable": 19
+    },
+    "bow": {
+      "coverage_pct": 0.0,
+      "flags": [],
+      "graded_count": 0,
+      "rollup": {
+        "graded": 0,
+        "passing": 0,
+        "worst": "PASS"
+      },
+      "total_gradeable": 11
+    },
+    "brush": {
+      "coverage_pct": 0.0,
+      "flags": [],
+      "graded_count": 0,
+      "rollup": {
+        "graded": 0,
+        "passing": 0,
+        "worst": "PASS"
+      },
+      "total_gradeable": 7
+    },
+    "sword": {
+      "coverage_pct": 25.0,
+      "flags": [],
+      "graded_count": 2,
+      "rollup": {
+        "graded": 2,
+        "passing": 2,
+        "worst": "PASS"
+      },
+      "total_gradeable": 8
+    }
+  },
+  "category_scores_lifetime": {
+    "arts": {
+      "coverage_pct": 0.0,
+      "flags": [],
+      "graded_count": 0,
+      "rollup": {
+        "graded": 0,
+        "passing": 0,
+        "worst": "PASS"
+      },
+      "total_gradeable": 19
+    },
+    "bow": {
+      "coverage_pct": 0.0,
+      "flags": [],
+      "graded_count": 0,
+      "rollup": {
+        "graded": 0,
+        "passing": 0,
+        "worst": "PASS"
+      },
+      "total_gradeable": 11
+    },
+    "brush": {
+      "coverage_pct": 0.0,
+      "flags": [],
+      "graded_count": 0,
+      "rollup": {
+        "graded": 0,
+        "passing": 0,
+        "worst": "PASS"
+      },
+      "total_gradeable": 7
+    },
+    "sword": {
+      "coverage_pct": 25.0,
+      "flags": [],
+      "graded_count": 2,
+      "rollup": {
+        "graded": 2,
+        "passing": 2,
+        "worst": "PASS"
+      },
+      "total_gradeable": 8
+    }
+  },
+  "display_snapshot": {
+    "collection_end": "2026-10-07T12:00:00+00:00",
+    "collection_start": "2026-10-07T12:00:00+00:00",
+    "consistency": "sources collected independently",
+    "id": "00000000-0000-4000-8000-000000000041",
+    "reports_period": "ISO week; independent report snapshot",
+    "schema_version": "agentica.1",
+    "version": "display-evidence-v1",
+    "window": {
+      "end": "2026-10-07T12:00:00+00:00",
+      "start": "2026-09-07T12:00:00+00:00",
+      "timezone": "UTC"
+    }
+  },
+  "license": {
+    "tier": "free"
+  },
+  "needs_attention": {
+    "count": 0,
+    "items": []
+  },
+  "operator_attention": {
+    "data_gap": [
+      "doctor: doctor_last.json does not exist \u2014 the daily com.agentica.os-doctor job has produced no readable result",
+      "fleet: fleet_probe.json does not exist \u2014 bin/fleet_probe.py has not written a result",
+      "decisions: hitl_queue.json does not exist \u2014 approvals unknown",
+      "decisions: bin/hitl_alerts.py could not be loaded \u2014 auto-disabled jobs unknown",
+      "decisions: execution/escalation_sla.py could not be loaded \u2014 SLA counts unknown"
+    ],
+    "decisions": {
+      "auto_disabled": null,
+      "available": true,
+      "backlog_overdue": null,
+      "expired_undecided": null,
+      "goals_undated_or_overdue": null,
+      "pending": null,
+      "rollback_incomplete": null
+    },
+    "doctor": {
+      "available": false
+    },
+    "fleet": {
+      "available": false
+    },
+    "generated_at": "2026-10-07T12:00:00+00:00"
+  },
+  "pillars": {
+    "arts": {
+      "Coverage": {
+        "Instrumentation_Coverage": {
+          "delta": "0",
+          "history": [
+            0.0
+          ],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": false,
+          "mitigation_command": "/audit-mechanisms",
+          "mitigation_skill": "audit-mechanisms",
+          "tier": "DERIVED",
+          "timestamp": "",
+          "trajectory_breach_days": null,
+          "trend": "neutral",
+          "val": "0.0"
+        }
+      },
+      "Craft": {
+        "Craft_Improvements": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "detail": "Vibe no data \u00b7 Doc-parity 0d \u00b7 0 promos \u00b7 0 arts items",
+          "history": [
+            0.0
+          ],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": false,
+          "tier": "AUTO",
+          "timestamp": "",
+          "trajectory_breach_days": null,
+          "trend": "neutral",
+          "val": "0"
+        },
+        "Estimated_Human_Time_Saved": {
+          "calibrated": false,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      },
+      "Docs": {
+        "Doc_Parity_Issues": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      },
+      "Interaction": {
+        "Frustration_Signals": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Rework_Loops": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Stop_Hook_Loops": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      },
+      "Knowledge": {
+        "Raw_Pending": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Retrieval_Relevance": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Wiki_Article_Count": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Wiki_Health_Score": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Wiki_Orphans": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      },
+      "Output Quality": {
+        "Faithfulness_Score": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Refusal_Appropriateness": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Slop_Density": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Tool_Arg_Correctness": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Tool_Response_Utilization": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Tool_Selection_Accuracy": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      },
+      "Process": {
+        "Simplify_Age": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      }
+    },
+    "bow": {
+      "Activity": {
+        "Avg_Session_Turns": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Complexity_Weighted_Throughput": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Error_Rate": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Estimated_Agent_Time_Saved": {
+          "calibrated": false,
+          "delta": "0.0",
+          "history": [
+            0.0
+          ],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": false,
+          "tier": "AUTO",
+          "timestamp": "",
+          "trajectory_breach_days": null,
+          "trend": "neutral",
+          "val": "0.0"
+        },
+        "Latency_P95": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Session_Count": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Tool_Calls": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      },
+      "Agent Operation": {
+        "Lesson_Graduation_Rate": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      },
+      "Autonomic": {
+        "Approved_Unexecuted_HITL": {
+          "calibrated": false,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Daemon_Restart_Count": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Lane_Pending_Age": {
+          "calibrated": false,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Mean_Time_To_Heal": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Mechanism_Liveness": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Mitigation_Route_Validity": {
+          "calibrated": true,
+          "delta": "0",
+          "detail": "26/57 registry metrics have a real, non-mis-routed remediation path",
+          "history": [
+            45.6
+          ],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": false,
+          "tier": "AUTO",
+          "timestamp": "",
+          "trajectory_breach_days": null,
+          "trend": "neutral",
+          "val": "45.6"
+        },
+        "Remediation_Delta": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "detail": "no attempt scored on both sides \u2014 0 pending, 0 unscoreable (no pre-firing history \u2014 permanent), 0 unrated (no metric rule)",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Self_Correction_Rate": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "detail": "no autonomous attempts in 30d",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Stale_Branch_Count": {
+          "calibrated": false,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      },
+      "Coverage": {
+        "Instrumentation_Coverage": {
+          "delta": "0",
+          "history": [
+            0.0
+          ],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": false,
+          "mitigation_command": "/audit-mechanisms",
+          "mitigation_skill": "audit-mechanisms",
+          "tier": "DERIVED",
+          "timestamp": "",
+          "trajectory_breach_days": null,
+          "trend": "neutral",
+          "val": "0.0"
+        }
+      }
+    },
+    "brush": {
+      "Architecture": {
+        "Architecture_Scorecard_Grade": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      },
+      "Code Health": {
+        "Dead_Rule_Count": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Revision_Ratio": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Unbounded_Wait_Count": {
+          "calibrated": false,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      },
+      "Coverage": {
+        "Instrumentation_Coverage": {
+          "delta": "0",
+          "history": [
+            0.0
+          ],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": false,
+          "mitigation_command": "/audit-mechanisms",
+          "mitigation_skill": "audit-mechanisms",
+          "tier": "DERIVED",
+          "timestamp": "",
+          "trajectory_breach_days": null,
+          "trend": "neutral",
+          "val": "0.0"
+        }
+      },
+      "Knowledge Retrieval": {
+        "Embedding_Cache_Errors": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Embedding_Cache_Hit_Rate": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples. 0 hits / 0 lookups; 0 errors excluded from the rate.",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Embedding_Cache_Hits": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Embedding_Cache_Misses": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Injected_Context_Chars_P50": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Retrieval_Latency_P50_ms": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Retrieval_Latency_P95_ms": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Retrieval_Observations": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0/0 valid field samples.",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Retrieval_Search_Failures": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Retained hook sample: 0 instrumented retrieval observations, 0 readable log files; at most 2 MiB per log, 0 truncated tails. Legacy or missing fields excluded; this is not complete historical coverage. 0 collection attempts with known status; ok and empty are successful searches.",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      },
+      "Orchestration": {
+        "Chain_Depth_Avg": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "MCP_vs_CLI_Ratio": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Subagent_Efficiency_Index": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      },
+      "Token Efficiency": {
+        "Cache_Hit_Rate": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "detail": "Window [2026-09-07T12:00:00+00:00, 2026-10-07T12:00:00+00:00). Native retained sample: at most 60 recent complete transcripts per platform, 32 MiB per file, 128 MiB total; cached up to 5 minutes. Older or oversized files may be absent. 0/0 valid usage observations; 0/0 cached/total input tokens. Unknown buckets excluded; reuse does not establish quality or savings.",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Compaction_Events": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Context_Cliff_Events": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Cost_Per_Outcome": {
+          "calibrated": false,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Cost_Per_Task": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Estimated_Cost_Savings": {
+          "calibrated": false,
+          "data_gap": true,
+          "delta": "0.0",
+          "detail": "no prior-week cost-per-task baseline before 2026-W41",
+          "estimate_by_design": true,
+          "history": [
+            0.0
+          ],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": false,
+          "tier": "AUTO",
+          "timestamp": "",
+          "trajectory_breach_days": null,
+          "trend": "neutral",
+          "val": "0.0"
+        },
+        "Local_Routing_Share": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Token_Execution_Density": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Token_Spend": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Total_Cost": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      }
+    },
+    "sword": {
+      "Code Security": {
+        "Boundary_Violations": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Secrets_Detected": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [
+            0.0
+          ],
+          "is_count": true,
+          "is_graded": true,
+          "is_percent": false,
+          "is_simulated": false,
+          "mitigation_command": "/security-audit",
+          "mitigation_kind": "auto_fix",
+          "mitigation_mechanism": {
+            "args": [
+              "--json"
+            ],
+            "read_only": true,
+            "script": "secret_scrub.py",
+            "timeout_s": 120
+          },
+          "mitigation_skill": "security-audit",
+          "rule": {
+            "dir": "lower",
+            "fail": 1.0,
+            "per": null,
+            "warn": 0.0,
+            "weight": 3.0
+          },
+          "status": "OK",
+          "tier": "AUTO",
+          "timestamp": "",
+          "trajectory_breach_days": null,
+          "trend": "neutral",
+          "val": "0"
+        }
+      },
+      "Coverage": {
+        "Instrumentation_Coverage": {
+          "delta": "0",
+          "history": [
+            25.0
+          ],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": false,
+          "mitigation_command": "/audit-mechanisms",
+          "mitigation_skill": "audit-mechanisms",
+          "tier": "DERIVED",
+          "timestamp": "",
+          "trajectory_breach_days": null,
+          "trend": "neutral",
+          "val": "25.0"
+        }
+      },
+      "Governance": {
+        "Governance_Review_Findings": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Governance_Work_Volume": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Kill_Chains_Disrupted": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "history": [
+            0.0
+          ],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": false,
+          "tier": "AUTO",
+          "timestamp": "",
+          "trajectory_breach_days": null,
+          "trend": "neutral",
+          "val": "0"
+        },
+        "Kill_Chains_Open": {
+          "calibrated": true,
+          "data_gap": true,
+          "delta": "0",
+          "history": [
+            0.0
+          ],
+          "is_count": true,
+          "is_graded": true,
+          "is_percent": false,
+          "is_simulated": false,
+          "mitigation_command": "/guard",
+          "mitigation_kind": "mis_route",
+          "mitigation_skill": "guard",
+          "rule": {
+            "dir": "lower",
+            "fail": 3.0,
+            "per": null,
+            "warn": 1.0,
+            "weight": 2.0
+          },
+          "status": "OK",
+          "tier": "AUTO",
+          "timestamp": "",
+          "trajectory_breach_days": null,
+          "trend": "neutral",
+          "val": "0"
+        },
+        "Pending_Chain_Proposals": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [
+            0.0
+          ],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": false,
+          "tier": "AUTO",
+          "timestamp": "",
+          "trajectory_breach_days": null,
+          "trend": "neutral",
+          "val": "0"
+        },
+        "Rule_Violations": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": true,
+          "is_percent": false,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Skill_Routing_Adherence": {
+          "calibrated": true,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        },
+        "Verifier_Falsifiability": {
+          "calibrated": false,
+          "delta": "0",
+          "history": [],
+          "is_count": false,
+          "is_percent": true,
+          "is_simulated": true,
+          "tier": "SIMULATED",
+          "timestamp": "",
+          "trend": "neutral",
+          "val": "\u2014"
+        }
+      }
+    }
+  },
+  "platforms": [
+    "antigravity",
+    "claude",
+    "codex"
+  ],
+  "radar_week": {
+    "records": {
+      "antigravity": 0,
+      "claude": 0,
+      "codex": 0
+    },
+    "week": "2026-W41"
+  },
+  "record_counts": {
+    "antigravity": 0,
+    "claude": 0,
+    "codex": 0
+  },
+  "reflexes": [],
+  "remediation_efficacy": {
+    "applied": 0,
+    "applied_lifetime": 0,
+    "attempted": 0,
+    "attempted_lifetime": 0,
+    "by_skill": {},
+    "completed": 0,
+    "completed_lifetime": 0,
+    "data_gap": true,
+    "data_gap_detail": "no autonomous attempts in 30d",
+    "events": [],
+    "execution_success_rate": null,
+    "flat": 0,
+    "human_correlated": 0,
+    "human_correlated_improved": 0,
+    "human_events": [],
+    "improved": 0,
+    "improved_lifetime": 0,
+    "improvement_rate": null,
+    "note": "fire-time before/after where recorded; else the engine's own `improved` verdict on a SETTLED run (evidence=engine_verdict; done/no_change only \u2014 error/timeout runs stay attempts and are never graded; a false verdict grades flat, since a boolean cannot distinguish a regression from a no-op, unless the late re-judgment sidecar upgraded that entry_hash \u2014 those events carry late_rejudge=true); else correlation not causation (flag -> skill used -> next snapshot moved healthy); headline fields contain live autonomous ReflexEngine remediations only; human correlations, read-only diagnoses, and proposal-only candidates are separate; attempted counts autonomous no_change/error/timeout runs; improvement_rate = improved/attempted (the honest headline) over window_days when set, with the pre-windowing totals kept in the *_lifetime fields; success_rate = improved/applied is observational-only, scheduled for deletion; proposal-only candidate measurements are reported separately and never counted as live applications",
+    "proposal_events": [],
+    "proposal_improvement_rate": null,
+    "proposed_count": 0,
+    "proposed_improved": 0,
+    "regressed": 0,
+    "success_rate": null,
+    "window_days": 30
+  },
+  "schema_version": "agentica.1",
+  "summaries": {
+    "arts": "This pillar logged no craft improvements yet this week (skill promotions and completed arts deliverables count here; the skill-promotions source is currently dark). Nothing has moved since the last check. Nothing needs fixing right now \u2014 keep it steady to hold the score.",
+    "bow": "This pillar has no automated time savings recorded yet \u2014 meditation calibration samples are still accruing. Nothing has moved since the last check. Nothing needs fixing right now \u2014 keep it steady to hold the score.",
+    "brush": "This pillar tracked no additional cost-per-task efficiency gain vs last week. Nothing has moved since the last check. Nothing needs fixing right now \u2014 keep it steady to hold the score.",
+    "sword": "This pillar tracked 0 distinct threat vectors intercepted and disrupted (with 0 pending proposals). There are 0 leaked passwords or keys. Nothing has moved since the last check. Nothing needs fixing right now \u2014 keep it steady to hold the score."
+  },
+  "tier_mix": {
+    "arts": {
+      "attribution": "Exact per-model transcript usage",
+      "backing": "Output Words",
+      "excluded_empty_records": 0,
+      "models": {},
+      "slices": null
+    },
+    "bow": {
+      "attribution": "Exact per-model transcript usage",
+      "backing": "Tool Calls",
+      "excluded_empty_records": 0,
+      "models": {},
+      "slices": null
+    },
+    "brush": {
+      "attribution": "Exact per-model transcript usage",
+      "backing": "Token Spend",
+      "excluded_empty_records": 0,
+      "models": {},
+      "slices": null
+    },
+    "sword": {
+      "attribution": "One task per session; mixed when multiple models observed",
+      "backing": "Task Volume",
+      "excluded_empty_records": 0,
+      "models": {},
+      "slices": null
+    }
+  },
+  "timestamp": "2026-10-07T12:00:00+00:00",
+  "top_usage": {
+    "agents": [],
+    "connections": [],
+    "skills": []
+  },
+  "window": {
+    "days": 30,
+    "end": "2026-10-07T12:00:00+00:00",
+    "records": 0,
+    "start": "2026-09-07T12:00:00+00:00"
+  }
+}
