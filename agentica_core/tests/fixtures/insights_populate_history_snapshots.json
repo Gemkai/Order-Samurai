@@ -1,0 +1,679 @@
+{
+ "edge_past_fail_fractional_zero_sessions": {
+  "current": {
+   "arts/Quality/Slop_Density": 30.0,
+   "bow/Activity/Error_Rate": 12.0,
+   "bow/Activity/Session_Count": 10.0,
+   "bow/Activity/Spike": 9.0
+  },
+  "pillars": {
+   "arts": {
+    "Quality": {
+     "Slop_Density": {
+      "delta": "-0.2",
+      "history": [
+       2.0,
+       9.9,
+       3.0,
+       3.2,
+       3.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 30
+     }
+    }
+   },
+   "bow": {
+    "Activity": {
+     "Error_Rate": {
+      "delta": "+1.0",
+      "history": [
+       2,
+       4,
+       6,
+       9,
+       11,
+       12.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "up",
+      "val": 12
+     },
+     "Session_Count": {
+      "delta": "+0.0",
+      "history": [
+       10,
+       0,
+       10,
+       10,
+       10,
+       10.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "neutral",
+      "val": 10
+     },
+     "Spike": {
+      "delta": "+1.0",
+      "history": [
+       2,
+       3,
+       5,
+       6,
+       8,
+       9.0
+      ],
+      "trajectory_breach_days": 197.0,
+      "trend": "up",
+      "val": 9
+     }
+    }
+   }
+  }
+ },
+ "missing_store": {
+  "current": {
+   "arts/Quality/Slop_Density": 30.0,
+   "bow/Activity/Brand_New": 1.0,
+   "bow/Activity/Error_Rate": 8.0,
+   "bow/Activity/Flat_Metric": 3.0,
+   "bow/Activity/No_Fail": 9.0,
+   "bow/Activity/Session_Count": 10.0,
+   "bow/Activity/Spike": 5.0,
+   "bow/Activity/Unruled": 4.0,
+   "bow/Remediation/Plateau_High": 40.0,
+   "bow/Remediation/Self_Correction_Rate": 30.0,
+   "bow/Remediation/Spike_High": 40.0
+  },
+  "pillars": {
+   "arts": {
+    "Quality": {
+     "Slop_Density": {
+      "history": [
+       3.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 30
+     }
+    }
+   },
+   "bow": {
+    "Activity": {
+     "Brand_New": {
+      "history": [
+       1.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 1
+     },
+     "Error_Rate": {
+      "history": [
+       8.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 8
+     },
+     "Flat_Metric": {
+      "history": [
+       3.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 3
+     },
+     "Missing": {
+      "val": null
+     },
+     "No_Fail": {
+      "history": [
+       9.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 9
+     },
+     "Session_Count": {
+      "history": [
+       10.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 10
+     },
+     "Simulated": {
+      "is_simulated": true,
+      "val": 5
+     },
+     "Spike": {
+      "history": [
+       5.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 5
+     },
+     "Text": {
+      "val": "n/a"
+     },
+     "Unruled": {
+      "history": [
+       4.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 4
+     }
+    },
+    "Remediation": {
+     "Plateau_High": {
+      "history": [
+       40.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 40
+     },
+     "Self_Correction_Rate": {
+      "history": [
+       30.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 30
+     },
+     "Spike_High": {
+      "history": [
+       40.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 40
+     }
+    }
+   }
+  }
+ },
+ "rich_store_default_window": {
+  "current": {
+   "arts/Quality/Slop_Density": 30.0,
+   "bow/Activity/Brand_New": 1.0,
+   "bow/Activity/Error_Rate": 8.0,
+   "bow/Activity/Flat_Metric": 3.0,
+   "bow/Activity/No_Fail": 9.0,
+   "bow/Activity/Session_Count": 10.0,
+   "bow/Activity/Spike": 5.0,
+   "bow/Activity/Unruled": 4.0,
+   "bow/Remediation/Plateau_High": 40.0,
+   "bow/Remediation/Self_Correction_Rate": 30.0,
+   "bow/Remediation/Spike_High": 40.0
+  },
+  "pillars": {
+   "arts": {
+    "Quality": {
+     "Slop_Density": {
+      "delta": "-0.4",
+      "history": [
+       2.0,
+       2.5,
+       3.0,
+       3.2,
+       3.4,
+       3.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 30
+     }
+    }
+   },
+   "bow": {
+    "Activity": {
+     "Brand_New": {
+      "history": [
+       1.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 1
+     },
+     "Error_Rate": {
+      "delta": "+1.0",
+      "history": [
+       2,
+       3,
+       4,
+       5,
+       6,
+       7,
+       8.0
+      ],
+      "trajectory_breach_days": 14.0,
+      "trend": "up",
+      "val": 8
+     },
+     "Flat_Metric": {
+      "delta": "+0.0",
+      "history": [
+       3,
+       3,
+       3,
+       3,
+       3,
+       3,
+       3.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "neutral",
+      "val": 3
+     },
+     "Missing": {
+      "val": null
+     },
+     "No_Fail": {
+      "delta": "+5.0",
+      "history": [
+       9,
+       8,
+       7,
+       6,
+       5,
+       4,
+       9.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "up",
+      "val": 9
+     },
+     "Session_Count": {
+      "delta": "+0.0",
+      "history": [
+       10,
+       10,
+       10,
+       10,
+       10,
+       10.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "neutral",
+      "val": 10
+     },
+     "Simulated": {
+      "is_simulated": true,
+      "val": 5
+     },
+     "Spike": {
+      "delta": "-5.0",
+      "history": [
+       5,
+       10,
+       40,
+       30,
+       20,
+       10,
+       5.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 5
+     },
+     "Text": {
+      "val": "n/a"
+     },
+     "Unruled": {
+      "delta": "-1.0",
+      "history": [
+       0,
+       1,
+       2,
+       3,
+       4,
+       5,
+       4.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 4
+     }
+    },
+    "Remediation": {
+     "Plateau_High": {
+      "delta": "-10.0",
+      "history": [
+       90,
+       80,
+       70,
+       60,
+       40,
+       50,
+       40.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 40
+     },
+     "Self_Correction_Rate": {
+      "delta": "-5.0",
+      "history": [
+       60,
+       55,
+       50,
+       45,
+       40,
+       35,
+       30.0
+      ],
+      "trajectory_breach_days": 14.0,
+      "trend": "down",
+      "val": 30
+     },
+     "Spike_High": {
+      "delta": "+5.0",
+      "history": [
+       90,
+       80,
+       70,
+       60,
+       30,
+       35,
+       40.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "up",
+      "val": 40
+     }
+    }
+   }
+  }
+ },
+ "rich_store_short_window": {
+  "current": {
+   "arts/Quality/Slop_Density": 30.0,
+   "bow/Activity/Brand_New": 1.0,
+   "bow/Activity/Error_Rate": 8.0,
+   "bow/Activity/Flat_Metric": 3.0,
+   "bow/Activity/No_Fail": 9.0,
+   "bow/Activity/Session_Count": 10.0,
+   "bow/Activity/Spike": 5.0,
+   "bow/Activity/Unruled": 4.0,
+   "bow/Remediation/Plateau_High": 40.0,
+   "bow/Remediation/Self_Correction_Rate": 30.0,
+   "bow/Remediation/Spike_High": 40.0
+  },
+  "pillars": {
+   "arts": {
+    "Quality": {
+     "Slop_Density": {
+      "delta": "-0.4",
+      "history": [
+       3.2,
+       3.4,
+       3.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 30
+     }
+    }
+   },
+   "bow": {
+    "Activity": {
+     "Brand_New": {
+      "history": [
+       1.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 1
+     },
+     "Error_Rate": {
+      "delta": "+1.0",
+      "history": [
+       6,
+       7,
+       8.0
+      ],
+      "trajectory_breach_days": 14.0,
+      "trend": "up",
+      "val": 8
+     },
+     "Flat_Metric": {
+      "delta": "+0.0",
+      "history": [
+       3,
+       3,
+       3.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "neutral",
+      "val": 3
+     },
+     "Missing": {
+      "val": null
+     },
+     "No_Fail": {
+      "delta": "+5.0",
+      "history": [
+       5,
+       4,
+       9.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "up",
+      "val": 9
+     },
+     "Session_Count": {
+      "delta": "+0.0",
+      "history": [
+       10,
+       10,
+       10.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "neutral",
+      "val": 10
+     },
+     "Simulated": {
+      "is_simulated": true,
+      "val": 5
+     },
+     "Spike": {
+      "delta": "-5.0",
+      "history": [
+       20,
+       10,
+       5.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 5
+     },
+     "Text": {
+      "val": "n/a"
+     },
+     "Unruled": {
+      "delta": "-1.0",
+      "history": [
+       4,
+       5,
+       4.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 4
+     }
+    },
+    "Remediation": {
+     "Plateau_High": {
+      "delta": "-10.0",
+      "history": [
+       40,
+       50,
+       40.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 40
+     },
+     "Self_Correction_Rate": {
+      "delta": "-5.0",
+      "history": [
+       40,
+       35,
+       30.0
+      ],
+      "trajectory_breach_days": 14.0,
+      "trend": "down",
+      "val": 30
+     },
+     "Spike_High": {
+      "delta": "+5.0",
+      "history": [
+       30,
+       35,
+       40.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "up",
+      "val": 40
+     }
+    }
+   }
+  }
+ },
+ "rich_store_two_points": {
+  "current": {
+   "arts/Quality/Slop_Density": 30.0,
+   "bow/Activity/Brand_New": 1.0,
+   "bow/Activity/Error_Rate": 8.0,
+   "bow/Activity/Flat_Metric": 3.0,
+   "bow/Activity/No_Fail": 9.0,
+   "bow/Activity/Session_Count": 10.0,
+   "bow/Activity/Spike": 5.0,
+   "bow/Activity/Unruled": 4.0,
+   "bow/Remediation/Plateau_High": 40.0,
+   "bow/Remediation/Self_Correction_Rate": 30.0,
+   "bow/Remediation/Spike_High": 40.0
+  },
+  "pillars": {
+   "arts": {
+    "Quality": {
+     "Slop_Density": {
+      "delta": "-0.4",
+      "history": [
+       3.4,
+       3.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 30
+     }
+    }
+   },
+   "bow": {
+    "Activity": {
+     "Brand_New": {
+      "history": [
+       1.0
+      ],
+      "trajectory_breach_days": null,
+      "val": 1
+     },
+     "Error_Rate": {
+      "delta": "+1.0",
+      "history": [
+       7,
+       8.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "up",
+      "val": 8
+     },
+     "Flat_Metric": {
+      "delta": "+0.0",
+      "history": [
+       3,
+       3.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "neutral",
+      "val": 3
+     },
+     "Missing": {
+      "val": null
+     },
+     "No_Fail": {
+      "delta": "+5.0",
+      "history": [
+       4,
+       9.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "up",
+      "val": 9
+     },
+     "Session_Count": {
+      "delta": "+0.0",
+      "history": [
+       10,
+       10.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "neutral",
+      "val": 10
+     },
+     "Simulated": {
+      "is_simulated": true,
+      "val": 5
+     },
+     "Spike": {
+      "delta": "-5.0",
+      "history": [
+       10,
+       5.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 5
+     },
+     "Text": {
+      "val": "n/a"
+     },
+     "Unruled": {
+      "delta": "-1.0",
+      "history": [
+       5,
+       4.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 4
+     }
+    },
+    "Remediation": {
+     "Plateau_High": {
+      "delta": "-10.0",
+      "history": [
+       50,
+       40.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 40
+     },
+     "Self_Correction_Rate": {
+      "delta": "-5.0",
+      "history": [
+       35,
+       30.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "down",
+      "val": 30
+     },
+     "Spike_High": {
+      "delta": "+5.0",
+      "history": [
+       35,
+       40.0
+      ],
+      "trajectory_breach_days": null,
+      "trend": "up",
+      "val": 40
+     }
+    }
+   }
+  }
+ }
+}
