@@ -147,9 +147,10 @@ def _rewrite(fh, data: bytes, prior: bytes) -> None:
 
     `fh` is backfill()'s locked, unbuffered "a+b" handle: rewriting in place keeps the
     inode the flock covers, and no buffer is left to flush after a failed write. If the
-    write or the fsync fails, the prior bytes go back before the error propagates — the
-    carried-forward, recorded-idle and live rows a truncated store would lose cannot be
-    rebuilt from telemetry, and refresh_dashboard logs the error and carries on."""
+    write or the fsync is interrupted by any exception, the prior bytes go back before it
+    propagates — the carried-forward, recorded-idle and live rows a truncated store would
+    lose cannot be rebuilt from telemetry, and refresh_dashboard logs the error and carries
+    on. A process killed outright (SIGKILL, power loss) gets no restore."""
     def put(b: bytes) -> None:
         fh.seek(0)  # appends land at EOF anyway, but macOS checks RLIMIT_FSIZE at this offset
         fh.truncate()
@@ -160,7 +161,7 @@ def _rewrite(fh, data: bytes, prior: bytes) -> None:
 
     try:
         put(data)
-    except OSError:
+    except BaseException:  # not just OSError: a Ctrl-C or MemoryError after the truncate
         try:
             put(prior)
         except OSError:
