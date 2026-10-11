@@ -1,13 +1,15 @@
-"""RECON1PUB: regression tests for the aggregate.py forward port (monorepo hunks 4-9 and 19).
+"""Regression tests for aggregate.py.
 
-Each test below is copied verbatim from the monorepo's agentica_core/tests/test_aggregate.py
-(withheld from the public export as a whole): vibe-alignment gaps stay gaps (a69f42070),
-a telemetry tag is counted into at most one project (969aa026b / #286), and an
-agent-spawn scan tolerates a transcript that vanishes mid-scan (5eab518ea).
+Vibe-alignment gaps stay gaps, a telemetry tag is counted into at most one project, an
+agent-spawn scan tolerates a transcript that vanishes mid-scan, an idle-by-design
+Mechanism_Liveness reading keeps a live envelope with its state, and the lazy licensing
+import falls back to Free when the module is missing.
 """
 import json
+import sys
 from datetime import datetime, timezone
 
+import agentica_core
 from agentica_core import aggregate as agg
 
 
@@ -130,10 +132,9 @@ def test_agent_spawn_events_skips_a_transcript_that_vanishes_before_stat(monkeyp
 
 
 def test_idle_by_design_envelope_is_live_and_carries_its_state(monkeypatch, tmp_path):
-    """Hunks 15-18: a Mechanism_Liveness reading that is idle by design keeps its LIVE
-    tier and exposes `state`, instead of being labelled SIMULATED. This is the envelope
-    half of the monorepo's test_idle_envelope_reaches_the_card_as_a_live_reported_state;
-    the card half depends on render.py, which this port does not touch."""
+    """A Mechanism_Liveness reading that is idle by design keeps its LIVE tier and exposes
+    `state`, instead of being labelled SIMULATED. Only the envelope is covered here; the
+    dashboard card's rendering of the state lives in render.py, which is unchanged."""
     events = tmp_path / "autonomic_events.jsonl"
     heartbeat = tmp_path / "reflex_output.jsonl"
     events.write_text("", encoding="utf-8")
@@ -150,3 +151,24 @@ def test_idle_by_design_envelope_is_live_and_carries_its_state(monkeypatch, tmp_
 
     assert env["is_simulated"] is False
     assert env["state"] == "idle_by_design"
+
+
+def test_license_summary_delegates_to_licensing_when_it_imports(monkeypatch):
+    """When the licensing module imports, the payload's license entry is exactly what
+    licensing.dashboard_summary() returns, so Pro installs keep their tier."""
+    from agentica_core import licensing
+    monkeypatch.setattr(licensing, "dashboard_summary", lambda: {"tier": "pro"})
+
+    assert agg._license_summary() == {"tier": "pro"}
+
+
+def test_license_summary_falls_back_to_free_when_licensing_is_missing(monkeypatch):
+    """A tree without agentica_core/licensing.py must still aggregate: the license entry
+    fails closed to Free instead of raising ImportError out of the payload build."""
+    from agentica_core import licensing
+    # If the import were not really blocked, this would make the test see "pro".
+    monkeypatch.setattr(licensing, "dashboard_summary", lambda: {"tier": "pro"})
+    monkeypatch.delattr(agentica_core, "licensing", raising=False)
+    monkeypatch.setitem(sys.modules, "agentica_core.licensing", None)
+
+    assert agg._license_summary() == {"tier": "free"}
