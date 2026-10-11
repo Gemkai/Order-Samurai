@@ -86,6 +86,12 @@ def repo(monkeypatch, tmp_path: Path) -> Path:
     (state_dir / "doctor_last.json").write_text(json.dumps({
         "generated_at": NOW.isoformat(), "exit_code": 0,
         "counts": {"OK": 30, "WARN": 0, "FAIL": 0}, "fails": []}), encoding="utf-8")
+    # Automation health (WS1.5): isolate from the real monorepo state and plant a
+    # fresh, empty-jobs file. generated_at is REAL wall-clock time, not NOW --
+    # monitor_status() is not aware of this fixture's `_now` monkeypatch.
+    monkeypatch.setattr(hitl_alerts, "AUTOMATION_HEALTH_PATH", state_dir / "automation-health.json")
+    (state_dir / "automation-health.json").write_text(json.dumps({
+        "generated_at": datetime.now(timezone.utc).isoformat(), "jobs": {}}), encoding="utf-8")
     return tmp_path
 
 
@@ -394,6 +400,7 @@ def test_critical_carriers_remain_protected_by_registry():
         "agentica.os-hitl-bridge", "agentica.morning-joe-refresh",
         "agentica.escalation-canary", "claude.reflex-poller",
         "agentica.substrate-preflight-watchdog", "agentica.brain3-file-bridge",
+        "agentica.substrate-preflight",
     } <= set(PROTECTED_JOBS)
 
 

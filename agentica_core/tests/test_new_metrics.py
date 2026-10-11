@@ -335,84 +335,99 @@ class TestLessonGraduationRate:
 
 
 # ── Cache_Hit_Rate (AUTO-009) ─────────────────────────────────────────────────
-# Requirement: the reducer consumes the already-windowed normalized records supplied by
-# aggregate(), deduplicates cumulative session snapshots, and reports cached input as a
-# share of total prompt input. It must not rescan transcripts or retain cross-call state.
-
+# Contract correction: this reducer is pure over the records explicitly supplied by
+# its caller. Native transcript sampling belongs to knowledge_metrics.collect.
 
 def _write_transcript(projects_dir, name, lines):
-    # Shared by transcript-backed metric tests below; Cache_Hit_Rate itself no longer scans here.
     proj = projects_dir / "proj1"
     proj.mkdir(parents=True, exist_ok=True)
     path = proj / name
-    path.write_text("\n".join(json.dumps(line) for line in lines) + "\n", encoding="utf-8")
+    path.write_text("\n".join(json.dumps(l) for l in lines) + "\n", encoding="utf-8")
     return path
 
 
+def _usage_line(input_tokens=0, cache_creation=0, cache_read=0, output_tokens=0):
+    return {
+        "type": "assistant",
+        "message": {"usage": {
+            "input_tokens": input_tokens,
+            "cache_creation_input_tokens": cache_creation,
+            "cache_read_input_tokens": cache_read,
+            "output_tokens": output_tokens,
+        }},
+    }
+
+
+def _cache_record(platform, session, prompt=None, cached=0, *, known=True, creation=0):
+    # Valid native summaries have an explicit all-events-known marker and all
+    # provider input buckets, including a known zero cache-creation bucket.
+    return {"platform": platform, "session_id": session,
+            "tokens_prompt": prompt, "cache_read_tokens": cached,
+            "cache_creation_tokens": creation, "usage_known": known}
+
+
 class TestCacheHitRate:
-    def test_records_without_valid_usage_returns_data_gap(self):
+    def test_missing_records_returns_data_gap_not_fake_zero(self, tmp_path, monkeypatch):
+        # Ambient transcript content must not affect this pure reducer.
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        _write_transcript(tmp_path / ".claude/projects", "s.jsonl",
+                          [_usage_line(input_tokens=1, cache_read=999)])
         result = agg._cache_hit_rate([])
         assert result["val"] is None
         assert result["data_gap"] is True
         assert result["calibrated"] is True
 
-    def test_distinct_sessions_are_aggregated_by_max_cumulative_tokens(self):
+    def test_is_token_weighted_across_distinct_platforms(self):
         result = agg._cache_hit_rate([
-            {"platform": "claude", "session_id": "s1", "tokens_prompt": 120, "cache_read_tokens": 10,
-             "cache_creation_tokens": 30},
-            {"platform": "claude", "session_id": "s1", "tokens_prompt": 200, "cache_read_tokens": 5,
-             "cache_creation_tokens": 60},
-            {"platform": "claude", "session_id": "s2", "tokens_prompt": 30, "cache_read_tokens": 10,
-             "cache_creation_tokens": 0},
-            {"platform": "codex", "session_id": "c1", "tokens_prompt": 120, "cache_read_tokens": 20,
-             "cache_creation_tokens": 60},
+            _cache_record("claude", "a", 900, 90),
+            _cache_record("codex", "b", 100, 100),
         ])
-        # s1 uses its largest cumulative prompt snapshot. Cached/total prompt input is
-        # (5 + 10 + 20) / (200 + 30 + 120) = 10%.
-        assert result["val"] == pytest.approx(10.0, abs=0.1)
+        assert result["val"] == pytest.approx(19.0)
 
-    def test_ignores_invalid_negative_or_bool_fields(self):
+    def test_deduplicates_cumulative_max_per_platform_session(self):
         result = agg._cache_hit_rate([
-            {"platform": "claude", "session_id": "s1", "tokens_prompt": True, "cache_read_tokens": 1,
-             "cache_creation_tokens": 1},
-            {"platform": "codex", "session_id": "s1", "tokens_prompt": -5, "cache_read_tokens": 2,
-             "cache_creation_tokens": 3},
-            {"platform": "codex", "session_id": "s2", "tokens_prompt": 100, "cache_read_tokens": float("nan"),
-             "cache_creation_tokens": 5},
-            {"platform": "claude", "session_id": "s3", "tokens_prompt": 100, "cache_read_tokens": 10,
-             "cache_creation_tokens": 0},
+            _cache_record("claude", "same", 1000, 50),
+            _cache_record("claude", "same", 1700, 200),
+            _cache_record("codex", "same", 500, 250),
         ])
-        assert result["val"] == pytest.approx(10.0, abs=0.1)
+        assert result["val"] == pytest.approx(20.45, abs=0.01)
 
-    def test_uses_only_the_provided_windowed_records(self):
-        first = agg._cache_hit_rate([{"platform": "codex", "session_id": "s1",
-                                      "tokens_prompt": 100, "cache_creation_tokens": 40,
-                                      "cache_read_tokens": 20}])
-        second = agg._cache_hit_rate([{"platform": "codex", "session_id": "s2",
-                                       "tokens_prompt": 100, "cache_creation_tokens": 0,
-                                       "cache_read_tokens": 0}])
-        assert first["val"] == pytest.approx(20.0, abs=0.1)
-        assert second["val"] == 0.0
+    def test_excludes_unknown_platforms_and_malformed_buckets(self):
+        result = agg._cache_hit_rate([
+            _cache_record("grok", "g", 10, 10),
+            _cache_record("claude", "negative", -1, 0),
+            _cache_record("claude", "bool", 100, True),
+            _cache_record("codex", "valid", 400, 100),
+        ])
+        assert result["val"] == pytest.approx(25.0)
 
-    def test_cached_hit_rate_is_registered_in_registry_under_brush_as_auto_percent(self):
+    def test_missing_cache_bucket_is_unknown_not_zero(self):
+        result = agg._cache_hit_rate([
+            _cache_record("claude", "missing", 100, None),
+        ])
+        assert result["val"] is None and result["data_gap"] is True
+
+    def test_legacy_summary_without_known_marker_or_creation_bucket_is_a_gap(self):
+        result = agg._cache_hit_rate([{
+            "platform": "claude", "session_id": "legacy",
+            "tokens_prompt": 100, "cache_read_tokens": 20,
+        }])
+        assert result["val"] is None and result["data_gap"] is True
+
+    def test_registered_under_brush_as_auto_percent(self):
         entry = next((e for e in agg.REGISTRY if e[2] == "Cache_Hit_Rate"), None)
-        assert entry is not None, "Cache_Hit_Rate must be registered in aggregate.REGISTRY"
+        assert entry is not None
         pillar, group, key, reducer, tier, is_percent, is_count = entry
-        assert pillar == "brush"
-        assert tier == "AUTO"
-        assert is_percent is True
-        assert is_count is False
+        assert (pillar, group, key, tier, is_percent, is_count) == (
+            "brush", "Token Efficiency", "Cache_Hit_Rate", "AUTO", True, False)
         assert reducer is agg._cache_hit_rate
 
-    def test_build_pillars_reports_live_not_simulated_when_records_present(self):
-        pillars = agg.build_pillars([
-            {"platform": "claude", "session_id": "s1", "tokens_prompt": 5,
-             "cache_creation_tokens": 4, "cache_read_tokens": 1}
-        ])
+    def test_build_pillars_consumes_pure_reducer_result(self):
+        pillars = agg.build_pillars([_cache_record("claude", "s", 1000, 250)])
         env = pillars["brush"]["Token Efficiency"]["Cache_Hit_Rate"]
-        assert env["is_simulated"] is False
-        assert env["tier"] == "AUTO"
-        assert env["val"] != "—"  # not the "—" placeholder
+        assert env["val"] == "25.0"
+        assert env["is_simulated"] is False and env["tier"] == "AUTO"
+
 
 def _exec_line(reflex_id, ts, improved):
     return json.dumps({
