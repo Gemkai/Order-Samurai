@@ -188,8 +188,7 @@
       "reason": "Monitor-freshness check for the private automation-health summary.",
       "degrade": "The module file is not shipped (always, in the public tree), so load_automation_health() returns None before reading the JSON and automation_health_alert_lines() returns []. If the file is shipped but the import fails, the 'could not be assessed' line reports it.",
       "visibility": "optional",
-      "surface": "private automation-health feature: absent from the public product by design; 'AUTOMATION HEALTH: monitor freshness could not be assessed' only on the direct-call path",
-      "scope": "export-only"
+      "surface": "private automation-health feature: absent from the public product by design; 'AUTOMATION HEALTH: monitor freshness could not be assessed' only on the direct-call path"
     },
     {
       "file": "bin/hitl_alerts.py",

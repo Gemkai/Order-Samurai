@@ -45,12 +45,17 @@ def isolated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Pat
     monkeypatch.setattr(hitl_alerts, "BACKLOG_PATH", tmp_path / "PROPOSED_BACKLOG.json")
     monkeypatch.setattr(hitl_alerts, "FLEET_PROBE_PATH", tmp_path / "fleet_probe.json")
     monkeypatch.setattr(hitl_alerts, "DOCTOR_STATE_PATH", tmp_path / "doctor_last.json")
+    monkeypatch.setattr(hitl_alerts, "AUTOMATION_HEALTH_PATH", tmp_path / "automation-health.json")
     monkeypatch.setattr(hitl_alerts, "_now", lambda: FIXED_NOW)
     # Ambient default: doctor ran this morning and found nothing. Without a planted
     # file the real repo's state/doctor_last.json leaked into every test here, and an
     # absent one is deliberately NOT silence (it reports "doctor has never run"), so
     # either would make these queue-focused tests assert against doctor's mood.
     _plant_doctor(tmp_path)
+    # Same discipline for automation health (WS1.5): generated_at is real wall-clock
+    # time (monitor_status() is not aware of this file's _now() monkeypatch), so a
+    # fresh plant here reads as OK rather than DEAD against the real clock.
+    _plant_automation_health(tmp_path)
     return queue, state
 
 
@@ -63,6 +68,17 @@ def _plant_doctor(tmp_path: Path, *, fails: list[dict] | None = None,
         "exit_code": 1 if fails else 0,
         "counts": counts or {"OK": 30, "WARN": 2, "FAIL": len(fails or [])},
         "fails": fails or [],
+    }), encoding="utf-8")
+    return path
+
+
+def _plant_automation_health(tmp_path: Path, *, jobs: dict | None = None,
+                             generated_at=None) -> Path:
+    path = tmp_path / "automation-health.json"
+    from datetime import datetime as _dt, timezone as _tz
+    path.write_text(json.dumps({
+        "generated_at": (generated_at or _dt.now(_tz.utc)).isoformat(),
+        "jobs": jobs or {},
     }), encoding="utf-8")
     return path
 
@@ -1349,3 +1365,383 @@ def test_a_governance_parent_without_agentica_core_is_not_the_marker(tmp_path):
 def test_registry_path_sits_beside_agentica_core():
     """Live layout or export, the registry is read from the directory holding agentica_core."""
     assert (hitl_alerts.OPERATOR_REGISTRY_PATH.parent.parent / "agentica_core").is_dir()
+
+
+# ── automation-health digest wiring ──────────────────────────────────────────
+
+@pytest.fixture
+def automation_health_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    path = tmp_path / "automation-health.json"
+    # Allow reader tests to reach the missing API before the constant is implemented.
+    monkeypatch.setattr(hitl_alerts, "AUTOMATION_HEALTH_PATH", path, raising=False)
+    monkeypatch.delenv("HITL_AUTOMATION_HEALTH_ALARM", raising=False)
+    # These tests are about FILE-content semantics (missing/malformed/well-formed),
+    # not module availability -- pin the module-presence check to "present" (any
+    # real file on disk satisfies .is_file(); this test file itself always exists)
+    # and _load_monitor_status_fn() to "available", so they behave identically
+    # whether the real agentica_core.automation_health module happens to be
+    # importable here or not (it is not, in the public export test run).
+    # Module-availability gating itself is covered separately below.
+    monkeypatch.setattr(
+        hitl_alerts, "_automation_health_module_path", lambda: Path(__file__), raising=False,
+    )
+    monkeypatch.setattr(
+        hitl_alerts, "_load_monitor_status_fn", lambda: (lambda *a, **k: "OK"), raising=False,
+    )
+    return path
+
+
+def test_automation_health_path_uses_the_governance_data_directory() -> None:
+    assert hitl_alerts.AUTOMATION_HEALTH_PATH == (
+        hitl_alerts._GOVERNANCE / "data" / "automation_health" / "automation-health.json"
+    )
+
+
+def test_automation_health_interval_is_a_positive_number() -> None:
+    interval = hitl_alerts.AUTOMATION_HEALTH_INTERVAL_SECONDS
+    assert type(interval) in (int, float)
+    assert interval > 0
+
+
+def test_automation_health_digest_result_kinds() -> None:
+    kinds = hitl_alerts.DIGEST_RESULT_KINDS
+    assert isinstance(kinds, (set, frozenset))
+    assert kinds == {
+        "stale", "failed", "blocked", "interrupted", "auth-failure",
+        "push-failure", "missing-result",
+        "retired-still-loaded", "retired-not-disabled", "retired-unverified",
+    }
+
+
+@pytest.mark.parametrize("contents", [None, '{"jobs": {}}', "not-json"])
+def test_automation_health_alarm_false_disables_reader(
+    automation_health_path: Path, monkeypatch: pytest.MonkeyPatch, contents
+) -> None:
+    if contents is not None:
+        automation_health_path.write_text(contents, encoding="utf-8")
+    monkeypatch.setenv("HITL_AUTOMATION_HEALTH_ALARM", "false")
+    assert hitl_alerts.load_automation_health() is None
+
+
+@pytest.mark.parametrize("flag", [None, "true", "False", "0", ""])
+def test_automation_health_missing_file_is_reported_unless_flag_is_literal_false(
+    automation_health_path: Path, monkeypatch: pytest.MonkeyPatch, flag
+) -> None:
+    if flag is not None:
+        monkeypatch.setenv("HITL_AUTOMATION_HEALTH_ALARM", flag)
+    assert not automation_health_path.exists()
+    assert hitl_alerts.load_automation_health() == {"missing": True}
+
+
+# ── module-availability gating (regression: the public-export CI job caught this) ──
+#
+# CI (https://github.com/example-org/Agentica-OS/pull/413, run 36101548000) failed two
+# EXPORTED tests: agentica_core.automation_health is a private-only module the public
+# Order Samurai export never ships (MODULE_ALLOWLIST withholds it), so it is not on
+# disk there at all. But the fixture above plants a fresh, HEALTHY
+# automation-health.json file regardless -- so load_automation_health() read a
+# well-formed file, then automation_health_alert_lines() tried to resolve
+# monitor_status_fn, found the module missing, and reported "could not be assessed"
+# as a problem. That forced decide_email() to send on an otherwise completely empty
+# digest, and the send itself then failed (no macOS Mail.app on the Linux export
+# runner), turning a should-be-silent digest into a hard test failure.
+#
+# The fix gates on module PRESENCE ON DISK (_automation_health_module_path().is_file())
+# before the file read, not on successful resolution/import -- those are different
+# facts. "Not shipped here at all" (a plain Order Samurai install, or the export)
+# reports nothing. "Shipped but broken" (present on disk, import or resolution fails
+# for a real reason) must still surface via automation_health_alert_lines()'s own
+# "could not be assessed" fallback -- gating on _load_monitor_status_fn() succeeding
+# would have silenced that regression case too, since the same failure satisfies
+# both an importability check and a presence check.
+
+
+def test_automation_health_is_silent_when_the_module_is_not_shipped(
+    automation_health_path: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    automation_health_path.write_text(json.dumps({
+        "generated_at": "2026-09-25T00:00:00+00:00", "jobs": {},
+    }), encoding="utf-8")
+    # Simulate the public export: no automation_health.py on disk at all.
+    monkeypatch.setattr(
+        hitl_alerts, "_automation_health_module_path",
+        lambda: tmp_path / "does-not-exist" / "automation_health.py", raising=False,
+    )
+    assert hitl_alerts.load_automation_health() is None
+    assert hitl_alerts.automation_health_alert_lines(hitl_alerts.load_automation_health()) == []
+
+
+def test_automation_health_still_reports_missing_file_when_module_is_shipped(
+    automation_health_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert not automation_health_path.exists()
+    monkeypatch.setattr(
+        hitl_alerts, "_automation_health_module_path", lambda: Path(__file__), raising=False,
+    )
+    monkeypatch.setattr(
+        hitl_alerts, "_load_monitor_status_fn", lambda: (lambda *a, **k: "OK"), raising=False,
+    )
+    result = hitl_alerts.load_automation_health()
+    assert result == {"missing": True}
+    lines = hitl_alerts.automation_health_alert_lines(result)
+    assert lines and "never written" in lines[0].lower()
+
+
+def test_automation_health_still_reports_when_module_is_shipped_but_broken(
+    automation_health_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The exact gap a naive 'gate on _load_monitor_status_fn() succeeding' fix would
+    have reintroduced: a real regression in the private automation_health.py (present
+    on disk, but its import/resolution fails -- e.g. monitor_status renamed) must
+    still be visible, not silently treated the same as 'not shipped here'."""
+    automation_health_path.write_text(json.dumps({
+        "generated_at": "2026-09-25T00:00:00+00:00", "jobs": {},
+    }), encoding="utf-8")
+    monkeypatch.setattr(
+        hitl_alerts, "_automation_health_module_path", lambda: Path(__file__), raising=False,
+    )
+    monkeypatch.setattr(hitl_alerts, "_load_monitor_status_fn", lambda: None, raising=False)
+    result = hitl_alerts.load_automation_health()
+    assert result is not None and "jobs" in result
+    lines = hitl_alerts.automation_health_alert_lines(result)
+    assert lines and "could not be assessed" in lines[0].lower()
+
+
+def test_empty_digest_stays_silent_when_automation_health_module_is_not_shipped(
+    isolated, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """The exact CI regression, end to end: an otherwise-empty digest must not send
+    just because the automation-health MODULE (not just its file) is not shipped."""
+    queue, state = isolated
+    queue.write_text('{"items": []}', encoding="utf-8")
+    state.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("HITL_DIGEST_TO", "owner@example.test")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    monkeypatch.setattr(
+        hitl_alerts, "_automation_health_module_path",
+        lambda: tmp_path / "does-not-exist" / "automation_health.py", raising=False,
+    )
+    sent = {"called": False}
+    monkeypatch.setattr(
+        hitl_alerts, "_send_mail_app",
+        lambda *a, **k: sent.__setitem__("called", True) or True,
+    )
+
+    assert hitl_alerts.do_email(force=False) == 0
+    assert sent["called"] is False
+
+
+def test_automation_health_invalid_json_is_an_error(automation_health_path: Path) -> None:
+    automation_health_path.write_text("{not-json", encoding="utf-8")
+    result = hitl_alerts.load_automation_health()
+    assert isinstance(result, dict)
+    assert isinstance(result["error"], str)
+    assert result["error"]
+
+
+@pytest.mark.parametrize("payload", [
+    [], "not-an-object", None, {}, {"jobs": []}, {"jobs": "not-an-object"},
+    {"jobs": None},
+])
+def test_automation_health_invalid_shape_is_an_error(
+    automation_health_path: Path, payload
+) -> None:
+    automation_health_path.write_text(json.dumps(payload), encoding="utf-8")
+    result = hitl_alerts.load_automation_health()
+    assert isinstance(result, dict)
+    assert isinstance(result["error"], str)
+    assert result["error"]
+
+
+@pytest.mark.parametrize("include_timestamp", [True, False])
+def test_automation_health_reader_preserves_jobs_and_timestamp(
+    automation_health_path: Path, include_timestamp: bool
+) -> None:
+    payload = {"jobs": {
+        "com.agentica.example": {"healthy": False, "result_kind": "stale"},
+    }}
+    if include_timestamp:
+        payload["generated_at"] = "2026-09-25T00:00:00+00:00"
+    automation_health_path.write_text(json.dumps(payload), encoding="utf-8")
+    result = hitl_alerts.load_automation_health()
+    assert isinstance(result, dict)
+    assert result["jobs"] == payload["jobs"]
+    assert result["generated_at"] == payload.get("generated_at")
+
+
+def test_automation_health_digest_prints_persisted_counts(
+    automation_health_path: Path,
+) -> None:
+    payload = {
+        "generated_at": "2026-09-25T00:00:00+00:00",
+        "coverage": {"numerator": 7, "denominator": 53, "unknowns": 44},
+        "artifact_verified": 7,
+        "jobs": {},
+    }
+    automation_health_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = hitl_alerts.load_automation_health()
+    body = hitl_alerts._digest_body(
+        [], [], automation_health=loaded,
+        automation_health_monitor_status_fn=lambda *a, **k: "OK",
+    )
+
+    assert "AUTOMATION HEALTH: 7/53 healthy, 7 artifact-verified" in body
+
+
+def test_automation_health_digest_omits_persisted_counts_when_monitor_is_dead(
+    automation_health_path: Path,
+) -> None:
+    payload = {
+        "generated_at": "2026-09-25T00:00:00+00:00",
+        "coverage": {"numerator": 7, "denominator": 53, "unknowns": 44},
+        "artifact_verified": 7,
+        "jobs": {},
+    }
+    automation_health_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = hitl_alerts.load_automation_health()
+    body = hitl_alerts._digest_body(
+        [], [], automation_health=loaded,
+        automation_health_monitor_status_fn=lambda *a, **k: "DEAD",
+    )
+
+    assert "AUTOMATION HEALTH:\nAUTOMATION HEALTH MONITOR DEAD:" in body
+    assert "7/53 healthy" not in body
+    assert "artifact-verified" not in body
+
+
+def test_automation_health_digest_accepts_legacy_snapshot_without_counts(
+    automation_health_path: Path,
+) -> None:
+    automation_health_path.write_text(json.dumps({
+        "generated_at": "2026-09-25T00:00:00+00:00",
+        "jobs": {},
+    }), encoding="utf-8")
+
+    loaded = hitl_alerts.load_automation_health()
+    body = hitl_alerts._digest_body(
+        [], [], automation_health=loaded,
+        automation_health_monitor_status_fn=lambda *a, **k: "OK",
+    )
+
+    assert "AUTOMATION HEALTH: monitor fresh" in body
+    assert "artifact-verified" not in body
+
+
+def test_automation_health_none_produces_no_alert_lines() -> None:
+    assert hitl_alerts.automation_health_alert_lines(None) == []
+
+
+def test_automation_health_missing_result_produces_one_alert_line() -> None:
+    lines = hitl_alerts.automation_health_alert_lines({"missing": True})
+    assert isinstance(lines, list)
+    assert len(lines) == 1
+    assert "never written" in lines[0].lower()
+
+
+def test_automation_health_error_produces_one_alert_line_with_detail() -> None:
+    lines = hitl_alerts.automation_health_alert_lines({"error": "boom-unique-marker"})
+    assert isinstance(lines, list)
+    assert len(lines) == 1
+    assert "unreadable" in lines[0].lower()
+    assert "boom-unique-marker" in lines[0]
+
+
+@pytest.mark.parametrize("monitor_status", ["OK", "DEAD"])
+def test_automation_health_reports_each_problem_and_prepends_dead_monitor(
+    automation_health_path: Path, monitor_status: str
+) -> None:
+    reportable = {
+        "com.agentica.job-a": {"result_kind": "stale"},
+        "com.agentica.job-b": {"result_kind": "blocked"},
+        "com.agentica.job-c": {"result_kind": "interrupted"},
+        "com.agentica.job-d": {"result_kind": "auth-failure"},
+        "com.agentica.job-e": {"result_kind": "push-failure"},
+        "com.agentica.job-f": {"result_kind": "missing-result"},
+    }
+    quiet = {
+        "com.agentica.job-g": {"result_kind": "success"},
+        "com.agentica.job-h": {"result_kind": "no-op"},
+    }
+    calls = []
+
+    def monitor_status_fn(path, interval):
+        calls.append((path, interval))
+        return monitor_status
+
+    lines = hitl_alerts.automation_health_alert_lines(
+        {"generated_at": "2026-09-25T00:00:00+00:00", "jobs": {**reportable, **quiet}},
+        monitor_status_fn=monitor_status_fn,
+    )
+    assert calls == [(automation_health_path, hitl_alerts.AUTOMATION_HEALTH_INTERVAL_SECONDS)]
+    assert isinstance(lines, list)
+    assert len(lines) == (7 if monitor_status == "DEAD" else 6)
+    if monitor_status == "DEAD":
+        assert "DEAD" in lines[0].upper()
+        assert not any(job_id in lines[0] for job_id in reportable)
+    for job_id, job in reportable.items():
+        matching = [line for line in lines if job_id in line]
+        assert len(matching) == 1
+        assert job["result_kind"] in matching[0]
+    for job_id in quiet:
+        assert not any(job_id in line for line in lines)
+
+
+def test_automation_health_failed_job_is_reported() -> None:
+    lines = hitl_alerts.automation_health_alert_lines(
+        {"jobs": {"com.agentica.job-z": {"result_kind": "failed"}}},
+        monitor_status_fn=lambda *a, **k: "OK",
+    )
+    assert len(lines) == 1
+    assert "com.agentica.job-z" in lines[0]
+    assert "failed" in lines[0]
+
+
+@pytest.mark.parametrize("jobs", [
+    {}, {"com.agentica.job-findings": {"result_kind": "success-with-findings"}},
+])
+@pytest.mark.parametrize("monitor_status", ["OK", "DEAD"])
+def test_automation_health_monitor_status_is_reported_without_problem_jobs(
+    jobs, monitor_status: str
+) -> None:
+    lines = hitl_alerts.automation_health_alert_lines(
+        {"jobs": jobs}, monitor_status_fn=lambda *a, **k: monitor_status,
+    )
+    if monitor_status == "OK":
+        assert lines == []
+    else:
+        assert len(lines) == 1
+        assert "DEAD" in lines[0].upper()
+    assert not any(job_id in line for job_id in jobs for line in lines)
+
+
+def test_automation_health_missing_result_reaches_digest_body(isolated) -> None:
+    body = hitl_alerts._digest_body([], [], [], None, None, automation_health={"missing": True})
+    expected = hitl_alerts.automation_health_alert_lines({"missing": True})[0]
+    assert expected in body
+
+
+def test_automation_health_none_omits_digest_section(isolated) -> None:
+    body = hitl_alerts._digest_body([], [], [], None, None, automation_health=None)
+    assert "AUTOMATION" not in body.upper()
+    assert body == hitl_alerts._digest_body([], [], [], None, None)
+
+
+def test_automation_health_problem_alone_triggers_digest() -> None:
+    decision = hitl_alerts.decide_email(
+        force=False, today="2026-09-25", last_email_date="2026-09-24",
+        pending=[], expired=[], patches=[], doctor_problems=[],
+        fleet_clause="", unreconciled=[], automation_problems=["something is wrong"],
+    )
+    assert decision.send
+
+
+@pytest.mark.parametrize("automation_problems", [[], None])
+def test_automation_health_without_problems_does_not_trigger_digest(automation_problems) -> None:
+    decision = hitl_alerts.decide_email(
+        force=False, today="2026-09-25", last_email_date="2026-09-24",
+        pending=[], expired=[], patches=[], doctor_problems=[],
+        fleet_clause="", unreconciled=[], automation_problems=automation_problems,
+    )
+    assert not decision.send

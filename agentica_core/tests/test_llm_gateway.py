@@ -298,6 +298,22 @@ def test_call_openrouter_null_content_is_failure_not_success(gateway):
             gateway._call_openrouter("hi")
 
 
+def test_call_openrouter_response_schema_sets_json_response_format(gateway):
+    # call_llm's required_json_keys builds response_schema={"type": "object"} and
+    # threads it through every provider — _call_gemini sets responseMimeType,
+    # _call_openai and _call_local set response_format/"format": "json". Unlike
+    # those three siblings, _call_openrouter never read the kwarg at all, so any
+    # call routed through OpenRouter (the FREE tier's default) silently lost the
+    # JSON-mode hint and relied only on the textual "Return ONLY valid JSON."
+    # instruction — a model that ignores that leaves json.loads() to crash on
+    # the caller's side with no signal this path was ever taken.
+    with patch("agentica_core.llm.gateway.requests.post") as post:
+        post.return_value = _openai_style_response("{}")
+        gateway._call_openrouter("hi", response_schema={"type": "object"})
+    sent_body = json.loads(post.call_args.kwargs["data"])
+    assert sent_body.get("response_format") == {"type": "json_object"}
+
+
 def test_call_openrouter_auto_sentinel_reaches_the_api_unmangled(gateway):
     # "openrouter/auto" is OpenRouter's own auto-routing pseudo-model id and
     # is the FREE-tier chain's default (_call_openrouter's own default kwarg,

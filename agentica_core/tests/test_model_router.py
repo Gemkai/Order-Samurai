@@ -79,6 +79,22 @@ def test_local_request_has_explicit_timeout_and_token_floor():
     assert post.call_args.kwargs["json"]["options"]["num_predict"] >= 512
 
 
+def test_num_ctx_and_force_json_reach_the_ollama_payload():
+    with patch.object(gateway_module.requests, "post", return_value=_response(_local_body("[]"))) as post:
+        model_router.call_llm("sys", "user", local_only=True, num_ctx=8192, force_json=True)
+    body = post.call_args.kwargs["json"]
+    assert body["options"]["num_ctx"] == 8192
+    assert body["format"] == "json"
+
+
+def test_default_call_omits_num_ctx_and_json_format():
+    with patch.object(gateway_module.requests, "post", return_value=_response(_local_body("ok"))) as post:
+        model_router.call_llm("sys", "user", local_only=True)
+    body = post.call_args.kwargs["json"]
+    assert "num_ctx" not in body["options"]
+    assert "format" not in body
+
+
 def test_local_thinking_response_uses_reasoning_fallback():
     with patch.object(
         gateway_module.requests,
