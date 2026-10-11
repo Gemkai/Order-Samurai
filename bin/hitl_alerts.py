@@ -1526,110 +1526,8 @@ def do_notify() -> int:
 
 # ── email mode ───────────────────────────────────────────────────────────────
 
-def _digest_body(pending: list[dict], expired: list[dict],
-                 patches: list[dict] | None = None,
-                 backlog: dict | None = None,
-                 fleet: dict | None = None,
-                 doctor: dict | None = None,
-                 queue_error: Exception | None = None,
-                 fleet_tiers_by_job: dict[str, dict] | None = None,
-                 retirements: list[dict] | None = None,
-                 unreconciled: list[dict] | None = None,
-                 automation_health: dict | None = None,
-                 automation_health_monitor_status_fn: Callable[[Path, float], str] | None = None) -> str:
-    lines = [f"Order Samurai — HITL approval digest ({_now().date().isoformat()})", ""]
-    if queue_error:
-        # Named FIRST: every count below is measured over an empty list, so the
-        # reassuring "No approvals pending" must never be read as a clean queue.
-        lines += [f"QUEUE UNREADABLE — {queue_error}",
-                  "The approval counts below are NOT a reading of the queue.", ""]
-    if pending:
-        lines.append(f"AWAITING YOUR APPROVAL ({len(pending)}):")
-        for i in pending:
-            lines.append(f"  • {_item_line(i)}")
-            ctx = (i.get("context") or "").strip()
-            if ctx:
-                lines.append(f"      {ctx[:200]}")
-    else:
-        lines.append("No approvals pending. ✔")
-    if patches:
-        lines.append("")
-        lines.append(f"VALIDATED PATCHES AWAITING REVIEW ({len(patches)}):")
-        for p in patches:
-            lines.append(f"  • {p['name']} · waiting {_fmt_age(p['mtime'])}")
-        lines.append("      review: python3 bin/review_pending_patch.py --list / --show / "
-                     "--apply / --reject")
-    if expired:
-        lines.append("")
-        lines.append(f"EXPIRED WITHOUT DECISION ({len(expired)}) — stays here until you decide:")
-        for i in expired:
-            what = i.get("skill") or i.get("command") or "?"
-            lines.append(f"  • {i.get('id', '?')} {what} ({i.get('source', '?')}/"
-                         f"{i.get('pillar', '?')}) — expired {str(i.get('expired_at', ''))[:10]}, "
-                         f"{_fmt_age(_parse_ts(i.get('expired_at')))} ago")
-        lines.append("      decide: python3 bin/bushido_check.py --retire <id> --reason '…'  "
-                     "(or --reject / --approve while still pending)")
-    if backlog is not None:
-        lines.append("")
-        if "error" in backlog:
-            lines.append(f"PROPOSED_BACKLOG: unreadable — {backlog['error']}")
-        else:
-            oldest = (_fmt_days(backlog["oldest_days"])
-                      if backlog["oldest_days"] is not None else "?")
-            lines.append(f"PROPOSED_BACKLOG (read-only): {backlog['pending']} pending "
-                         f"(approved:false) · oldest {oldest}")
-    if fleet is not None:
-        lines.append("")
-        if "error" in fleet:
-            lines.append(f"FLEET HEALTH: unreadable — {fleet['error']}")
-        else:
-            failing = fleet.get("failing_jobs") or []
-            unreachable = fleet.get("unreachable_services") or []
-            if not failing and not unreachable:
-                lines.append("FLEET HEALTH: all launchd jobs + local services OK ✔")
-            else:
-                lines.append("FLEET HEALTH:")
-                tiers = fleet_tiers_by_job or {}
-                for j in failing:
-                    t = tiers.get(j)
-                    if t:
-                        nxt = {"banner": f"digest subject at day {FLEET_DIGEST_DAY}",
-                               "digest": f"auto-disable? HITL item at day {FLEET_HITL_DAY}",
-                               "hitl": "HITL item raised — decide or it auto-disables"}[t["tier"]]
-                        lines.append(f"  • launchd job failing: {j} — {t['days']}d, tier {t['tier']} ({nxt})")
-                    else:
-                        lines.append(f"  • launchd job failing: {j}")
-                for s in unreachable:
-                    lines.append(f"  • service unreachable: {s}")
-    if retirements:
-        lines.append("")
-        if any("error" in r for r in retirements):
-            lines.append(f"AUTO-DISABLED: {retirements[0].get('error')}")
-        else:
-            lines.append(f"AUTO-DISABLED in the last {RETIREMENTS_DIGEST_DAYS}d ({len(retirements)}):")
-            for r in retirements:
-                lines.append(f"  • {r.get('label')} — {str(r.get('disabled_at', ''))[:10]}: "
-                             f"{r.get('reason')}")
-                lines.append(f"      revert: {r.get('revert')}")
-    # Above this line: jobs a decision retired. Below: jobs left stopped by a failed
-    # rollback, which nobody decided and which the digest must not bury.
-    if unreconciled:
-        lines.append("")
-        lines.append(f"ROLLBACK INCOMPLETE — MAY STILL BE DISABLED ({len(unreconciled)}):")
-        for r in unreconciled:
-            lines.append(f"  • {r.get('label')} — {r.get('detail')}")
-            lines.append(f"      revert: {r.get('revert')}")
-    if doctor is not None:
-        lines.append("")
-        problems = doctor_alert_lines(doctor)
-        if problems:
-            lines.append("DOCTOR:")
-            for problem in problems:
-                lines.append(f"  • {problem}")
-        else:
-            counts = doctor.get("counts") or {}
-            lines.append(f"DOCTOR: no failing checks ✔ (OK={counts.get('OK', '?')} "
-                         f"WARN={counts.get('WARN', '?')} FAIL=0)")
+def _digest_automation_health(lines: list[str], automation_health: dict | None,
+                              automation_health_monitor_status_fn: Callable[[Path, float], str] | None) -> None:
     if automation_health is not None:
         lines.append("")
         # `automation_health_monitor_status_fn` is a one-shot cache in do_email().
@@ -1661,6 +1559,125 @@ def _digest_body(pending: list[dict], expired: list[dict],
             prefix = f"AUTOMATION HEALTH: {counts} — " if counts else "AUTOMATION HEALTH: "
             lines.append(prefix + "monitor fresh, no stale/failed/blocked/interrupted/"
                          "auth-failure/push-failure/missing-result jobs ✔")
+
+
+def _digest_fleet(lines: list[str], fleet: dict | None,
+                  fleet_tiers_by_job: dict[str, dict] | None) -> None:
+    if fleet is not None:
+        lines.append("")
+        if "error" in fleet:
+            lines.append(f"FLEET HEALTH: unreadable — {fleet['error']}")
+        else:
+            failing = fleet.get("failing_jobs") or []
+            unreachable = fleet.get("unreachable_services") or []
+            if not failing and not unreachable:
+                lines.append("FLEET HEALTH: all launchd jobs + local services OK ✔")
+            else:
+                lines.append("FLEET HEALTH:")
+                tiers = fleet_tiers_by_job or {}
+                for j in failing:
+                    t = tiers.get(j)
+                    if t:
+                        nxt = {"banner": f"digest subject at day {FLEET_DIGEST_DAY}",
+                               "digest": f"auto-disable? HITL item at day {FLEET_HITL_DAY}",
+                               "hitl": "HITL item raised — decide or it auto-disables"}[t["tier"]]
+                        lines.append(f"  • launchd job failing: {j} — {t['days']}d, tier {t['tier']} ({nxt})")
+                    else:
+                        lines.append(f"  • launchd job failing: {j}")
+                for s in unreachable:
+                    lines.append(f"  • service unreachable: {s}")
+
+
+def _digest_approvals(lines: list[str], pending: list[dict],
+                      queue_error: Exception | None) -> None:
+    if queue_error:
+        # Named FIRST: every count below is measured over an empty list, so the
+        # reassuring "No approvals pending" must never be read as a clean queue.
+        lines += [f"QUEUE UNREADABLE — {queue_error}",
+                  "The approval counts below are NOT a reading of the queue.", ""]
+    if pending:
+        lines.append(f"AWAITING YOUR APPROVAL ({len(pending)}):")
+        for i in pending:
+            lines.append(f"  • {_item_line(i)}")
+            ctx = (i.get("context") or "").strip()
+            if ctx:
+                lines.append(f"      {ctx[:200]}")
+    else:
+        lines.append("No approvals pending. ✔")
+
+
+def _digest_body(pending: list[dict], expired: list[dict],
+                 patches: list[dict] | None = None,
+                 backlog: dict | None = None,
+                 fleet: dict | None = None,
+                 doctor: dict | None = None,
+                 queue_error: Exception | None = None,
+                 fleet_tiers_by_job: dict[str, dict] | None = None,
+                 retirements: list[dict] | None = None,
+                 unreconciled: list[dict] | None = None,
+                 automation_health: dict | None = None,
+                 automation_health_monitor_status_fn: Callable[[Path, float], str] | None = None) -> str:
+    lines = [f"Order Samurai — HITL approval digest ({_now().date().isoformat()})", ""]
+    _digest_approvals(lines, pending, queue_error)
+    if patches:
+        lines.append("")
+        lines.append(f"VALIDATED PATCHES AWAITING REVIEW ({len(patches)}):")
+        for p in patches:
+            lines.append(f"  • {p['name']} · waiting {_fmt_age(p['mtime'])}")
+        lines.append("      review: python3 bin/review_pending_patch.py --list / --show / "
+                     "--apply / --reject")
+    if expired:
+        lines.append("")
+        lines.append(f"EXPIRED WITHOUT DECISION ({len(expired)}) — stays here until you decide:")
+        for i in expired:
+            what = i.get("skill") or i.get("command") or "?"
+            lines.append(f"  • {i.get('id', '?')} {what} ({i.get('source', '?')}/"
+                         f"{i.get('pillar', '?')}) — expired {str(i.get('expired_at', ''))[:10]}, "
+                         f"{_fmt_age(_parse_ts(i.get('expired_at')))} ago")
+        lines.append("      decide: python3 bin/bushido_check.py --retire <id> --reason '…'  "
+                     "(or --reject / --approve while still pending)")
+    if backlog is not None:
+        lines.append("")
+        if "error" in backlog:
+            lines.append(f"PROPOSED_BACKLOG: unreadable — {backlog['error']}")
+        else:
+            oldest = (_fmt_days(backlog["oldest_days"])
+                      if backlog["oldest_days"] is not None else "?")
+            lines.append(f"PROPOSED_BACKLOG (read-only): {backlog['pending']} pending "
+                         f"(approved:false) · oldest {oldest}")
+    _digest_fleet(lines, fleet, fleet_tiers_by_job)
+    if retirements:
+        lines.append("")
+        if any("error" in r for r in retirements):
+            lines.append(f"AUTO-DISABLED: {retirements[0].get('error')}")
+        else:
+            lines.append(f"AUTO-DISABLED in the last {RETIREMENTS_DIGEST_DAYS}d ({len(retirements)}):")
+            for r in retirements:
+                lines.append(f"  • {r.get('label')} — {str(r.get('disabled_at', ''))[:10]}: "
+                             f"{r.get('reason')}")
+                lines.append(f"      revert: {r.get('revert')}")
+    # Above this line: jobs a decision retired. Below: jobs left stopped by a failed
+    # rollback, which nobody decided and which the digest must not bury.
+    if unreconciled:
+        lines.append("")
+        lines.append(f"ROLLBACK INCOMPLETE — MAY STILL BE DISABLED ({len(unreconciled)}):")
+        for r in unreconciled:
+            lines.append(f"  • {r.get('label')} — {r.get('detail')}")
+            lines.append(f"      revert: {r.get('revert')}")
+    if doctor is not None:
+        lines.append("")
+        problems = doctor_alert_lines(doctor)
+        if problems:
+            lines.append("DOCTOR:")
+            for problem in problems:
+                lines.append(f"  • {problem}")
+        else:
+            counts = doctor.get("counts") or {}
+            lines.append(f"DOCTOR: no failing checks ✔ (OK={counts.get('OK', '?')} "
+                         f"WARN={counts.get('WARN', '?')} FAIL=0)")
+    _digest_automation_health(
+        lines, automation_health, automation_health_monitor_status_fn,
+    )
     lines += ["", f"Review: {DASHBOARD_URL}", "— hitl_alerts.py (daily digest)"]
     return "\n".join(lines)
 

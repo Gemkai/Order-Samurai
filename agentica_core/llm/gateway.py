@@ -215,6 +215,54 @@ class StrictCallError(RuntimeError):
         super().__init__(kind)
 
 
+def _validate_strict_request(prompt, system, model, timeout_s, max_output_chars, json_schema):
+    if model not in ("claude-sonnet-4-6", "claude-sonnet-5-5"):
+        raise StrictCallError("model_not_allowed")
+    if (not isinstance(prompt, str) or len(prompt.encode()) > 24000
+            or not isinstance(system, str) or len(system) > 8000
+            or not isinstance(timeout_s, (int, float)) or not math.isfinite(timeout_s)
+            or not 0 < timeout_s <= 45 or not 0 < max_output_chars <= 4000):
+        raise StrictCallError("invalid_request")
+    schema_text = None
+    if json_schema is not None:
+        try:
+            if not isinstance(json_schema, dict):
+                raise ValueError("invalid schema")
+            schema_text = json.dumps(json_schema, separators=(",", ":"), allow_nan=False)
+            if len(schema_text) > 8000:
+                raise ValueError("schema too large")
+        except (ValueError, TypeError):
+            raise StrictCallError("invalid_request") from None
+    return schema_text
+
+
+def _parse_strict_reply(output, schema_text, model, max_output_chars, started):
+    try:
+        doc = json.loads(output)
+        text = doc.get("result")
+        structured = None
+        if schema_text is not None:
+            structured = doc.get("structured_output")
+            if not isinstance(structured, dict):
+                raise ValueError("missing structured result")
+            # Ignore CLI wrapper prose; the caller validates the domain fields.
+            text = json.dumps(structured, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        if (doc.get("is_error") is not False or doc.get("subtype") != "success"
+                or set(doc.get("modelUsage", {})) != {model}
+                or not isinstance(text, str) or not text.strip() or len(text) > max_output_chars):
+            raise ValueError("invalid result")
+        cost = float(doc.get("total_cost_usd", 0))
+        if not math.isfinite(cost) or cost < 0:
+            raise ValueError("invalid cost")
+    except (ValueError, TypeError, AttributeError):
+        raise StrictCallError("invalid_reply") from None
+    reply = {"text": text.strip(), "model": model, "cost_usd": cost,
+             "latency_ms": round((time.monotonic() - started) * 1000)}
+    if structured is not None:
+        reply["structured"] = structured
+    return reply
+
+
 class LLMGateway:
     def __init__(self, env_path: Optional[str] = None):
         if env_path and os.path.exists(env_path):
@@ -252,23 +300,9 @@ class LLMGateway:
     def generate_strict(self, *, prompt, system, model="claude-sonnet-4-6",
                         timeout_s=45, max_output_chars=4000, json_schema=None):
         """One isolated Claude login call, with no fallback or prompt telemetry."""
-        if model not in ("claude-sonnet-4-6", "claude-sonnet-5-5"):
-            raise StrictCallError("model_not_allowed")
-        if (not isinstance(prompt, str) or len(prompt.encode()) > 24000
-                or not isinstance(system, str) or len(system) > 8000
-                or not isinstance(timeout_s, (int, float)) or not math.isfinite(timeout_s)
-                or not 0 < timeout_s <= 45 or not 0 < max_output_chars <= 4000):
-            raise StrictCallError("invalid_request")
-        schema_text = None
-        if json_schema is not None:
-            try:
-                if not isinstance(json_schema, dict):
-                    raise ValueError("invalid schema")
-                schema_text = json.dumps(json_schema, separators=(",", ":"), allow_nan=False)
-                if len(schema_text) > 8000:
-                    raise ValueError("schema too large")
-            except (ValueError, TypeError):
-                raise StrictCallError("invalid_request") from None
+        schema_text = _validate_strict_request(
+            prompt, system, model, timeout_s, max_output_chars, json_schema
+        )
         executable = shutil.which("claude")
         if not executable:
             candidate = Path.home() / ".local/bin/claude"
@@ -341,30 +375,7 @@ class LLMGateway:
                     proc.stdout.close()
             if failures or proc.returncode != 0:
                 raise StrictCallError(failures[0] if failures else "unavailable")
-        try:
-            doc = json.loads(output)
-            text = doc.get("result")
-            structured = None
-            if schema_text is not None:
-                structured = doc.get("structured_output")
-                if not isinstance(structured, dict):
-                    raise ValueError("missing structured result")
-                # Ignore CLI wrapper prose; the caller validates the domain fields.
-                text = json.dumps(structured, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
-            if (doc.get("is_error") is not False or doc.get("subtype") != "success"
-                    or set(doc.get("modelUsage", {})) != {model}
-                    or not isinstance(text, str) or not text.strip() or len(text) > max_output_chars):
-                raise ValueError("invalid result")
-            cost = float(doc.get("total_cost_usd", 0))
-            if not math.isfinite(cost) or cost < 0:
-                raise ValueError("invalid cost")
-        except (ValueError, TypeError, AttributeError):
-            raise StrictCallError("invalid_reply") from None
-        reply = {"text": text.strip(), "model": model, "cost_usd": cost,
-                 "latency_ms": round((time.monotonic() - started) * 1000)}
-        if structured is not None:
-            reply["structured"] = structured
-        return reply
+        return _parse_strict_reply(output, schema_text, model, max_output_chars, started)
 
     def generate_text(
         self,
