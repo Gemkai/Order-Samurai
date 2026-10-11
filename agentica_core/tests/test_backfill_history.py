@@ -296,3 +296,92 @@ def test_empty_source_creates_missing_history_store(
     assert bh.backfill(store=store) == 0
     assert store.exists()
     assert _rows(store) == []
+
+
+def _seed_history_for_failed_rebuild(store):
+    rows = [
+        {"ts": f"2026-06-{day:02d}T00:00:00+00:00", "kind": "live",
+         "values": {_LIVE_ONLY: float(day), _WEEKLY: 42.0}}
+        for day in (5, 10, 11)
+    ]
+    rows.append({"ts": "2026-06-08T00:00:00+00:00", "week": "2026-W24",
+                 "kind": "weekly", "values": {_WEEKLY: 999.0},
+                 "idle": [_LIVE_ONLY]})
+    previous = ("not-json: preserve these bytes\r\n"
+                + "\n".join(json.dumps(row) for row in rows) + "\n").encode("utf-8")
+    store.write_bytes(previous)
+    return previous
+
+
+def test_backfill_fsync_failure_preserves_previous_bytes(tmp_path, monkeypatch):
+    """A failed fsync propagates its OSError and preserves every previous history byte."""
+    import errno
+    import os
+
+    _stub_two_weeks(monkeypatch)
+    monkeypatch.setenv("BACKFILL_CARRY_FORWARD", "true")
+    monkeypatch.setattr(bh.agg, "recorded_idle_still_valid", lambda _week: True)
+    store = tmp_path / "hist.jsonl"
+    previous = _seed_history_for_failed_rebuild(store)
+    original_fsync = os.fsync
+    failed = False
+
+    def fail_first_fsync(fd):
+        nonlocal failed
+        if not failed:
+            failed = True
+            raise OSError(errno.EIO, "injected history fsync failure")
+        # A restore may fsync too; allow it to complete normally.
+        return original_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fail_first_fsync)
+    with pytest.raises(OSError) as caught:
+        bh.backfill(store=store)
+
+    assert failed
+    assert caught.value.errno == errno.EIO
+    assert store.read_bytes() == previous
+
+
+def test_backfill_write_failure_preserves_previous_bytes(tmp_path, monkeypatch):
+    """An OS write failure propagates its OSError and preserves every previous history byte."""
+    import errno
+    import signal
+
+    resource = pytest.importorskip("resource")
+    if not hasattr(resource, "RLIMIT_FSIZE") or not hasattr(signal, "SIGXFSZ"):
+        pytest.skip("File-size limits and SIGXFSZ are required")
+
+    _stub_two_weeks(monkeypatch)
+    monkeypatch.setenv("BACKFILL_CARRY_FORWARD", "true")
+    monkeypatch.setattr(bh.agg, "recorded_idle_still_valid", lambda _week: True)
+    original_week_row = bh._week_row
+
+    def large_week_row(week, records):
+        row = original_week_row(week, records)
+        row["values"].update({f"bow/Activity/Metric_{i:04d}": float(i) for i in range(512)})
+        return row
+
+    monkeypatch.setattr(bh, "_week_row", large_week_row)
+    store = tmp_path / "hist.jsonl"
+    previous = _seed_history_for_failed_rebuild(store)
+    limit = 4096
+    assert len(previous) < limit
+    old_limits = resource.getrlimit(resource.RLIMIT_FSIZE)
+    if old_limits[1] != resource.RLIM_INFINITY and old_limits[1] < limit:
+        pytest.skip("Hard file-size limit is too small for this test")
+    old_handler = signal.getsignal(signal.SIGXFSZ)
+
+    try:
+        signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+        resource.setrlimit(resource.RLIMIT_FSIZE, (limit, old_limits[1]))
+        with pytest.raises(OSError) as caught:
+            bh.backfill(store=store)
+    finally:
+        try:
+            resource.setrlimit(resource.RLIMIT_FSIZE, old_limits)
+        finally:
+            signal.signal(signal.SIGXFSZ, old_handler)
+
+    assert caught.value.errno == errno.EFBIG
+    assert store.read_bytes() == previous
