@@ -65,13 +65,16 @@ if str(_REPO_ROOT) not in sys.path:
 # payload build, so this adds no new import weight for the live consumer.
 # ---------------------------------------------------------------------------
 from agentica_core.aggregate import (  # noqa: E402
+    _approved_unexecuted_hitl,
     _calibrate_coefficients,  # noqa: F401 -- re-export only, checked by test_kernel_drift.py
     _estimated_agent_time_saved,
     _estimated_cost_savings,
     _estimated_human_time_saved,
     _kill_chains_disrupted,
+    _lane_pending_age,
     _parse_iso,  # noqa: F401 -- re-export only, checked by test_kernel_drift.py
     _pending_chain_proposals,
+    _stale_branch_count,
 )
 
 
@@ -310,6 +313,36 @@ REGISTRY: list[dict[str, Any]] = [
         "key": "Pending_Chain_Proposals",
         "source": "state/proposed_kill_chains.json",
         "reducer": _pending_chain_proposals,
+        "tier": "AUTO",
+    },
+    # ------------------------------------------------------------------
+    # Git / factory hygiene trio (LIVE 2026-09-23; intake approved 2026-09-21).
+    # Two of the three sources live OUTSIDE the Order Samurai root and are
+    # declared with ../.. so verify_live_sources still stats them — a
+    # telemetry./verifier. logical prefix would exempt them from the
+    # existence check, which is exactly the desync the gate exists to catch.
+    # ------------------------------------------------------------------
+    {
+        "pillar": "bow",
+        "metric": "Stale_Branch_Count",
+        # git for-each-ref / merge-base against the AgenticaOS checkout that holds this
+        # root; the open-PR exclusion list (branch_adjudicate dry-run report) is optional.
+        "source": "../../.git",
+        "reducer": _stale_branch_count,
+        "tier": "AUTO",
+    },
+    {
+        "pillar": "bow",
+        "metric": "Lane_Pending_Age",
+        "source": "../../Execution/factory/state/ledger.jsonl",
+        "reducer": _lane_pending_age,
+        "tier": "AUTO",
+    },
+    {
+        "pillar": "bow",
+        "metric": "Approved_Unexecuted_HITL",
+        "source": "state/hitl_queue.json",
+        "reducer": _approved_unexecuted_hitl,
         "tier": "AUTO",
     },
 ]

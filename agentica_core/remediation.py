@@ -252,6 +252,41 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
     boolean channel only — tier 1's numeric before/after pair still wins, because
     _has_engine_verdict already excludes any row carrying one, so a measured
     non-improvement can never be overturned by a sidecar row."""
+    snaps, uses, exec_rows, rejudged = _load_efficacy_inputs(
+        history_path, records, exec_log_path, rejudge_path
+    )
+    in_window = _window_predicate(window_days, now)
+    events: list[dict] = []
+    # A validated patch measured inside an isolated worktree is useful evidence,
+    # but it did not change the live repository. Keep proposal efficacy separate
+    # so a promising candidate cannot inflate the applied/live success rate.
+    proposal_events: list[dict] = []
+
+    attempt_counts = _count_attempts(exec_rows, in_window)
+
+    _append_fire_time_events(exec_rows, events, proposal_events)
+
+    _append_engine_verdict_events(exec_rows, rejudged, events)
+
+    for metric, rem in insights.REMEDIATION.items():
+        rule = insights.METRIC_RULES.get(metric)
+        if not rule:
+            continue  # need a direction to judge improvement
+        skill = rem["skill"]
+        if skill not in uses:
+            continue
+        tl = _metric_timeline(metric, rule, snaps)
+        if len(tl) < 2:
+            continue
+        window_events = _snapshot_window_events(metric, rem, rule, skill, uses, tl)
+        events.extend(window_events.values())
+
+    return _build_efficacy_summary(
+        events, proposal_events, in_window, window_days, attempt_counts
+    )
+
+
+def _load_efficacy_inputs(history_path, records, exec_log_path, rejudge_path):
     history_path = history_path or insights.default_history_path()
     if records is None:
         # Use aggregate.load_records so entries are normalized + validated (same path as
@@ -273,13 +308,10 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
         base = Path(exec_log_path) if exec_log_path is not None else _EXEC_LOG
         rejudge_path = base.parent / _REJUDGE_SIDECAR_NAME
     rejudged = load_rejudged_hashes(rejudge_path)
-    in_window = _window_predicate(window_days, now)
-    events: list[dict] = []
-    # A validated patch measured inside an isolated worktree is useful evidence,
-    # but it did not change the live repository. Keep proposal efficacy separate
-    # so a promising candidate cannot inflate the applied/live success rate.
-    proposal_events: list[dict] = []
+    return snaps, uses, exec_rows, rejudged
 
+
+def _count_attempts(exec_rows, in_window):
     # ── Autonomous attempt counting (§A1, channel filter in _is_autonomous_attempt).
     # Counted twice over: once inside the trailing window (the headline, so an engine
     # that stopped firing reads as a data gap instead of a frozen lifetime rate) and
@@ -298,7 +330,11 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
         completed += row.get("status") == "done"
         skill = row["skill"]
         attempts_by_skill[skill] = attempts_by_skill.get(skill, 0) + 1
+    return (attempted, attempted_lifetime, completed, completed_lifetime,
+            attempts_by_skill)
 
+
+def _append_fire_time_events(exec_rows, events, proposal_events):
     # ── Direct events from fire-time measurements: the engine records the metric's
     # live value before and after each autonomous run (reflex-engine.ts §A1), so
     # these rows are judged on their own before/after instead of waiting for the
@@ -338,6 +374,8 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
             # of every autonomous numerator and denominator.
             events.append(event)
 
+
+def _append_engine_verdict_events(exec_rows, rejudged, events):
     # ── Tier 2: engine verdict. The row has no numeric pair, but the run SETTLED
     # (done/no_change) and the engine judged the outcome and wrote it as `improved`.
     # A boolean cannot tell a regression from a no-op, so False grades "flat" —
@@ -372,81 +410,74 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
             event["late_rejudge"] = True
         events.append(event)
 
-    for metric, rem in insights.REMEDIATION.items():
-        rule = insights.METRIC_RULES.get(metric)
-        if not rule:
-            continue  # need a direction to judge improvement
-        skill = rem["skill"]
-        if skill not in uses:
-            continue
-        # metric timeline: (dt, numeric value) from snapshots whose key ends in /<metric>.
-        # Per-session metrics (rule["per"] == "session") are normalized by that same
-        # snapshot's Session_Count before grading -- the same normalization annotate()
-        # and correlation.py apply (SENSEI-6). Without it, a raw cumulative total is
-        # compared directly against a per-session warn/fail bar and reads as a deep
-        # breach regardless of the real per-session rate.
-        tl = []
-        for dt, vals in snaps:
-            sessions = None
-            if rule.get("per") == "session":
-                sessions = next(
-                    (float(v2) for k2, v2 in vals.items()
-                     if k2.split("/")[-1] == "Session_Count" and isinstance(v2, (int, float)) and v2 > 0),
-                    None,
-                )
-                if sessions is None:
-                    continue  # can't normalize this snapshot -> can't honestly grade it
-            for k, v in vals.items():
-                if k.split("/")[-1] == metric and isinstance(v, (int, float)):
-                    tl.append((dt, float(v) / sessions if sessions else float(v)))
-        tl.sort()
-        if len(tl) < 2:
-            continue
-        # Deduplicate per snapshot WINDOW (before_ts, after_ts): the metric's
-        # movement across one window can only be attributed once, however many
-        # log entries land inside it. Keyed on snapshot TIMESTAMPS, not values —
-        # value-keyed dedup conflated distinct windows whose before/after happened
-        # to be equal, hiding real repeat runs (the reflex engine's 2026-06-09..14
-        # simplify successes were invisible on the dashboard). Actor is NOT in the
-        # key: a reflex-fired run also lands in session telemetry as a "human" use,
-        # so actor-keyed dedup recorded one physical run twice. When both actors
-        # share a window, reflex wins — exec_log has ground-truth attribution.
-        window_events: dict[tuple[datetime, datetime], dict] = {}
-        for ub, actor in uses[skill]:
-            before = [(dt, v) for dt, v in tl if dt <= ub and insights._health(v, rule) < 40]
-            after = [(dt, v) for dt, v in tl if dt > ub]
-            if not before or not after:
-                continue  # skill not used while flagged, or no post-use snapshot
-            va, vc = before[-1][1], after[0][1]
-            window = (before[-1][0], after[0][0])
-            existing = window_events.get(window)
-            if existing is not None:
-                if actor == "reflex" and existing["actor"] == "human":
-                    existing["actor"] = "reflex"
-                    existing["used_at"] = ub.isoformat()
-                continue
-            improved = (vc > va) if rule["dir"] == "higher" else (vc < va)
-            worse = (vc < va) if rule["dir"] == "higher" else (vc > va)
-            outcome = "improved" if improved else ("regressed" if worse else "flat")
-            window_events[window] = {
-                "metric": metric, "skill": skill, "command": rem["command"],
-                "before": round(va, 2), "after": round(vc, 2), "outcome": outcome,
-                "used_at": ub.isoformat(), "actor": actor,
-                "evidence": "snapshot_correlation",
-            }
-        events.extend(window_events.values())
 
-    # Split causal channels before computing the headline. Snapshot correlation
-    # from a human session remains useful observational evidence, but it cannot
-    # raise (or lower) an autonomous engine score.
-    human_events = [e for e in events if e.get("actor") != "reflex"]
-    events_lifetime = [e for e in events if e.get("actor") == "reflex"]
+def _metric_timeline(metric, rule, snaps):
+    # metric timeline: (dt, numeric value) from snapshots whose key ends in /<metric>.
+    # Per-session metrics (rule["per"] == "session") are normalized by that same
+    # snapshot's Session_Count before grading -- the same normalization annotate()
+    # and correlation.py apply (SENSEI-6). Without it, a raw cumulative total is
+    # compared directly against a per-session warn/fail bar and reads as a deep
+    # breach regardless of the real per-session rate.
+    tl = []
+    for dt, vals in snaps:
+        sessions = None
+        if rule.get("per") == "session":
+            sessions = next(
+                (float(v2) for k2, v2 in vals.items()
+                 if k2.split("/")[-1] == "Session_Count" and isinstance(v2, (int, float)) and v2 > 0),
+                None,
+            )
+            if sessions is None:
+                continue  # can't normalize this snapshot -> can't honestly grade it
+        for k, v in vals.items():
+            if k.split("/")[-1] == metric and isinstance(v, (int, float)):
+                tl.append((dt, float(v) / sessions if sessions else float(v)))
+    tl.sort()
+    return tl
 
-    # Headline counters follow the same trailing window as `attempted`; the lifetime
-    # tallies stay available so no downstream reader loses the long view.
-    events = [e for e in events_lifetime if in_window(parse_ts(e["used_at"]))]
-    human_events = [e for e in human_events if in_window(parse_ts(e["used_at"]))]
-    proposal_events = [e for e in proposal_events if in_window(parse_ts(e["used_at"]))]
+
+def _snapshot_window_events(metric, rem, rule, skill, uses, tl):
+    # Deduplicate per snapshot WINDOW (before_ts, after_ts): the metric's
+    # movement across one window can only be attributed once, however many
+    # log entries land inside it. Keyed on snapshot TIMESTAMPS, not values —
+    # value-keyed dedup conflated distinct windows whose before/after happened
+    # to be equal, hiding real repeat runs (the reflex engine's 2026-06-09..14
+    # simplify successes were invisible on the dashboard). Actor is NOT in the
+    # key: a reflex-fired run also lands in session telemetry as a "human" use,
+    # so actor-keyed dedup recorded one physical run twice. When both actors
+    # share a window, reflex wins — exec_log has ground-truth attribution.
+    window_events: dict[tuple[datetime, datetime], dict] = {}
+    for ub, actor in uses[skill]:
+        before = [(dt, v) for dt, v in tl if dt <= ub and insights._health(v, rule) < 40]
+        after = [(dt, v) for dt, v in tl if dt > ub]
+        if not before or not after:
+            continue  # skill not used while flagged, or no post-use snapshot
+        va, vc = before[-1][1], after[0][1]
+        window = (before[-1][0], after[0][0])
+        existing = window_events.get(window)
+        if existing is not None:
+            if actor == "reflex" and existing["actor"] == "human":
+                existing["actor"] = "reflex"
+                existing["used_at"] = ub.isoformat()
+            continue
+        improved = (vc > va) if rule["dir"] == "higher" else (vc < va)
+        worse = (vc < va) if rule["dir"] == "higher" else (vc > va)
+        outcome = "improved" if improved else ("regressed" if worse else "flat")
+        window_events[window] = {
+            "metric": metric, "skill": skill, "command": rem["command"],
+            "before": round(va, 2), "after": round(vc, 2), "outcome": outcome,
+            "used_at": ub.isoformat(), "actor": actor,
+            "evidence": "snapshot_correlation",
+        }
+    return window_events
+
+
+def _build_efficacy_summary(events, proposal_events, in_window, window_days, attempt_counts):
+    (attempted, attempted_lifetime, completed, completed_lifetime,
+     attempts_by_skill) = attempt_counts
+    events, human_events, proposal_events, events_lifetime = _window_efficacy_events(
+        events, proposal_events, in_window
+    )
 
     applied = len(events)
     improved = sum(1 for e in events if e["outcome"] == "improved")
@@ -456,13 +487,7 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
     improved_lifetime = sum(1 for e in events_lifetime if e["outcome"] == "improved")
     proposed_count = len(proposal_events)
     proposed_improved = sum(1 for e in proposal_events if e["outcome"] == "improved")
-    by_skill: dict[str, dict] = {}
-    for skill, n in attempts_by_skill.items():
-        by_skill[skill] = {"applied": 0, "improved": 0, "attempted": n}
-    for e in events:
-        b = by_skill.setdefault(e["skill"], {"applied": 0, "improved": 0, "attempted": 0})
-        b["applied"] += 1
-        b["improved"] += e["outcome"] == "improved"
+    by_skill = _summarize_by_skill(attempts_by_skill, events)
     # A window with zero autonomous attempts is a DATA GAP, not a 0% score: an engine
     # that has not fired in N days must say so out loud. (Lifetime callers — window_days
     # None — keep the old "attempted == 0 -> improvement_rate None" behaviour.)
@@ -542,6 +567,32 @@ def efficacy(history_path: Path | None = None, records: list[dict] | None = None
                  "is observational-only, scheduled for deletion; proposal-only candidate "
                  "measurements are reported separately and never counted as live applications"),
     }
+
+
+def _window_efficacy_events(events, proposal_events, in_window):
+    # Split causal channels before computing the headline. Snapshot correlation
+    # from a human session remains useful observational evidence, but it cannot
+    # raise (or lower) an autonomous engine score.
+    human_events = [e for e in events if e.get("actor") != "reflex"]
+    events_lifetime = [e for e in events if e.get("actor") == "reflex"]
+
+    # Headline counters follow the same trailing window as `attempted`; the lifetime
+    # tallies stay available so no downstream reader loses the long view.
+    events = [e for e in events_lifetime if in_window(parse_ts(e["used_at"]))]
+    human_events = [e for e in human_events if in_window(parse_ts(e["used_at"]))]
+    proposal_events = [e for e in proposal_events if in_window(parse_ts(e["used_at"]))]
+    return events, human_events, proposal_events, events_lifetime
+
+
+def _summarize_by_skill(attempts_by_skill, events):
+    by_skill: dict[str, dict] = {}
+    for skill, n in attempts_by_skill.items():
+        by_skill[skill] = {"applied": 0, "improved": 0, "attempted": n}
+    for e in events:
+        b = by_skill.setdefault(e["skill"], {"applied": 0, "improved": 0, "attempted": 0})
+        b["applied"] += 1
+        b["improved"] += e["outcome"] == "improved"
+    return by_skill
 
 
 def main() -> int:
