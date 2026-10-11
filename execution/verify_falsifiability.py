@@ -265,7 +265,11 @@ def run_falsifiability(checks: dict | None = None, fixtures_root: Path | None = 
             bad_ok, bad_detail = fn(bad_dir)
             clean_ok, clean_detail = fn(clean_dir)
         except Exception as exc:  # noqa: BLE001 - a raising check is a finding, not a stop
-            results[name] = {"status": "error", "detail": f"{type(exc).__name__}: {exc}"}
+            # The exception type, plus the module name of an import failure -- never the
+            # message, which can carry a secret into --json output (W0b G5). Bounded.
+            module = getattr(exc, "name", None) if isinstance(exc, ImportError) else None
+            detail = type(exc).__name__ + (f": {module}" if module else "")
+            results[name] = {"status": "error", "detail": detail[:200]}
             continue
         # The bad fixture must FAIL the check (ok is False); the clean fixture must PASS (ok is True).
         falsifiable = (bad_ok is False) and (clean_ok is True)
