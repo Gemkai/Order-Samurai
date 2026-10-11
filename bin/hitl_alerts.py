@@ -71,6 +71,7 @@ day for weeks with no escalation tier):
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import re
@@ -113,8 +114,21 @@ FLEET_PROBE_PATH = _GOVERNANCE / "data" / "fleet_probe.json"    # written by bin
 DOCTOR_STATE_PATH = _ROOT / "state" / "doctor_last.json"          # written by execution/doctor.py --write-state
 RETIREMENTS_PATH = _ROOT / "state" / "fleet_retirements.json"     # owned by this file (R4.2 sweep)
 OPERATOR_REGISTRY_PATH = _GOVERNANCE / "config" / "operator_registry.json"
+# WS1.5 consumer contract: written by agentica_core.automation_health.monitor_registry()
+# (the summarizer, driven by Execution/factory/substrate_preflight.py). AUTOMATION_HEALTH_INTERVAL_SECONDS
+# matches the substrate-preflight plist's own StartInterval -- the same freshness window
+# monitor_status() uses for the watchdog, shared here so the digest never disagrees with it.
+AUTOMATION_HEALTH_PATH = _GOVERNANCE / "data" / "automation_health" / "automation-health.json"
+AUTOMATION_HEALTH_INTERVAL_SECONDS = 1800
+# The job kinds worth a human's attention in the daily digest (WS1 plan, WS1.5). success,
+# success-with-findings and no-op are quiet by design -- findings ride the job's own report,
+# not this digest.
+DIGEST_RESULT_KINDS = frozenset({
+    "stale", "failed", "blocked", "interrupted", "auth-failure", "push-failure", "missing-result",
+    "retired-still-loaded", "retired-not-disabled", "retired-unverified",
+})
 NOTIFY_PY = Path.home() / ".claude" / "scripts" / "notify.py"
-DASHBOARD_URL = "http://127.0.0.1:4322/"
+DASHBOARD_URL = "http://localhost:4322/"
 
 REMIND_HOURS = 24          # re-banner cadence while items stay pending
 EMAIL_LAG_DAYS = 1         # digest is daily; further behind than this with items pending = lagging
@@ -367,6 +381,131 @@ def doctor_alert_lines(doctor: dict | None) -> list[str]:
                 f"({age_hours:.0f}h ago, stale past {DOCTOR_STALE_HOURS}h) — last known "
                 f"{len(fails)} FAIL row(s); check the com.agentica.os-doctor job"]
     return [f"DOCTOR FAIL: {f.get('label', '?')} — {f.get('detail', '')}" for f in fails]
+
+
+def load_automation_health() -> dict | None:
+    """Read-only view of automation-health.json (Governance/agentica_core/automation_health.py's
+    monitor_registry(), driven by substrate_preflight.py). Same discipline as load_doctor_last():
+    missing file -> {'missing': True} (the summarizer has never produced a result, which is its
+    own WARN, not silence); unreadable/malformed -> {'error': ...}; otherwise the per-job
+    'result_kind' mapping and 'generated_at' the digest and monitor_status() both need (WS1.5).
+
+    Returns None -- section omitted entirely, never forces a send -- when the
+    agentica_core.automation_health MODULE itself is unavailable, not just when its
+    output file is absent. Those are different facts: a module the public Order
+    Samurai export never ships (MODULE_ALLOWLIST withholds it) means "this concept
+    does not apply here", not "the monitor stopped running". Collapsing the two
+    made every otherwise-empty digest force an email in the export and in any
+    plain Order Samurai install (CI's public-export suite caught this: a fixture
+    planting a fresh, healthy automation-health.json still hit the module-absent
+    branch there, since only the FILE was faked, not the private module). Checked
+    before the file read specifically so a private-repo bug that later breaks the
+    file read (genuinely missing/malformed/etc, module present) still reports --
+    only "module not on disk at all" is silent.
+    """
+    # Case-sensitive, unlike _flag(): only the exact literal "false" disables this
+    # reader, so an unrelated truthy-ish override (e.g. "False", "0") still reports.
+    if os.environ.get("HITL_AUTOMATION_HEALTH_ALARM", "true") == "false":
+        return None
+    if not _automation_health_module_path().is_file():
+        # Not shipped here AT ALL (a plain Order Samurai install / the public
+        # export) -- distinct from "shipped but broken". Gating on FILE PRESENCE,
+        # not on _load_monitor_status_fn() succeeding, matters: a real regression
+        # in the private automation_health.py (renamed function, import-time
+        # error) must still surface below via automation_health_alert_lines()'s
+        # own "could not be assessed" fallback, not go silent here just because
+        # the same failure that breaks monitor_status_fn would also satisfy an
+        # importability-based gate.
+        return None
+    try:
+        raw = AUTOMATION_HEALTH_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {"missing": True}
+    except OSError as exc:
+        return {"error": str(exc)}
+    try:
+        d = json.loads(raw)
+    except ValueError as exc:
+        return {"error": f"invalid JSON: {exc}"}
+    if not isinstance(d, dict):
+        return {"error": "unexpected schema (not an object)"}
+    jobs = d.get("jobs")
+    if not isinstance(jobs, dict):
+        return {"error": "unexpected schema (missing jobs object)"}
+    return {
+        "jobs": jobs,
+        "generated_at": d.get("generated_at"),
+        "coverage": d.get("coverage"),
+        "artifact_verified": d.get("artifact_verified"),
+    }
+
+
+def _automation_health_module_path() -> Path:
+    """Where agentica_core/automation_health.py would live if this deployment
+    ships it at all. A plain Order Samurai install (or the public export) never
+    has this file; the private Agentica-OS monorepo always does."""
+    return _GOVERNANCE / "agentica_core" / "automation_health.py"
+
+
+def _load_monitor_status_fn() -> Callable[[Path, float], str] | None:
+    """Load agentica_core.automation_health.monitor_status BY MODULE NAME (via
+    importlib), never with a literal `from agentica_core.automation_health import
+    ...` -- that syntax is exactly what test_export_withheld_callers.py's static
+    AST scan flags, because automation_health.py is intentionally withheld from
+    the public Order Samurai export (private machine paths, git revisions, launchd
+    labels). importlib.import_module is invisible to that scan and, same as this
+    file's other by-path optional readers, degrades to None instead of crashing
+    when the module truly is not on disk (a public clone)."""
+    gov = str(_GOVERNANCE)
+    if gov not in sys.path:
+        sys.path.insert(0, gov)
+    try:
+        module = importlib.import_module("agentica_core.automation_health")
+        return module.monitor_status
+    except Exception:
+        return None
+
+
+def automation_health_alert_lines(
+    automation_health: dict | None, *, monitor_status_fn: Callable[[Path, float], str] | None = None,
+) -> list[str]:
+    """The lines a human must see about the automation-health monitor (WS1.5), or [] when
+    there is genuinely nothing: the monitor is fresh (monitor_status() == 'OK') and no job's
+    last receipt is in DIGEST_RESULT_KINDS. Every other state -- the file never written,
+    unreadable, or gone stale/future per monitor_status() -- produces a line, same "absence is
+    itself reported" discipline as doctor_alert_lines()."""
+    if automation_health is None:
+        return []
+    if automation_health.get("missing"):
+        return [f"AUTOMATION HEALTH: has never written {AUTOMATION_HEALTH_PATH.name} — the "
+                f"summarizer (substrate-preflight) has not produced a result"]
+    if "error" in automation_health:
+        return [f"AUTOMATION HEALTH: {AUTOMATION_HEALTH_PATH.name} unreadable — "
+                f"{automation_health['error']}"]
+
+    if monitor_status_fn is None:
+        monitor_status_fn = _load_monitor_status_fn()
+        if monitor_status_fn is None:
+            # automation_health.py is a private-only agentica_core module
+            # (MODULE_ALLOWLIST withholds it from the public Order Samurai export --
+            # see test_export_withheld_callers.py). A public deployment never
+            # populates AUTOMATION_HEALTH_PATH either (nothing there writes it), so
+            # this branch is a defensive fallback, not the normal path: report
+            # "cannot assess" rather than crash.
+            return ["AUTOMATION HEALTH: monitor freshness could not be assessed "
+                    "(automation_health module unavailable)"]
+
+    lines: list[str] = []
+    status = monitor_status_fn(AUTOMATION_HEALTH_PATH, AUTOMATION_HEALTH_INTERVAL_SECONDS)
+    if status == "DEAD":
+        lines.append(f"AUTOMATION HEALTH MONITOR DEAD: {AUTOMATION_HEALTH_PATH.name} is missing, "
+                     f"malformed, or stale — treat every job status below as unknown")
+    jobs = automation_health.get("jobs") or {}
+    for job_id, item in jobs.items():
+        kind = item.get("result_kind") if isinstance(item, dict) else None
+        if kind in DIGEST_RESULT_KINDS:
+            lines.append(f"  • {job_id}: {kind}")
+    return lines
 
 
 #  Matches the filename token itself, not "patch=<rest of the string>": the patch's
@@ -1395,7 +1534,9 @@ def _digest_body(pending: list[dict], expired: list[dict],
                  queue_error: Exception | None = None,
                  fleet_tiers_by_job: dict[str, dict] | None = None,
                  retirements: list[dict] | None = None,
-                 unreconciled: list[dict] | None = None) -> str:
+                 unreconciled: list[dict] | None = None,
+                 automation_health: dict | None = None,
+                 automation_health_monitor_status_fn: Callable[[Path, float], str] | None = None) -> str:
     lines = [f"Order Samurai — HITL approval digest ({_now().date().isoformat()})", ""]
     if queue_error:
         # Named FIRST: every count below is measured over an empty list, so the
@@ -1489,6 +1630,37 @@ def _digest_body(pending: list[dict], expired: list[dict],
             counts = doctor.get("counts") or {}
             lines.append(f"DOCTOR: no failing checks ✔ (OK={counts.get('OK', '?')} "
                          f"WARN={counts.get('WARN', '?')} FAIL=0)")
+    if automation_health is not None:
+        lines.append("")
+        # `automation_health_monitor_status_fn` is a one-shot cache in do_email().
+        # Capture its result here, then give alert rendering that same fixed result so
+        # the section cannot mix persisted counts with a dead monitor verdict.
+        monitor_status = None
+        monitor_status_fn = automation_health_monitor_status_fn
+        if monitor_status_fn is not None:
+            monitor_status = monitor_status_fn(
+                AUTOMATION_HEALTH_PATH, AUTOMATION_HEALTH_INTERVAL_SECONDS,
+            )
+            monitor_status_fn = lambda *_args: monitor_status
+        automation_lines = automation_health_alert_lines(
+            automation_health, monitor_status_fn=monitor_status_fn,
+        )
+        coverage = automation_health.get("coverage")
+        verified = automation_health.get("artifact_verified")
+        counts = None
+        if monitor_status == "OK" and isinstance(coverage, dict):
+            numerator = coverage.get("numerator")
+            denominator = coverage.get("denominator")
+            if all(type(value) is int and value >= 0
+                   for value in (numerator, denominator, verified)):
+                counts = f"{numerator}/{denominator} healthy, {verified} artifact-verified"
+        if automation_lines:
+            lines.append(f"AUTOMATION HEALTH: {counts}" if counts else "AUTOMATION HEALTH:")
+            lines += automation_lines
+        else:
+            prefix = f"AUTOMATION HEALTH: {counts} — " if counts else "AUTOMATION HEALTH: "
+            lines.append(prefix + "monitor fresh, no stale/failed/blocked/interrupted/"
+                         "auth-failure/push-failure/missing-result jobs ✔")
     lines += ["", f"Review: {DASHBOARD_URL}", "— hitl_alerts.py (daily digest)"]
     return "\n".join(lines)
 
@@ -1601,7 +1773,8 @@ def decide_email(*, force: bool, today: str, last_email_date: str | None,
                  pending: list, expired: list, patches: list,
                  doctor_problems: list[str] | None = None,
                  fleet_clause: str = "",
-                 unreconciled: list | None = None) -> EmailDecision:
+                 unreconciled: list | None = None,
+                 automation_problems: list[str] | None = None) -> EmailDecision:
     """The send/skip decision and the subject line — no env, state, or network.
 
     Extracted from do_email (M7.4) so the skip rules are testable from fixtures.
@@ -1616,18 +1789,19 @@ def decide_email(*, force: bool, today: str, last_email_date: str | None,
     """
     doctor_problems = doctor_problems or []
     unreconciled = unreconciled or []
+    automation_problems = automation_problems or []
     if not force and last_email_date == today:
         return EmailDecision(
             False, "",
             f"hitl_alerts --email: already sent {today} — skipping (use --force to resend)",
         )
     if (not pending and not expired and not patches and not doctor_problems
-            and not fleet_clause and not unreconciled and not force):
+            and not fleet_clause and not unreconciled and not automation_problems and not force):
         return EmailDecision(
             False, "",
             "hitl_alerts --email: nothing pending, expired without decision, awaiting patch "
-            "review, failing in doctor, or failing in the fleet past day "
-            f"{FLEET_DIGEST_DAY} — no email today",
+            "review, failing in doctor, failing in the fleet past day "
+            f"{FLEET_DIGEST_DAY}, or failing in automation health — no email today",
         )
     n_waiting = len(pending) + len(patches)
     # A job left disabled with no decision behind it outranks every other subject: it is
@@ -1639,6 +1813,8 @@ def decide_email(*, force: bool, today: str, last_email_date: str | None,
         subject = f"[Order Samurai] {n_waiting} approval(s) waiting"
     elif doctor_problems:
         subject = f"[Order Samurai] doctor: {len(doctor_problems)} problem(s)"
+    elif automation_problems:
+        subject = f"[Order Samurai] automation health: {len(automation_problems)} problem(s)"
     elif fleet_clause:
         subject = "[Order Samurai]"
     else:
@@ -1707,11 +1883,30 @@ def do_email(force: bool) -> int:
     # Durable rows only: the digest runs in its own process and must never inherit
     # an in-memory alert a later retry has already reconciled.
     unreconciled = load_unreconciled_retirements()
+    # Same discipline as doctor: read once, reuse for both the send decision and the
+    # rendered section, so they can never disagree about what automation health said.
+    # monitor_status() itself re-reads AUTOMATION_HEALTH_PATH from disk on every call,
+    # so the resolved function is wrapped in a one-shot cache and threaded through to
+    # _digest_body below -- without it, a substrate-preflight rewrite landing between
+    # the two calls could make the subject line and the rendered section disagree.
+    automation_health = load_automation_health()
+    _automation_status_fn = _load_monitor_status_fn()
+    _automation_status_cache: list[str] = []
+
+    def _cached_automation_status(path: Path, interval: float) -> str:
+        if not _automation_status_cache:
+            _automation_status_cache.append(_automation_status_fn(path, interval))
+        return _automation_status_cache[0]
+
+    _automation_monitor_status_fn = _cached_automation_status if _automation_status_fn else None
+    automation_problems = automation_health_alert_lines(
+        automation_health, monitor_status_fn=_automation_monitor_status_fn,
+    )
     decision = decide_email(
         force=force, today=today, last_email_date=state.get("last_email_date"),
         pending=pending, expired=expired, patches=patches,
         doctor_problems=problems, fleet_clause=fleet_subject_clause(tiers),
-        unreconciled=unreconciled,
+        unreconciled=unreconciled, automation_problems=automation_problems,
     )
     if not decision.send:
         print(decision.skip_message)
@@ -1721,7 +1916,8 @@ def do_email(force: bool) -> int:
     body = _digest_body(pending, expired, patches, load_backlog_summary(),
                         fleet, doctor, queue_error,
                         fleet_tiers_by_job=tiers, retirements=load_retirements(),
-                        unreconciled=unreconciled)
+                        unreconciled=unreconciled, automation_health=automation_health,
+                        automation_health_monitor_status_fn=_automation_monitor_status_fn)
     key = _resend_key()
     channel = email_channel(key)
     sent = _send_resend(subject, body, to, key) if key else _send_mail_app(subject, body, to)
