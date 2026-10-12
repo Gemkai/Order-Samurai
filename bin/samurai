@@ -23,7 +23,7 @@ import importlib.util
 import getpass
 from pathlib import Path
 
-SAMURAI_VERSION = "2.1.4"
+SAMURAI_VERSION = "2.2.0"
 SUPPORT_EMAIL = "support@agentica-llc.biz"  # single support and feedback address
 
 # Tool patterns the guard and scrubber are scoped to. Claude Code matches these
