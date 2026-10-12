@@ -8,7 +8,8 @@
     "fallback (an equivalent route gives the same result), optional (an opt-in extra),",
     "dead_code (unreachable on supported Pythons), no_degrade (nothing depends on it).",
     "doctor_row: the doctor label that must read WARN when doctor runs with an empty HOME.",
-    "scope: shared (default; the site exists in the export and in the public repo), export-only (export only; becomes shared the moment the public repo gains the site) or public-only (the public repo only). tests/test_import_boundary.py enforces presence per tree kind. visibility_test: optional pytest node id proving the degrade; checked to exist in the tree where the site applies."
+    "scope: shared (default; the site exists in the export and in the public repo), export-only (export only; becomes shared the moment the public repo gains the site) or public-only (the public repo only). tests/test_import_boundary.py enforces presence per tree kind. visibility_test: optional pytest node id proving the degrade; checked to exist in the tree where the site applies.",
+    "provenance: \"unresolved\" when a loader path at the site cannot be resolved statically (a parameter, an unmodelled call, a non-HOME environment read, a non-literal dynamic import or python -m/-c operand); required exactly when the guard finds such a path. Python subprocesses (subprocess.run/call/check_call/check_output/Popen with a list argv starting with sys.executable or python*) are path_calls under the subprocess call's name; an assignment to sys.path or to a package __path__ is the path_call \"sys.path\" / \"<pkg>.__path__\"; python -m <module> and inline -c code are checked as imports. A shipped .pth file and a shipped file that does not parse can never be registered."
   ],
   "version": 1,
   "classes": {
@@ -25,6 +26,14 @@
       "degrade": "In the public tree agentica_core is NOT in the inserted directory. The import after this insert resolves only when the tree root is already on sys.path (pytest, doctor, the reflex engine's working directory, or an installed package); run directly from an uninstalled clone it raises ModuleNotFoundError. Residual hazard: in a public clone the inserted directory is the clone's parent, so a same-named module there would shadow.",
       "visibility": "visible",
       "surface": "ModuleNotFoundError traceback and non-zero exit (uncaught at this site)"
+    },
+    "test-harness-unresolved": {
+      "target": "a shipped script or module, or a test-built copy of one, addressed through a fixture, a parameter or tmp_path (not resolvable statically)",
+      "reason": "Test harness: runs or loads the product the way a user does (a child interpreter, a loader by path, or a root on sys.path), usually inside a temporary sandbox.",
+      "degrade": "None at runtime: test code only. A missing or broken target fails the test (non-zero child exit, ImportError/FileNotFoundError, or an assertion).",
+      "visibility": "visible",
+      "surface": "the pytest run fails (exported suite in export-gate; public CI)",
+      "provenance": "unresolved"
     }
   },
   "sites": [
@@ -98,6 +107,78 @@
       "surface": "private add-on: no shipped code path requests it in the public product"
     },
     {
+      "file": "agentica_core/operator_attention.py",
+      "symbol": "_load_escalation_sla",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "os_root, the Order Samurai root build() is given (default: ORDER_SAMURAI_ROOT, else <agentica_core>/../Order Samurai); execution.escalation_sla is imported from there",
+      "reason": "The dashboard's operator-attention section reuses escalation_sla's backlog and goal SLA rows instead of restating them.",
+      "degrade": "Any load failure returns None; decisions_section then reports backlog_overdue and goals_undated_or_overdue as None and adds a data_gap entry.",
+      "visibility": "visible",
+      "surface": "wid_payload operator_attention.data_gap 'decisions: execution/escalation_sla.py could not be loaded \u2014 SLA counts unknown'",
+      "provenance": "unresolved"
+    },
+    {
+      "file": "agentica_core/operator_attention.py",
+      "symbol": "_load_hitl_alerts",
+      "imports": [],
+      "path_calls": [
+        "importlib.util.spec_from_file_location"
+      ],
+      "target": "<os_root>/bin/hitl_alerts.py (os_root as in _load_escalation_sla)",
+      "reason": "Fleet tiers, retirements and thresholds come from hitl_alerts, the digest's own owner, so the dashboard cannot disagree with the digest.",
+      "degrade": "Any load failure returns None; fleet tiers and auto-disabled jobs are reported unknown (None) with data_gap entries.",
+      "visibility": "visible",
+      "surface": "wid_payload operator_attention.data_gap 'fleet: bin/hitl_alerts.py could not be loaded \u2014 escalation tiers unknown' and 'decisions: bin/hitl_alerts.py could not be loaded \u2014 auto-disabled jobs unknown'",
+      "provenance": "unresolved"
+    },
+    {
+      "file": "agentica_core/providers/__init__.py",
+      "symbol": "_isolated_execution",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "repo_root, the platform repo a verifier provider passes (claude_verifiers passes _OS_ROOT)",
+      "reason": "Imports a platform's execution.* verifier modules with sys.path and sys.modules isolated, restoring both afterwards.",
+      "degrade": "Import failures propagate through load_run_checks to aggregate(), which records a FAIL row 'verifier-load-error:<ExceptionType>'.",
+      "visibility": "visible",
+      "surface": "wid_payload verifier results: 'verifier-load-error:<type>' FAIL row",
+      "provenance": "unresolved",
+      "scope": "public-only"
+    },
+    {
+      "file": "agentica_core/providers/__init__.py",
+      "symbol": "load_run_checks",
+      "imports": [],
+      "path_calls": [
+        "importlib.import_module"
+      ],
+      "target": "the (module, attr) pairs a provider passes (claude_verifiers' _IMPORTS: execution.verify_* modules)",
+      "reason": "Loads a platform's verifier callables from that platform's own execution package.",
+      "degrade": "A missing repo raises RuntimeError('platform repo not found'); an import failure propagates; aggregate() records a FAIL row 'verifier-load-error:<ExceptionType>'.",
+      "visibility": "visible",
+      "surface": "wid_payload verifier results: 'verifier-load-error:<type>' FAIL row",
+      "provenance": "unresolved",
+      "scope": "public-only"
+    },
+    {
+      "file": "agentica_core/scouts/__init__.py",
+      "symbol": "_load_okf_tools",
+      "imports": [],
+      "path_calls": [
+        "importlib.util.spec_from_file_location"
+      ],
+      "target": "<repo_root>/Knowledge/okf/okf_tools.py (repo_root defaults to three levels above agentica_core/scouts: the Agentica monorepo root)",
+      "reason": "Knowledge-vault OKF conformance comes from the OKF toolkit itself.",
+      "degrade": "A missing file or a load error returns None; knowledge_signals omits okf_total_concepts and okf_conformance_pct (never fabricated).",
+      "visibility": "visible",
+      "surface": "wid_payload arts.Knowledge OKF_Conformance gets no AUTO reading from this source",
+      "provenance": "unresolved"
+    },
+    {
       "file": "agentica_core/scouts/__init__.py",
       "symbol": "agent_process_count",
       "imports": [
@@ -126,6 +207,82 @@
       "visibility_test": "tests/test_public_only_visibility.py::test_state_report_vault_absent_is_visible"
     },
     {
+      "file": "agentica_core/tests/fixtures/aggregate_golden/bootstrap.py",
+      "symbol": "<module>",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "sys.path"
+      ]
+    },
+    {
+      "file": "agentica_core/tests/test_aggregate_golden.py",
+      "symbol": "_run",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ]
+    },
+    {
+      "file": "agentica_core/tests/test_new_metrics.py",
+      "symbol": "TestHygieneTrioWiring.test_non_negative_reading_emits_live_auto",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "importlib.import_module"
+      ],
+      "scope": "export-only"
+    },
+    {
+      "file": "agentica_core/tests/test_new_metrics.py",
+      "symbol": "TestStaleBranchCountCache.test_second_call_inside_ttl_reuses_the_reading",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "importlib.import_module"
+      ],
+      "scope": "export-only"
+    },
+    {
+      "file": "agentica_core/tests/test_stale_branch_export_gate.py",
+      "symbol": "_read_metrics",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ]
+    },
+    {
+      "file": "agentica_core/verifiers.py",
+      "symbol": "load_verifiers",
+      "imports": [],
+      "path_calls": [
+        "importlib.import_module"
+      ],
+      "target": "the module of the `module:callable` verifier provider a platform declares in the platform registry (agentica_core.adapter._load_registry)",
+      "reason": "Each platform names its own verifier provider; the module name is registry data, not a literal.",
+      "degrade": "An import failure propagates to aggregate(), which records a FAIL row 'verifier-load-error:<ExceptionType>' for that platform.",
+      "visibility": "visible",
+      "surface": "wid_payload verifier results: 'verifier-load-error:<type>' FAIL row for the platform",
+      "provenance": "unresolved"
+    },
+    {
+      "file": "bin/agentica_emit.py",
+      "symbol": "main",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "_governance_dir(): a SAMURAI_ROOT / ORDER_SAMURAI_ROOT / AGENTICA_GOVERNANCE override, else the tree root (bin/..)",
+      "reason": "The SessionEnd hook imports agentica_core.emit to record the session.",
+      "degrade": "None at the default: the insert is the tree root, where agentica_core ships. Operator overrides are graded by the default, as for any .get(K, default).",
+      "visibility": "no_degrade",
+      "surface": "the import after this insert resolves in-tree at the default",
+      "provenance": "unresolved",
+      "scope": "public-only"
+    },
+    {
       "file": "bin/bushido_check.py",
       "symbol": "<module>",
       "imports": [],
@@ -144,6 +301,33 @@
         "sys.path.insert"
       ],
       "class": "governance-root-seam"
+    },
+    {
+      "file": "bin/codebase_deps_audit.py",
+      "symbol": "_real_pip_outdated",
+      "imports": [
+        "pip"
+      ],
+      "path_calls": [],
+      "target": "pip, run as `python -m pip list --outdated --format json` under the current interpreter",
+      "reason": "Deprecated_Deps needs pip's own view of outdated packages.",
+      "degrade": "A missing or failing pip returns None after the retries; the audit records the pip scanner as failed instead of reading empty output as a clean scan.",
+      "visibility": "visible",
+      "surface": "dependency_audit.json scanner_ok.pip false and scanner_errors.pip 'pip outdated did not produce valid JSON'"
+    },
+    {
+      "file": "bin/emit_event.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "_resolve_governance(): the nearest ancestor holding agentica_core/telemetry.py (the tree root in every shipped tree), else the historical parents[2] guess",
+      "reason": "Resolves agentica_core by marker in both layouts without an install.",
+      "degrade": "None in a shipped tree: agentica_core/telemetry.py ships, so the search stops at the tree root and the import resolves in-tree. Only a tree missing that file falls back to the hard-coded event set.",
+      "visibility": "no_degrade",
+      "surface": "the import after this insert resolves in-tree (agentica_core/telemetry.py is shipped)",
+      "provenance": "unresolved"
     },
     {
       "file": "bin/error_triage.py",
@@ -179,16 +363,45 @@
     },
     {
       "file": "bin/hitl_alerts.py",
+      "symbol": "_dispatch_banner",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "target": "~/.claude/scripts/notify.py (NOTIFY_PY), the Claude Code runtime's desktop notifier, run under the current interpreter",
+      "reason": "Desktop banners reuse the runtime's notifier instead of a second implementation.",
+      "degrade": "A missing notifier exits non-zero (or raises OSError/TimeoutExpired); _dispatch_banner prints a stderr line and returns False (not acknowledged).",
+      "visibility": "visible",
+      "surface": "stderr 'hitl_alerts: notify dispatch failed (exit N): ...'"
+    },
+    {
+      "file": "bin/hitl_alerts.py",
       "symbol": "_load_monitor_status_fn",
       "imports": [
         "agentica_core.automation_health"
       ],
-      "path_calls": [],
-      "target": "agentica_core/automation_health.py (withheld from the export: private machine paths and launchd labels)",
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "agentica_core/automation_health.py (withheld from the export: private machine paths and launchd labels), imported after putting str(_GOVERNANCE) -- the directory holding agentica_core/, the tree root in a shipped tree -- on sys.path",
       "reason": "Monitor-freshness check for the private automation-health summary.",
       "degrade": "The module file is not shipped (always, in the public tree), so load_automation_health() returns None before reading the JSON and automation_health_alert_lines() returns []. If the file is shipped but the import fails, the 'could not be assessed' line reports it.",
       "visibility": "optional",
-      "surface": "private automation-health feature: absent from the public product by design; 'AUTOMATION HEALTH: monitor freshness could not be assessed' only on the direct-call path"
+      "surface": "private automation-health feature: absent from the public product by design; 'AUTOMATION HEALTH: monitor freshness could not be assessed' only on the direct-call path",
+      "provenance": "unresolved"
+    },
+    {
+      "file": "bin/hitl_alerts.py",
+      "symbol": "_refresh_fleet_probe",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "target": "<tree root>/../bin/fleet_probe.py (FLEET_PROBE_BIN: Governance/bin in the monorepo)",
+      "reason": "Keeps fleet_probe.json fresh on the existing --notify cadence without a new launchd job. HITL_FLEET_ALARM=false disables it.",
+      "degrade": "A missing probe exits non-zero; the exit status is not checked (only OSError/TimeoutExpired print a stderr line), so fleet_probe.json is not refreshed and its readers report the age.",
+      "visibility": "visible",
+      "surface": "wid_payload operator_attention.fleet.stale true once fleet_probe.json is older than FLEET_PROBE_STALE_HOURS; data_gap 'fleet: ... bin/fleet_probe.py has not written a result' when the file never existed"
     },
     {
       "file": "bin/hitl_alerts.py",
@@ -218,6 +431,21 @@
       "degrade": "Raises ModuleNotFoundError to its callers. Inside the retirement boundary a raise refuses the decision; a raise before it (sweep_fleet_hitl) is caught by do_notify."
     },
     {
+      "file": "bin/hitl_alerts.py",
+      "symbol": "load_deferred_catchup",
+      "imports": [],
+      "path_calls": [
+        "importlib.util.spec_from_file_location"
+      ],
+      "target": "<Governance>/bin/deferred_catchup.py (_deferred_catchup_module_path(): the private monorepo's deferred catch-up module)",
+      "reason": "Read-only view of the deferred catch-up digest for the HITL alert.",
+      "degrade": "An absent module returns None (the public export never ships it); a load or state_dir() failure returns {'error': ...}, which deferred_catchup_alert_lines turns into an alert line.",
+      "visibility": "optional",
+      "surface": "private deferred catch-up feature, absent from the public product by design; a broken install surfaces as 'deferred catch-up digest.json unreadable \u2014 ...' in the HITL digest",
+      "provenance": "unresolved",
+      "scope": "export-only"
+    },
+    {
       "file": "bin/hitl_queue_view.py",
       "symbol": "_load_proposal_hash",
       "imports": [],
@@ -228,7 +456,36 @@
       "visibility": "visible",
       "surface": "JSON line {\"error\": \"view_failed\", ...} only when no candidate holds agentica_core",
       "degrade": "Inserts a candidate only when it actually contains agentica_core; in the public tree the marker lookup (hitl_alerts._governance_dir) finds the in-tree kernel. If nothing matches, the import error becomes a JSON error line.",
+      "provenance": "unresolved",
       "scope": "export-only"
+    },
+    {
+      "file": "bin/injection_guard_canary.py",
+      "symbol": "_run_guard",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "target": "the `guard` argument when given (a candidate passed with --guard, or a test's file), else GUARD = ~/.claude/hooks/prompt_injection_guard.py",
+      "reason": "The canary scores the live prompt-injection hook exactly as Claude Code runs it.",
+      "degrade": "main() checks guard.exists() first and writes the fault state 'guard not found at <path>'; a hook that cannot run returns exit -1 with the reason and scores as a probe failure.",
+      "visibility": "visible",
+      "surface": "data/injection_guard_canary.json fault, read by doctor row injection-canary",
+      "provenance": "unresolved"
+    },
+    {
+      "file": "bin/injection_guard_canary.py",
+      "symbol": "semantic_endpoint",
+      "imports": [],
+      "path_calls": [
+        "importlib.util.spec_from_file_location"
+      ],
+      "target": "the guard file passed as sys.argv[1] to an inline `python -c` probe (GUARD, ~/.claude/hooks/prompt_injection_guard.py, unless a candidate is given)",
+      "reason": "Imports the guard to read SEMANTIC_ENDPOINT, so the canary cannot drift from the file under test.",
+      "degrade": "Any failure returns ''; probe_semantic_endpoint then reports the semantic stage 'unknown'.",
+      "visibility": "visible",
+      "surface": "data/injection_guard_canary.json semantic status 'unknown' ('could not determine the semantic endpoint from the guard source')",
+      "provenance": "unresolved"
     },
     {
       "file": "bin/mcp_smoke_test.py",
@@ -247,6 +504,20 @@
       "scope": "export-only"
     },
     {
+      "file": "bin/meditation_preflight.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "the tree root when agentica_core/ sits beside bin/ (every shipped tree), else the directory above it (<monorepo>/Governance)",
+      "reason": "Imports agentica_core.bushido_engine in both layouts.",
+      "degrade": "None in a shipped tree: the insert is the tree root, where agentica_core ships; the parent is taken only in the monorepo layout.",
+      "visibility": "no_degrade",
+      "surface": "the installed-layout test runs the script from a shipped tree",
+      "visibility_test": "tests/test_meditation_preflight_layout.py::test_preflight_installed_layout"
+    },
+    {
       "file": "bin/migrate_hitl_md.py",
       "symbol": "<module>",
       "imports": [],
@@ -262,14 +533,28 @@
       "file": "bin/pip_safe_upgrade.py",
       "symbol": "_real_apply",
       "imports": [
+        "pip",
         "pkg_resources"
       ],
       "path_calls": [],
-      "target": "pkg_resources (setuptools)",
-      "reason": "Only on the Python < 3.8 branch; pyproject requires >= 3.11.",
-      "degrade": "Unreachable on every supported Python.",
-      "visibility": "dead_code",
-      "surface": "branch guarded by sys.version_info >= (3, 8); removal is out of scope (plan section 7)"
+      "target": "pip (`python -m pip install --upgrade`, plus the rollback and uninstall calls) under the current interpreter; pkg_resources (setuptools) only on the Python < 3.8 branch",
+      "reason": "Applies an upgrade the dry-run gate allowed, and rolls it back when the post-upgrade audit fails.",
+      "degrade": "A missing or failing pip returns False, so the candidate is reported failed instead of applied. The pkg_resources import is unreachable on every supported Python (pyproject requires >= 3.11).",
+      "visibility": "visible",
+      "surface": "pip_safe_upgrade result: the candidate is listed under failed (upgraded false), never under applied"
+    },
+    {
+      "file": "bin/pip_safe_upgrade.py",
+      "symbol": "_real_dry_run",
+      "imports": [
+        "pip"
+      ],
+      "path_calls": [],
+      "target": "pip, run as `python -m pip install --upgrade <name> --dry-run`",
+      "reason": "The upgrade gate needs pip's own dry-run before installing anything.",
+      "degrade": "A missing or failing pip exits non-zero; _real_dry_run prints a stderr line and returns None, and decide() blocks the upgrade.",
+      "visibility": "visible",
+      "surface": "stderr 'pip-safe-upgrade: dry-run for <name> exited N \u2014 blocking (no verified dry-run)'; the candidate is reported blocked"
     },
     {
       "file": "bin/prompt_injection_guard.py",
@@ -287,6 +572,20 @@
       "visibility": "fallback",
       "surface": "none needed: the same row lands in the same log; pinned by the visibility test, which compares the bytes written with and without the helper",
       "visibility_test": "tests/test_public_only_visibility.py::test_prompt_injection_guard_fallback_is_equivalent"
+    },
+    {
+      "file": "bin/reconcile_state.py",
+      "symbol": "stage_3_falsifiability",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "target": "execution/verify_falsifiability.py, a relative path run with python3 in cwd=repo_root",
+      "reason": "Stage 3 of state reconciliation runs the falsifiability harness.",
+      "degrade": "A non-zero exit (a missing script included) gives stage status WARN with the exit code; an exception gives status ERROR.",
+      "visibility": "visible",
+      "surface": "reconcile_state stage 'falsifiability' status WARN or ERROR",
+      "provenance": "unresolved"
     },
     {
       "file": "bin/remeasure_gate.py",
@@ -441,6 +740,65 @@
       "visibility_test": "tests/test_public_only_visibility.py::test_dashboard_shot_fails_loudly_without_playwright"
     },
     {
+      "file": "execution/audit_remediation_patch.py",
+      "symbol": "<module>",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "GOVERNANCE_ROOT when set, else the directory holding agentica_core: governance_root() (the tree root) in the export; parents[2] of this file in the public tree (<monorepo>/Governance there; a public clone's parent)",
+      "reason": "Puts the directory holding agentica_core on sys.path so the maker-checker audit imports agentica_core.llm.gateway in every layout.",
+      "degrade": "Export: the default is the tree root, so the import resolves in-tree. Public: agentica_core is not in the inserted directory, so the import resolves only when the tree root is already on sys.path (the reflex engine runs it from the tree). Either tree, a GOVERNANCE_ROOT without agentica_core fails the import: the script prints the missing module and the interpreter and exits 2.",
+      "visibility": "visible",
+      "surface": "stdout 'Error: ModuleNotFoundError: Module ... not found under interpreter ...' (or 'Error: Cannot import agentica_core from ...') and exit 2",
+      "provenance": "unresolved"
+    },
+    {
+      "file": "execution/doctor.py",
+      "symbol": "_factory_codex_checks",
+      "imports": [
+        "dispatcher"
+      ],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "<monorepo>/Execution/factory/dispatcher.py (root / Execution / factory)",
+      "reason": "The Codex factory lane's availability and quota-deferral preflights live in the factory dispatcher; doctor reuses them so an unavailable Codex lane is visible before dispatch.",
+      "degrade": "Any import or probe failure -> one WARN row factory.codex-cli 'Codex probe error: <type>: <msg>'. The factory family only runs inside the Agentica monorepo; a standalone distribution skips it.",
+      "visibility": "visible",
+      "surface": "doctor row factory.codex-cli (WARN)",
+      "provenance": "unresolved",
+      "scope": "export-only"
+    },
+    {
+      "file": "execution/doctor.py",
+      "symbol": "_factory_ledger_chain_checks",
+      "imports": [],
+      "path_calls": [
+        "importlib.util.spec_from_file_location"
+      ],
+      "target": "<repo root>/Execution/factory/ledger.py (the monorepo factory ledger)",
+      "reason": "Verifies the factory ledger hash chain with the ledger's own verify_chain.",
+      "degrade": "Never reached in a standalone distribution (_run_factory_checks returns its not-applicable row first); in the monorepo a missing or broken module gives a WARN row.",
+      "visibility": "visible",
+      "surface": "doctor row factory.ledger-chain (WARN), or factory.not-applicable-outside-agentica (WARN) outside Agentica",
+      "provenance": "unresolved"
+    },
+    {
+      "file": "execution/doctor.py",
+      "symbol": "_run_audit_gate_canary_checks",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "target": "execution/audit_remediation_patch.py (the `script` argument; default ROOT_DIR/execution/audit_remediation_patch.py) under the reflex engine's python",
+      "reason": "Proves the maker-checker audit gate can start under the interpreter the reflex engine spawns.",
+      "degrade": "A missing script, a missing interpreter, a timeout or a non-zero exit each give a WARN row naming the cause. AUDIT_CANARY_ENABLED=false disables it.",
+      "visibility": "visible",
+      "surface": "doctor row audit-gate-canary (WARN)",
+      "provenance": "unresolved"
+    },
+    {
       "file": "execution/doctor.py",
       "symbol": "_run_claude_hook_health_checks",
       "imports": [
@@ -484,6 +842,21 @@
       "doctor_row": "container-services"
     },
     {
+      "file": "execution/doctor.py",
+      "symbol": "_run_schedule_collision_checks",
+      "imports": [
+        "schedule_collision_check"
+      ],
+      "path_calls": [],
+      "target": "<monorepo>/Governance/bin/schedule_collision_check.py (governance_root() / bin)",
+      "reason": "Launchd schedule-collision and LLM-quota scanner owned by the monorepo Governance tooling; the family reads it directly to avoid writing its standalone report files.",
+      "degrade": "Import failure -> one WARN row 'schedule_collision_check import failed -- schedule collisions unverified'. The family is non-gating.",
+      "visibility": "visible",
+      "surface": "doctor row schedule-collision (WARN)",
+      "doctor_row": "schedule-collision",
+      "scope": "export-only"
+    },
+    {
       "file": "execution/repo_auditor.py",
       "symbol": "_load_dotenv",
       "imports": [
@@ -497,6 +870,34 @@
       "visibility": "optional",
       "surface": "a built-in .env parser with the same precedence (real environment wins)",
       "visibility_test": "tests/test_public_only_visibility.py::test_repo_auditor_dotenv_fallback"
+    },
+    {
+      "file": "execution/score_architecture.py",
+      "symbol": "_run_verifier",
+      "imports": [],
+      "path_calls": [
+        "importlib.import_module"
+      ],
+      "target": "the execution.verify_* module named by each scorecard rel_path (in-tree)",
+      "reason": "Scores the architecture rubric by running each verifier's run_checks().",
+      "degrade": "An absent verifier file is 'missing'; an import or run failure is an error row naming the verifier: status ERROR in the export, FAIL in the public tree (public 5362ae2's scorer has no ERROR tier).",
+      "visibility": "visible",
+      "surface": "score_architecture output: an ERROR (export) or FAIL (public) row 'verifier raised: ...' for that verifier",
+      "provenance": "unresolved"
+    },
+    {
+      "file": "execution/score_claude_architecture.py",
+      "symbol": "_run_verifier",
+      "imports": [],
+      "path_calls": [
+        "importlib.util.spec_from_file_location"
+      ],
+      "target": "<repo_root>/<rel_path>, the verify_claude_* files the Claude scorecard lists",
+      "reason": "Loads each verifier by path so a sandboxed repo_root works without sys.path pollution.",
+      "degrade": "An absent file is 'missing'; a load or run failure is a FAIL row naming the verifier.",
+      "visibility": "visible",
+      "surface": "score_claude_architecture output: FAIL row 'verifier raised: ...' or 'verifier not importable'",
+      "provenance": "unresolved"
     },
     {
       "file": "execution/verify_falsifiability.py",
@@ -538,6 +939,34 @@
       "surface": "verify_falsifiability output 'pii_export: error'; exit 2 (or 1 if another check fails)"
     },
     {
+      "file": "execution/verify_incident_coverage.py",
+      "symbol": "_load_module",
+      "imports": [],
+      "path_calls": [
+        "importlib.util.spec_from_file_location"
+      ],
+      "target": "the file its caller passes; load_catalog passes ~/.claude/scripts/hook_registry.py",
+      "reason": "Reads the Claude Code hook registry to know which hooks exist.",
+      "degrade": "load_catalog catches OSError/ImportError/AttributeError and records 'hook registry unreadable: ...' in catalog.errors.",
+      "visibility": "visible",
+      "surface": "verify_incident_coverage report 'unmeasured': 'hook registry unreadable: ...'",
+      "provenance": "unresolved"
+    },
+    {
+      "file": "execution/verify_incident_coverage.py",
+      "symbol": "load_catalog",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "target": "<repo_root>/Governance (repo_root defaults to REPO_ROOT, three levels above execution/: the monorepo root)",
+      "reason": "Imports agentica_core.insights for the metric catalog in the monorepo layout.",
+      "degrade": "An ImportError/AttributeError records 'metric registry unreadable: ...' in catalog.errors; in a shipped tree agentica_core also resolves from the tree root when that is on sys.path.",
+      "visibility": "visible",
+      "surface": "verify_incident_coverage report 'unmeasured': 'metric registry unreadable: ...'",
+      "provenance": "unresolved"
+    },
+    {
       "file": "execution/verify_live_sources.py",
       "symbol": "<module>",
       "imports": [],
@@ -576,6 +1005,21 @@
       "visibility": "optional",
       "surface": "a built-in .env parser with the same precedence (real environment wins)",
       "visibility_test": "tests/test_public_only_visibility.py::test_governance_review_dotenv_fallback"
+    },
+    {
+      "file": "refresh_dashboard.py",
+      "symbol": "main",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only",
+      "target": "~/.codex/scripts/codex_emit.py (_CODEX_EMIT, from Path.home()), the operator's Codex telemetry emitter",
+      "reason": "Keeps Codex usage telemetry complete before the payload is rebuilt; the product does not ship the emitter.",
+      "degrade": "Runs only when the file exists, so an absent emitter (Codex add-on not installed) is skipped. An installed emitter that fails (non-zero exit, timeout or OSError) leaves the codex platform without new records for this refresh; the refresh continues.",
+      "visibility": "visible",
+      "surface": "one stderr line 'WARN: codex_emit failed: <ExceptionType>' when an installed emitter fails; the emitter's own output and the exception message are not printed",
+      "visibility_test": "tests/test_public_only_visibility.py::test_refresh_dashboard_codex_emit_failure_is_visible"
     },
     {
       "file": "scouts/autonomic_events_scout.py",
@@ -635,6 +1079,15 @@
         "sys.path.insert"
       ],
       "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_baseline_audit_profile.py",
+      "symbol": "_run",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ]
     },
     {
       "file": "tests/test_bushido_engine.py",
@@ -698,6 +1151,66 @@
         "sys.path.insert"
       ],
       "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_cli.py",
+      "symbol": "TestRealPolicyFamilies.test_the_shipped_families_all_expose_run_checks",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "importlib.import_module"
+      ],
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_codex_hook_wiring.py",
+      "symbol": "Machine.run",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_codex_mirror_review_regressions.py",
+      "symbol": "test_uninstall_refuses_concurrently_appended_codex_hook",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "importlib.machinery.SourceFileLoader"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_codex_mirror_review_regressions_2.py",
+      "symbol": "run_guard",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_codex_mirror_review_regressions_3.py",
+      "symbol": "test_interrupted_force_uninstall_does_not_forget_remaining_claude_guard",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "importlib.machinery.SourceFileLoader"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_cursor_hook_wiring.py",
+      "symbol": "Machine.run",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
     },
     {
       "file": "tests/test_doctor_claude_telemetry.py",
@@ -785,6 +1298,16 @@
       "scope": "export-only"
     },
     {
+      "file": "tests/test_doctor_support_line.py",
+      "symbol": "_run",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
       "file": "tests/test_doctor_write_state.py",
       "symbol": "<module>",
       "imports": [],
@@ -822,6 +1345,86 @@
       "class": "test-governance-seam"
     },
     {
+      "file": "tests/test_gemini_hook_wiring.py",
+      "symbol": "Machine.run",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_guard_codex_payloads.py",
+      "symbol": "run_guard.run",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_guard_cursor_payloads.py",
+      "symbol": "run_guard.run",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_guard_gemini_payloads.py",
+      "symbol": "run_guard.run",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_harness_detection.py",
+      "symbol": "_load",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "importlib.machinery.SourceFileLoader"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_harness_detection.py",
+      "symbol": "_run",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_help_sweep.py",
+      "symbol": "test_help_exits_zero_and_prints_usage",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_help_sweep.py",
+      "symbol": "test_help_sweep_writes_nothing_under_watched_directories",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "export-only"
+    },
+    {
       "file": "tests/test_hitl_queue_view.py",
       "symbol": "<module>",
       "imports": [],
@@ -832,6 +1435,76 @@
       "scope": "export-only"
     },
     {
+      "file": "tests/test_hitl_queue_view.py",
+      "symbol": "cli",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "export-only"
+    },
+    {
+      "file": "tests/test_hook_clean_machine.py",
+      "symbol": "_run_hook",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_hook_clean_machine.py",
+      "symbol": "test_scrubber_never_writes_into_the_users_project",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_hook_scripts_exist.py",
+      "symbol": "test_guard_hook_allows_a_benign_tool_call",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_hook_scripts_exist.py",
+      "symbol": "test_hooks_work_from_a_path_with_spaces",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_installer_upgrade.py",
+      "symbol": "test_install_with_space_in_home_path",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_installer_upgrade.py",
+      "symbol": "test_repeated_samurai_install_is_idempotent",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
       "file": "tests/test_kernel_drift.py",
       "symbol": "test_shared_function_is_reexported_not_duplicated",
       "imports": [],
@@ -839,6 +1512,16 @@
         "sys.path.insert"
       ],
       "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_license_lifecycle.py",
+      "symbol": "test_gumroad_instance_id_is_deterministic_across_processes",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "sys.path.insert"
+      ],
+      "scope": "public-only"
     },
     {
       "file": "tests/test_m4_canary_acceptance.py",
@@ -910,6 +1593,35 @@
       "scope": "export-only"
     },
     {
+      "file": "tests/test_meditation_preflight_layout.py",
+      "symbol": "test_preflight_installed_layout",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ]
+    },
+    {
+      "file": "tests/test_prompt_injection_guard_logging.py",
+      "symbol": "_run",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_public_only_visibility.py",
+      "symbol": "_load_module",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "importlib.util.spec_from_file_location"
+      ],
+      "scope": "public-only"
+    },
+    {
       "file": "tests/test_public_only_visibility.py",
       "symbol": "_reference_appender",
       "imports": [
@@ -924,6 +1636,16 @@
       "surface": "the test fails on an assertion if the reference helper cannot be imported"
     },
     {
+      "file": "tests/test_public_only_visibility.py",
+      "symbol": "test_dashboard_shot_fails_loudly_without_playwright",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "runpy.run_path"
+      ],
+      "scope": "public-only"
+    },
+    {
       "file": "tests/test_remeasure_gate.py",
       "symbol": "<module>",
       "imports": [],
@@ -933,6 +1655,46 @@
       "class": "test-governance-seam"
     },
     {
+      "file": "tests/test_safe_writes.py",
+      "symbol": "box",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "importlib.machinery.SourceFileLoader"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_safe_writes.py",
+      "symbol": "test_install_cannot_write_configs_while_state_lock_is_held",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.Popen"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_samurai_installer.py",
+      "symbol": "test_installer_lifecycle",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_samurai_python_requirement.py",
+      "symbol": "samurai_cli",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "importlib.machinery.SourceFileLoader"
+      ],
+      "scope": "public-only"
+    },
+    {
       "file": "tests/test_secret_scrub.py",
       "symbol": "<module>",
       "imports": [],
@@ -940,6 +1702,24 @@
         "sys.path.insert"
       ],
       "class": "test-governance-seam"
+    },
+    {
+      "file": "tests/test_sensei_writeback_concurrency.py",
+      "symbol": "_run_payload",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ]
+    },
+    {
+      "file": "tests/test_sensei_writeback_concurrency.py",
+      "symbol": "test_wait_timeout_raises_rather_than_writing_unlocked",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ]
     },
     {
       "file": "tests/test_skill_conflict_audit.py",
