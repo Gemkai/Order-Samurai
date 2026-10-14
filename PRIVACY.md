@@ -20,7 +20,7 @@ When purchasing Order Samurai Pro ($199 Lifetime License) via our Merchant of Re
 
 - **Payment Data**: Payment processing is handled securely by our Merchant of Record. Order Samurai maintainers never store or transmit raw credit card or banking details.
 - **Customer Email & License Key**: Our Merchant of Record collects your email address to issue your digital receipt, tax invoice, and Order Samurai Pro license key.
-- **License Activation**: `samurai activate` validates current-store keys online with Gumroad and stores the entitlement locally. Unknown legacy keys may be checked with Lemon Squeezy. Normal use reads the record without a heartbeat; it does not verify a cryptographic public-key signature. Refund status is checked during online activation, not continuously; an existing offline entitlement is not automatically revoked remotely.
+- **License Activation**: `samurai activate` validates current-store keys online with Gumroad and stores the entitlement locally. Existing legacy Lemon Squeezy entitlements are re-checked with Lemon Squeezy; new keys are never sent there. Normal use reads the record without a heartbeat; it does not verify a cryptographic public-key signature. Refund status is checked during online activation, not continuously; an existing offline entitlement is not automatically revoked remotely.
 
 ---
 

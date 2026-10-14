@@ -13,7 +13,13 @@ if ! command -v python3 >/dev/null 2>&1 || \
   exit 1
 fi
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" 2>/dev/null && pwd || echo "" )"
+# Local mode only when this script is a real file (./install.sh in a clone). Under
+# `curl | bash` there is no script file, and bash 3.2 resolves an empty BASH_SOURCE to the
+# caller's CWD, which would run an unverified CWD/bin/samurai instead of the checked download.
+SCRIPT_DIR=""
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+  SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" 2>/dev/null && pwd || echo "" )"
+fi
 SAMURAI_BIN="${SCRIPT_DIR}/bin/samurai"
 
 if [ -n "${SCRIPT_DIR}" ] && [ -f "${SAMURAI_BIN}" ]; then

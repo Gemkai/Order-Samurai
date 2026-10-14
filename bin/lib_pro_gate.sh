@@ -13,14 +13,15 @@ _samurai_home() { printf '%s' "${SAMURAI_HOME:-$HOME/.samurai}"; }
 
 # is_pro: exit 0 when a valid, active, non-refunded Pro entitlement exists; else 1.
 # Delegates to agentica_core.licensing.is_pro() so the refund-window re-check applies to
-# shell gates too. agentica_core is a sibling of "Order Samurai/" in the monorepo and a
-# child of the repo root in the public export. If it cannot be imported, the stored-file
-# check below is used (still fail-closed).
+# shell gates too. agentica_core is a child of the repo root in the public export (checked
+# first, so a package planted in a shared parent directory cannot shadow it) and a sibling
+# of "Order Samurai/" in the monorepo. If it cannot be imported, the stored-file check
+# below is used (still fail-closed).
 _LIB_PRO_GATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 is_pro() {
   local lic; lic="$(_samurai_home)/license.json"
   [ -f "$lic" ] || return 1
-  python3 - "$lic" "$_LIB_PRO_GATE_DIR/../.." "$_LIB_PRO_GATE_DIR/.." <<'PY' 2>/dev/null
+  python3 -I - "$lic" "$_LIB_PRO_GATE_DIR/.." "$_LIB_PRO_GATE_DIR/../.." <<'PY' 2>/dev/null
 import json, os, sys
 for d in sys.argv[2:]:
     if os.path.isdir(os.path.join(d, "agentica_core")):

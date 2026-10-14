@@ -1524,6 +1524,26 @@
       "scope": "public-only"
     },
     {
+      "file": "tests/test_licensing_import_precedence.py",
+      "symbol": "test_cli_prefers_bundled_licensing",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
+      "file": "tests/test_licensing_import_precedence.py",
+      "symbol": "test_monorepo_sibling_licensing_remains_supported",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
       "file": "tests/test_m4_canary_acceptance.py",
       "symbol": "<module>",
       "imports": [
