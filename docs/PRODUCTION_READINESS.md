@@ -30,8 +30,10 @@ not a claim that current source has reached every customer-facing channel.
   replace it with live telemetry. Release evidence must identify the exact source
   revision, package checksum, and checks actually executed.
 - Licensing tests mock Gumroad. They do not establish a real purchase → delivery →
-  activation → refund cycle. Activation validates online; normal entitlement reads
-  are local. A refund does not automatically revoke an activated offline entitlement.
+  activation → refund cycle. Activation validates online; entitlement reads are local
+  except the daily refund re-check, which runs until the first successful check after
+  the 21-day window. A refund the provider reports by then revokes Pro; a machine that
+  never reaches the provider keeps Pro (a network failure never revokes).
 - Canonical contact addresses are under `ordersamurai.ai`; consistent spelling is
   not proof a mailbox accepts mail. Verify a sent message was received. Paid
   customers have seller contact through their receipt; security reports can use
