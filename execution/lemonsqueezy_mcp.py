@@ -20,6 +20,22 @@ def _get_api_key():
 def _get_store_id():
     return os.environ.get("LEMONSQUEEZY_STORE_ID", "")
 
+def _validation_answer(res_data: dict, license_key: str) -> dict:
+    """Map a /licenses/validate body. A disabled or refunded key is a revocation, so it is
+    reported with the same disabled/refunded flags that licensing._apply_answer revokes on."""
+    key_info = res_data.get("license_key") or {}
+    status = key_info.get("status")
+    return {
+        "valid": res_data.get("valid", False),
+        "license_key": license_key,
+        "customer_email": (res_data.get("meta") or {}).get("customer_email"),
+        "status": status,
+        "created_at": key_info.get("created_at"),
+        "refunded": status == "refunded",
+        "disabled": status == "disabled",
+    }
+
+
 def validate_license_key(license_key: str, instance_id: str = None, timeout: int = 15) -> dict:
     """Validate a Lemon Squeezy license key for Order Samurai Pro ($199)."""
     url = f"{LEMONSQUEEZY_API_URL}/licenses/validate"
@@ -32,15 +48,21 @@ def validate_license_key(license_key: str, instance_id: str = None, timeout: int
     
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
-            res_data = json.loads(response.read().decode("utf-8"))
-            return {
-                "valid": res_data.get("valid", False),
-                "license_key": license_key,
-                "customer_email": res_data.get("meta", {}).get("customer_email"),
-                "status": res_data.get("license_key", {}).get("status"),
-                "created_at": res_data.get("license_key", {}).get("created_at"),
-                "refunded": res_data.get("license_key", {}).get("status") == "refunded",
-            }
+            return _validation_answer(json.loads(response.read().decode("utf-8")), license_key)
+    except urllib.error.HTTPError as e:
+        # A 4xx can carry a definitive answer about the key (e.g. disabled). Only a body
+        # that describes the key counts; anything else stays a transport failure below.
+        try:
+            body = json.loads(e.read().decode("utf-8"))
+        except Exception:
+            body = None
+        if isinstance(body, dict) and isinstance(body.get("license_key"), dict):
+            return _validation_answer(body, license_key)
+        return {
+            "valid": False,
+            "error": f"Could not reach Lemon Squeezy to validate this license ({e}). "
+                     "Check your network connection and try again.",
+        }
     except Exception as e:
         # Fail closed: a network error during validation must never be treated
         # as a valid license. Maintainer/CI Pro testing uses

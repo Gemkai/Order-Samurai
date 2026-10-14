@@ -60,7 +60,7 @@ def test_no_stale_support_emails_or_dead_checkout_links():
                 "PRIVACY.md must contain exactly one Lemon Squeezy disclosure"
             )
             disclosure = mentions[0].lower()
-            assert "unknown legacy keys may be checked with lemon squeezy" in disclosure
+            assert "existing legacy lemon squeezy entitlements are re-checked with lemon squeezy" in disclosure
             assert not any(
                 buyer_term in disclosure
                 for buyer_term in ("buy", "purchase", "checkout", "receipt", "storefront", "pricing")

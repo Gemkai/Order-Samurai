@@ -36,17 +36,20 @@ GUARD_TIMEOUT_S = 10
 SCRUBBER_TIMEOUT_S = 10
 
 def _licensing_module():
-    """Import agentica_core.licensing, resolving its sibling-vs-child location the
-    same way cmd_doctor's Path Authority check does: live tree
-    has agentica_core as a SIBLING of Order Samurai under Governance/; a flattened
-    export has it as a direct CHILD of the repo root. Import lazily so `samurai
-    doctor`/`install`/`uninstall` never pay for this or fail when agentica_core is
-    absent (e.g. a partial checkout)."""
+    """Import agentica_core.licensing, resolving its child-vs-sibling location the
+    same way cmd_doctor's Path Authority check does: a flattened export has it as a
+    direct CHILD of the repo root (checked first, so an agentica_core/ planted in a
+    shared parent directory such as /tmp can never shadow the bundled copy); the live
+    tree has it as a SIBLING of Order Samurai under Governance/. Import lazily so
+    `samurai doctor`/`install`/`uninstall` never pay for this or fail when
+    agentica_core is absent (e.g. a partial checkout)."""
     root = get_paths()["root"]
-    for governance_dir in (root.parent, root):
+    for governance_dir in (root, root.parent):
         if (governance_dir / "agentica_core").is_dir():
-            if str(governance_dir) not in sys.path:
-                sys.path.insert(0, str(governance_dir))
+            # First on sys.path even if already listed later (e.g. via PYTHONPATH).
+            with contextlib.suppress(ValueError):
+                sys.path.remove(str(governance_dir))
+            sys.path.insert(0, str(governance_dir))
             import agentica_core.licensing as licensing  # noqa: PLC0415
             return licensing
     print("  [!] Could not locate agentica_core/licensing.py — is the checkout complete?", file=sys.stderr)
@@ -1531,7 +1534,18 @@ def _remove_state(paths, keep_data):
         if license_file.exists():
             rescued = Path.home() / "order-samurai-license-backup.json"
             try:
-                shutil.copy2(license_file, rescued)
+                # The license holds the plaintext key and email: write a 0600 temp file
+                # (mkstemp) and rename it into place, so the backup is never readable by
+                # others, even briefly, and a symlink planted at its path is replaced, not followed.
+                fd, tmp = tempfile.mkstemp(prefix=".order-samurai-license-backup.", dir=rescued.parent)
+                try:
+                    with os.fdopen(fd, "wb") as fh:
+                        fh.write(license_file.read_bytes())
+                    os.replace(tmp, rescued)
+                except BaseException:
+                    with contextlib.suppress(OSError):
+                        os.unlink(tmp)
+                    raise
                 print(f"  [✓] Saved your Pro license to {rescued}")
             except Exception as e:
                 print(f"  [!] Could not preserve license.json: {e}")
