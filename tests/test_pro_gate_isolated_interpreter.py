@@ -63,3 +63,26 @@ def test_pro_gate_ignores_caller_modules(tmp_path, isolated, plant):
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert not marker.exists(), f"gate imported caller's {plant} module"
+
+
+def test_pro_gate_ignores_pythonpath(tmp_path, isolated):
+    caller = tmp_path / "caller"
+    caller.mkdir()
+    evil = tmp_path / "evil"
+    evil.mkdir()
+    marker = tmp_path / "marker"
+    (evil / "json.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('imported', encoding='utf-8')\n"
+        "raise SystemExit(0)\n", encoding="utf-8",
+    )
+    env = {**isolated, "PYTHONPATH": str(evil)}
+
+    result = subprocess.run(
+        ["/bin/bash", "-c", 'source "$1"; is_pro', "gate",
+         str(ROOT / "bin/lib_pro_gate.sh")],
+        cwd=caller, env=env, stdin=subprocess.DEVNULL,
+        capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not marker.exists(), "gate imported json module from PYTHONPATH"

@@ -22,7 +22,8 @@ The install's tier is a runtime fact of this machine, not a build variant:
   `agentica_core/licensing.py` (Python) and `api/src/licensing.ts` (dashboard API). Both
   fail closed — a missing, malformed, inactive, or refunded entitlement means Free.
 - `samurai license` reports the current tier (key and buyer email masked). `samurai activate <key>`
-  validates a key online once (Gumroad), then the entitlement works offline
+  validates a key online (Gumroad), re-checks it at most daily until the first successful
+  check after the 21-day refund window, then the entitlement settles and works offline
   perpetually; `samurai deactivate` reverts to Free.
 - On Free: `bin/dojo_overnight.sh` and `bin/ronin-daemon.sh` exit with code 2 and an
   upgrade notice (shared gate: `bin/lib_pro_gate.sh`), and reflex remediation always

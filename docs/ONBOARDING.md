@@ -285,17 +285,24 @@ You should see `Order Samurai — PRO tier` with your machine name and activatio
   the new one.
 - **Refund** (within 14 days): contact the seller through your Gumroad receipt or
   email `support@agentica-llc.biz`. Deactivate the local entitlement after a refund.
-  Subsequent activation rejects a refunded key; an already activated offline
-  entitlement is not automatically revoked remotely. `samurai license` only reads
-  local state and does not refresh refund status.
+  Activation rejects a refunded key. An activated machine then re-checks the key at
+  most once a day until the first successful check after the 21-day refund window,
+  and reverts to Free when the provider reports a refund; a network failure never
+  revokes. `samurai license`
+  shows the local state (re-checking first if a daily check is due), and
+  `samurai license --refresh` checks now.
 
 ---
 
 ## How the licensing works (transparency)
 
-Order Samurai never phones home to check your license during normal use. The key is
-verified **once** at `samurai activate` time; the resulting entitlement lives in
-`~/.samurai/license.json` and every Pro feature reads that file locally. The gate is
+The key is verified at `samurai activate` time, then re-checked at most once a day
+(no activation is used, and a network failure never revokes) until the first
+successful check after the 21-day refund window. If the machine is offline then, the
+daily re-checks continue until one succeeds. After that the entitlement settles and
+Order Samurai does not phone home to check your license again unless you run
+`samurai license --refresh`. The entitlement lives in `~/.samurai/license.json` and every
+Pro feature reads that file locally. The gate is
 **fail-closed**: a missing, malformed, inactive, or refunded entitlement always falls back
 to Free. The single source of truth is `agentica_core/licensing.py` (Python) and
 `api/src/licensing.ts` (the dashboard API) — both read the same file.

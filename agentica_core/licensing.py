@@ -17,12 +17,12 @@ never consumes a seat (Gumroad increment_uses_count=false) and uses a short time
   the check is retried after the interval. This is deliberately fail-OPEN on the network
   so the offline-perpetual promise holds; it is fail-CLOSED on a provider's revocation.
 - The first good answer at or after the window end marks the entitlement ``settled``;
-  a settled entitlement never touches the network again.
+  a settled entitlement never touches the network again unless forced
+  (`samurai license --refresh`).
 Neither the key nor the email is ever logged or returned unmasked.
 Limits: api/src/licensing.ts only reads the file, so a refund reaches the TS reflex engine
 when any Python gate (CLI, shell gates, aggregate) next runs the check. A dispute that is
-still open reads as revoked (gumroad_mcp); a key the seller disables reads as not_found,
-which is inconclusive, not a revocation.
+still open reads as revoked (gumroad_mcp).
 
 Fail-CLOSED to Free: a missing, malformed, refunded, or inactive license.json never
 yields Pro. Stdlib only, so the CLI, the reducers and the TS engine (which reads the same
