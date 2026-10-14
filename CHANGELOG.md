@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-10-14
+
+### Security
+
+- `install.sh` (and the website copy, `dashboard-ui/public/install.sh`): when the installer is piped in (`curl … | bash` or `bash < install.sh`) from a folder that contains `bin/samurai`, macOS's built-in bash 3.2 ran that local file instead of downloading the release, skipping the sha256 check. The local-installer path now runs only when the script was started from a real file on disk. Homebrew bash 5.x was not affected. (#79)
+- `samurai license` and the shell Pro gate (`bin/lib_pro_gate.sh`) no longer load an `agentica_core` package placed in the folder above the install. They load the bundled copy first, then fall back to the development layout. The gate's Python runs with `-I`, so a module planted in the current folder or on `PYTHONPATH` (for example a `json.py`) can no longer be imported and grant Pro. (#79, #81)
+- `samurai uninstall` writes its license backup with owner-only permissions (0600) from the moment the file is created, and replaces it atomically. Before, it was briefly readable by other users on the machine under the default umask, and a symlink at the backup path was followed and its target overwritten. (#79)
+
+### Changed
+
+- New license keys activate through Gumroad only. The Lemon Squeezy fallback, which could accept a key that Gumroad did not recognise, is retired for new activations. Licenses already activated through Lemon Squeezy keep working and keep being re-checked. (#79)
+- PRIVACY.md, docs/ONBOARDING.md, AGENTS.md and docs/PRODUCTION_READINESS.md now describe the license re-check accurately. Pro is re-checked with the provider at most once a day, without using an activation, until the first successful check on or after purchase + 21 days. Until then, a refund, chargeback or disabled key reported by the provider switches the machine back to Free. A network failure never revokes, so a machine offline at day 21 keeps re-checking daily until one check succeeds. After that, only `samurai license --refresh` checks again. (#81)
+
+### Fixed
+
+- A Lemon Squeezy license reported as `disabled` or `refunded` now revokes Pro at the next re-check, the same as a Gumroad refund. Before, those answers were read as "provider unreachable" and Pro was kept. Network errors, non-JSON error responses and an unknown key still keep Pro, so going offline never costs you Pro. (#79)
+
 ## [2.2.0] - 2026-10-11
 
 ### Added
