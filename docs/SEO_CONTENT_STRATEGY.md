@@ -33,9 +33,9 @@ We target four high-intent semantic clusters where searchers are experiencing ac
   - `prevent ai agent rm -rf`
   - `ai coding agent sandbox macos`
   - `cursor agent dangerous commands`
-  - `touch id cli authorization ai agent`
+  - `block dangerous ai agent commands`
 * **Search Intent**: Practical developers using Claude Code, Cursor, or autonomous agent loops who fear an unattended agent running destructive shell commands or dropping database tables.
-* **Core Solution Hook**: "Touch ID hardware authorization (via Apple LocalAuthentication) for high-blast-radius shell commands and git operations."
+* **Core Solution Hook**: "A deterministic pre-execution hook that blocks high-blast-radius shell commands and git operations before they run."
 
 ### Cluster 2: Runaway API Spend & Infinite Loop Breakers
 * **Primary Target Keywords**:
@@ -73,7 +73,7 @@ Following consensus review by Claude and Codex, every piece must lead with verif
 
 | Week | Target Topic & Slug | Search Query Focus | Primary Demonstration | Deliverables |
 | :---: | :--- | :--- | :--- | :--- |
-| **Week 1** | `destructive-command-interception` | `prevent ai agent rm -rf`, `claude code security` | Agent attempts destructive command (`rm -rf /tmp/test_dir`); intercepted by deterministic hook; Touch ID prompt triggers. | • Long-form Dispatch #01<br>• 10-Post X/Bluesky Thread<br>• LinkedIn Engineering Article |
+| **Week 1** | `destructive-command-interception` | `prevent ai agent rm -rf`, `claude code security` | Agent attempts destructive command (`rm -rf /tmp/test_dir`); intercepted and blocked by the deterministic hook before it runs. | • Long-form Dispatch #01<br>• 10-Post X/Bluesky Thread<br>• LinkedIn Engineering Article |
 | **Week 2** | `runtime-credential-scrubbing` | `prevent ai agent leaking api keys`, `redact secrets stdout` | Injected prompt asks agent to read `.env` and curl external endpoint; secret scrubbed pre-flight; 0 outbound tokens leaked. | • Long-form Dispatch #02<br>• 8-Post X/Bluesky Thread<br>• Show HN Discussion Brief |
 | **Week 3** | `runaway-spend-loop-breakers` | `stop runaway llm spend`, `prevent infinite agent loops` | Agent enters recursive error retry loop; BOW spend monitor detects burst threshold; process terminated before budget exhaustion. | • Long-form Dispatch #03<br>• 7-Post X/Bluesky Thread<br>• LinkedIn Carousel / Diagram |
 | **Week 4** | `deterministic-hooks-vs-prompt-judges` | `deterministic vs prompt guardrails`, `mitre att&ck ai agent` | Comparative benchmark: prompt guardrail bypassed via indirect injection vs. deterministic AST hook blocking execution. | • Long-form Dispatch #04<br>• 10-Post Comparison Thread<br>• GitHub Architecture Deep-Dive |
