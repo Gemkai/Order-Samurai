@@ -4,7 +4,8 @@ happened that week, per ecosystem (claude / antigravity / codex).
 
 Each ecosystem cuts across all four pillar areas (the Jarvis 4): Bow=Operations,
 Sword=Security, Brush=Architecture & Cost, Arts=Craft & UX. One .md per (week, ecosystem)
-is written to Data/reports/, plus an index.json the dashboard lists.
+is written to the dashboard's public/reports/ (served by `npm run dev`, inside the install;
+SAMURAI_REPORTS_DIR overrides it), plus an index.json the Reports tab lists.
 
   python -m agentica_core.weekly_report            # backfill every week present
   python -m agentica_core.weekly_report --latest   # only the current ISO week
@@ -12,16 +13,23 @@ is written to Data/reports/, plus an index.json the dashboard lists.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
 from . import aggregate as agg
+from .report_index import rebuild_index
 from .telemetry import iso_week
 
 _THIS = Path(__file__).resolve()
-_REPORTS = _THIS.parents[2] / "Data" / "reports"
+
+
+def reports_dir() -> Path:
+    """Where reports live: SAMURAI_REPORTS_DIR, else <root>/dashboard-ui/public/reports."""
+    override = os.environ.get("SAMURAI_REPORTS_DIR")
+    return Path(override) if override else _THIS.parents[1] / "dashboard-ui" / "public" / "reports"
 
 
 def _fmt(v) -> str:
@@ -245,32 +253,9 @@ def _load_payload() -> dict:
         return {}
 
 
-def _rebuild_index() -> list[dict]:
-    """Index ALL report .md present on disk (not just ones written this run), so a
-    latest-only refresh never clobbers the historical list the UI reads."""
-    import re
-    _HDR_BYTES = 4096  # "Records this week:" always appears in the first ~1 KB of the header
-    index: list[dict] = []
-    for f in _REPORTS.glob("*.md"):
-        m = re.match(r"(.+?)__(.+)\.md$", f.name)
-        if not m:
-            continue
-        try:
-            # Read only the header slice — avoids full-file I/O for large historical reports.
-            with f.open(encoding="utf-8", errors="ignore") as fh:
-                head = fh.read(_HDR_BYTES)
-        except OSError:
-            head = ""
-        rec = re.search(r"Records this week:\s*\*\*(\d+)\*\*", head)
-        index.append({"file": f.name, "week": m.group(1), "platform": m.group(2),
-                      "records": int(rec.group(1)) if rec else 0})
-    index.sort(key=lambda x: (x["week"], x["platform"]), reverse=True)
-    (_REPORTS / "index.json").write_text(json.dumps(index, indent=2), encoding="utf-8")
-    return index
-
-
-def generate(latest_only: bool = False) -> list[dict]:
-    _REPORTS.mkdir(parents=True, exist_ok=True)
+def generate(latest_only: bool = False, directory: Path | None = None) -> list[dict]:
+    out_dir = Path(directory) if directory else reports_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
     payload = _load_payload()
     this_week = datetime.now(timezone.utc).strftime("%G-W%V")
     for platform in agg.list_platforms():
@@ -287,16 +272,16 @@ def generate(latest_only: bool = False) -> list[dict]:
             if latest_only and week != this_week:
                 continue
             fname = f"{week}__{platform}.md"
-            (_REPORTS / fname).write_text(
+            (out_dir / fname).write_text(
                 _report_md(platform, week, wrecs, total, payload, all_week_scores),
                 encoding="utf-8",
             )
-    return _rebuild_index()  # always index every file on disk
+    return rebuild_index(out_dir)  # always index every file on disk
 
 
 def main() -> int:
     idx = generate(latest_only="--latest" in sys.argv)
-    print(f"weekly_report: wrote {len(idx)} reports -> {_REPORTS}")
+    print(f"weekly_report: wrote {len(idx)} reports -> {reports_dir()}")
     return 0
 
 

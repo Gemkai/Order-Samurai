@@ -28,8 +28,11 @@ from pathlib import Path
 _THIS = Path(__file__).resolve()
 _ROOT = _THIS.parents[1]        # Order Samurai
 _GOV = _ROOT.parent             # Governance
-if str(_GOV) not in sys.path:
-    sys.path.insert(0, str(_GOV))
+# agentica_core is a CHILD of the root in a web install (~/.samurai/core) and a SIBLING
+# of it in the live Governance tree. The child goes first so the bundled copy wins.
+for _dir in (_GOV, _ROOT):
+    if str(_dir) not in sys.path:
+        sys.path.insert(0, str(_dir))
 
 from agentica_core.emit import build_record  # noqa: E402  — canonical record shape, reused not reimplemented
 from agentica_core.aggregate import (  # noqa: E402  — SAME reducers the live dashboard grades Brush with
