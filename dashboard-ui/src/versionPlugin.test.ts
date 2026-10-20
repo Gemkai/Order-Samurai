@@ -105,4 +105,24 @@ describe("Vite version middleware", () => {
       next: false,
     })
   })
+
+  it("re-checks after the cache expires: 6 h after a result, 10 min after a failure", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000)
+    execFileMock.mockImplementationOnce((_b, _a, _o, callback) => callback(new Error("offline"), "", ""))
+    execFileMock.mockImplementation((_b, _a, _o, callback) => callback(null, JSON.stringify({
+      current_version: "2.4.0", latest_version: "2.5.0", update_available: true,
+    }), ""))
+    const handler = capture((await loadPlugin()).configureServer)
+    await request(handler)
+    now.mockReturnValue(1_000_000 + 9 * 60_000)
+    await request(handler)
+    expect(execFileMock).toHaveBeenCalledTimes(1)
+    now.mockReturnValue(1_000_000 + 11 * 60_000)
+    expect((await request(handler)).body).toMatchObject({ latest_version: "2.5.0" })
+    expect(execFileMock).toHaveBeenCalledTimes(2)
+    now.mockReturnValue(1_000_000 + 11 * 60_000 + 6 * 3_600_000 + 1)
+    await request(handler)
+    expect(execFileMock).toHaveBeenCalledTimes(3)
+    now.mockRestore()
+  })
 })

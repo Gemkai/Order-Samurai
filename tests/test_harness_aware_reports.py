@@ -268,3 +268,42 @@ def test_explicit_log_directories_override_defaults_independently(machine):
     body = next(machine.reports.glob("audit__*.md")).read_text()
     assert "ignored-claude" not in body
     assert "ignored-codex" not in body
+
+
+def test_forked_codex_rollouts_keep_their_own_session_id(machine):
+    # A forked/subagent rollout carries the parent's session_id and a copied parent
+    # session_meta; its own thread id is payload.id of the FIRST session_meta.
+    _runtime(machine, "codex")
+    _codex(machine.codex, "parent")
+    _write(machine.codex / "2026" / "10" / "19" / "rollout-child.jsonl", [
+        {"type": "session_meta", "payload": {"id": "child", "session_id": "parent", "cwd": "/p"}},
+        {"type": "session_meta", "payload": {"id": "parent", "session_id": "parent", "cwd": "/p"}},
+        {"type": "response_item", "payload": {"type": "function_call", "name": "exec_command"}},
+        _tokens(1000, 10, 100),
+    ])
+    data = json.loads(_run(machine, "--json", first_blood=True).stdout)
+    codex = data["harnesses"]["codex"]
+    assert codex["sessions_scanned"] == 2
+    assert codex["tokens_input"] == 321 + 1000 and codex["tokens_output"] == 45 + 100
+    assert data["token_spend"] == codex["tokens_input"] + codex["tokens_output"]
+
+
+@pytest.mark.parametrize("harness", ["cursor", "gemini"])
+def test_harnesses_without_a_log_reader_are_not_reported_as_measured(machine, harness):
+    _runtime(machine, harness)
+    _runtime(machine, "codex")
+    _codex(machine.codex)
+    data = json.loads(_run(machine, "--json", first_blood=True).stdout)
+    assert set(data["harnesses"]) == {"codex"}
+    text = _run(machine, first_blood=True).stdout
+    assert LABELS[harness] not in text
+    empty = _run(machine, "--codex-dir", str(machine.cwd / "none"), first_blood=True).stdout
+    assert f"No {LABELS[harness]} session logs found" not in empty
+
+
+def test_claude_text_report_keeps_token_spend_and_density_lines(machine):
+    _runtime(machine, "claude")
+    _claude(machine.claude)
+    text = _run(machine, first_blood=True).stdout
+    assert re.search(r"token spend:\s+2000000", text), text
+    assert "token execution density:" in text

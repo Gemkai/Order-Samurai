@@ -4,8 +4,10 @@ import { fileURLToPath } from "node:url"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const execFileMock = vi.hoisted(() => vi.fn())
-vi.mock("node:child_process", () => ({ execFile: execFileMock }))
-vi.mock("child_process", () => ({ execFile: execFileMock }))
+// spawnSync backs resolvePythonBin's venv probe; a failed probe falls back to python3.
+const spawnSyncMock = vi.hoisted(() => vi.fn(() => ({ status: 1 })))
+vi.mock("node:child_process", () => ({ execFile: execFileMock, spawnSync: spawnSyncMock }))
+vi.mock("child_process", () => ({ execFile: execFileMock, spawnSync: spawnSyncMock }))
 
 type VersionModule = { createVersionHandler?: (root: string) => RequestHandler }
 
@@ -87,5 +89,28 @@ describe("API version handler", () => {
       latest_version: null,
       update_available: false,
     } })
+  })
+
+  it("re-checks after the cache expires: 6 h after a result, 10 min after a failure", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000)
+    execFileMock.mockImplementationOnce((_b, _a, _o, callback) => callback(new Error("offline"), "", ""))
+    execFileMock.mockImplementation((_b, _a, _o, callback) => callback(null, JSON.stringify({
+      current_version: "2.4.0", latest_version: "2.5.0", update_available: true,
+    }), ""))
+    const handler = await createHandler()
+    await invoke(handler)
+    now.mockReturnValue(1_000_000 + 9 * 60_000)
+    await invoke(handler)
+    expect(execFileMock).toHaveBeenCalledTimes(1)
+    now.mockReturnValue(1_000_000 + 11 * 60_000)
+    await expect(invoke(handler)).resolves.toMatchObject({ body: { latest_version: "2.5.0" } })
+    expect(execFileMock).toHaveBeenCalledTimes(2)
+    now.mockReturnValue(1_000_000 + 11 * 60_000 + 5 * 3_600_000)
+    await invoke(handler)
+    expect(execFileMock).toHaveBeenCalledTimes(2)
+    now.mockReturnValue(1_000_000 + 11 * 60_000 + 6 * 3_600_000 + 1)
+    await invoke(handler)
+    expect(execFileMock).toHaveBeenCalledTimes(3)
+    now.mockRestore()
   })
 })

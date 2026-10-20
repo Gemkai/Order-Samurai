@@ -195,7 +195,7 @@ def parse_codex_transcript(path: Path) -> dict | None:
     session_id, project, model = path.stem, "unknown", None
     usage = None
     tool_calls = 0
-    seen = False
+    seen = meta_seen = False
     with path.open(encoding="utf-8", errors="replace") as stream:
         for line in stream:
             try:
@@ -210,7 +210,12 @@ def parse_codex_transcript(path: Path) -> dict | None:
                 continue
             if kind == "session_meta":
                 seen = True
-                for key in ("session_id", "id"):
+                # A forked or subagent rollout repeats its parent's session_meta and carries
+                # the parent's session_id; its own thread id is `id` of the FIRST record.
+                if meta_seen:
+                    continue
+                meta_seen = True
+                for key in ("id", "session_id"):
                     candidate = payload.get(key)
                     if isinstance(candidate, str) and candidate:
                         session_id = candidate
@@ -255,10 +260,15 @@ def scan_codex_logs(logs_dir: Path) -> list[dict]:
     return records
 
 
+# Harnesses whose session logs this scan reads. Others (Cursor, Gemini CLI) are left out
+# of the report rather than shown as measured zeros.
+SCANNED_HARNESSES = ("claude", "codex")
+
+
 def build_report(records: list[dict], harnesses: list[str] | None = None) -> dict:
     """Keep dollar reducers and spikes confined to the existing Claude records."""
     claude = [r for r in records if r.get("platform", "claude") == "claude"]
-    present = set(harnesses or ()) | {r.get("platform", "claude") for r in records}
+    present = (set(harnesses or ()) | {r.get("platform", "claude") for r in records}) & set(SCANNED_HARNESSES)
     summaries = {}
     for harness in HARNESS_LABELS:
         if harness not in present:
@@ -316,6 +326,10 @@ def render_report(report: dict) -> str:
         cost_per_task = report["cost_per_task"]
         if cost_per_task is not None:
             lines.append(f"  cost per task (est.):     ${cost_per_task}")
+        if report["token_spend"] is not None:
+            lines.append(f"  token spend:              {report['token_spend']}")
+        if report["token_execution_density"] is not None:
+            lines.append(f"  token execution density:  {report['token_execution_density']}")
         if report["spend_spikes"]:
             lines.append(f"  spend spikes (>= ${report['spend_spike_threshold_usd']}):")
             for spike in report["spend_spikes"]:
@@ -338,10 +352,11 @@ def main(argv: list[str] | None = None) -> int:
     records = scan_logs(Path(args.logs_dir).expanduser()) + scan_codex_logs(Path(args.codex_dir).expanduser())
     harnesses = _HARNESS["installed_or_detected_harnesses"]()
     report = build_report(records, harnesses)
-    labels = [HARNESS_LABELS[h] for h in report["harnesses"]] or ["coding-agent"]
-    report["no_logs_message"] = (" ".join(f"No {label} session logs found." for label in labels)
-                                 + " Run a session first, then scan again; use --logs-dir or --codex-dir "
-                                 "to choose a transcript folder.")
+    labels = [HARNESS_LABELS[h] for h in report["harnesses"]]
+    found = (" ".join(f"No {label} session logs found." for label in labels) if labels
+             else "No Claude Code or Codex session logs found (the usage scan reads those two).")
+    report["no_logs_message"] = (found + " Run a session first, then scan again; use --logs-dir or "
+                                 "--codex-dir to choose a transcript folder.")
     if args.json:
         print(json.dumps(report, indent=2))
     elif not records:
