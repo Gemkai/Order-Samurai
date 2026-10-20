@@ -234,9 +234,12 @@ def main() -> int:
 
     # Reflex Eureka (#learning-loop): cross-correlate skill runs with metric improvement
     # and write ~/.claude/data/auto_eureka_skills.md for operator review and lesson capture.
+    # Only where the Claude runtime home already exists: the web installer runs this before
+    # `samurai install`, and a created ~/.claude reads as a Claude Code install.
     try:
-        from agentica_core.reflex_eureka import analyze as _eureka_analyze
-        _eureka_analyze(log_path=_ORDER_SAMURAI_ROOT / "state" / "exec_log.jsonl")
+        from agentica_core.reflex_eureka import _claude_home, analyze as _eureka_analyze
+        if _claude_home().is_dir():
+            _eureka_analyze(log_path=_ORDER_SAMURAI_ROOT / "state" / "exec_log.jsonl")
     except Exception as _eureka_err:
         print(f"WARN: reflex_eureka failed: {_eureka_err}", file=sys.stderr)
 
