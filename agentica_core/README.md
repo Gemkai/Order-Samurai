@@ -34,7 +34,7 @@ Exit code `1` means at least one FAIL. Exit code `2` means the platform could no
 ```powershell
 python -m agentica_core.aggregate       # Data/wid_payload.json
 python -m agentica_core.state_report   # Data/reports/current-state.md + STATE.md
-python -m agentica_core.weekly_report  # Data/reports/<week>__<platform>.md
+python -m agentica_core.weekly_report  # dashboard-ui/public/reports/<week>__<platform>.md (SAMURAI_REPORTS_DIR overrides)
 python refresh_dashboard.py --snapshot # payload + history + reports + dashboard public copy
 ```
 
