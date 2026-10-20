@@ -1308,6 +1308,16 @@
       "scope": "public-only"
     },
     {
+      "file": "tests/test_update_check.py",
+      "symbol": "_doctor",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
       "file": "tests/test_doctor_write_state.py",
       "symbol": "<module>",
       "imports": [],

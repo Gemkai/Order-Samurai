@@ -43,7 +43,8 @@ The install's tier is a runtime fact of this machine, not a build variant:
   anywhere other than `~/.samurai/license.json`.
 - Local-first: no product telemetry is collected by Order Samurai. License activation
   contacts Gumroad; dependency installation and explicit update checks contact their
-  registries. Third-party AI review requires explicit opt-in and redaction. Do not
+  registries. The daily update check (`agentica_core/update_check.py`, opt out with
+  `SAMURAI_NO_UPDATE_CHECK=1`) fetches only the public build-record.json. Third-party AI review requires explicit opt-in and redaction. Do not
   enable transmission merely because credentials or a provider CLI are available.
 - Honesty invariant: every metric is labelled **MEASURED** or **SIMULATED**. Never present
   simulated data as measured.

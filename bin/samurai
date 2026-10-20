@@ -23,7 +23,7 @@ import importlib.util
 import getpass
 from pathlib import Path
 
-SAMURAI_VERSION = "2.2.1"
+SAMURAI_VERSION = "2.3.0"
 SUPPORT_EMAIL = "support@agentica-llc.biz"  # single support and feedback address
 
 # Tool patterns the guard and scrubber are scoped to. Claude Code matches these
@@ -57,6 +57,27 @@ def _core_module(name):
             return importlib.import_module(f"agentica_core.{name}")
     print(f"  [!] Could not locate agentica_core/{name}.py — is the checkout complete?", file=sys.stderr)
     sys.exit(1)
+
+
+def _print_update_notice():
+    """One line when a newer build is published (Free and Pro alike). Informational only:
+    offline, a missing module or any error prints nothing and never affects doctor."""
+    try:
+        root = get_paths()["root"]
+        core = next((d for d in (root, root.parent) if (d / "agentica_core" / "update_check.py").is_file()), None)
+        if core is None:
+            return
+        spec = importlib.util.spec_from_file_location(
+            "samurai_update_check", core / "agentica_core" / "update_check.py")
+        update_check = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(update_check)
+        info = update_check.status(SAMURAI_VERSION)
+        if info["update_available"]:
+            print(f"  [⬆] Update available: v{info['latest_version']} (installed v{SAMURAI_VERSION}). "
+                  f"Update with: {update_check.UPDATE_COMMAND}")
+            print("      Your license and settings in ~/.samurai are kept.")
+    except Exception:  # noqa: BLE001 -- the notice must never fail doctor
+        pass
 
 
 def _is_interactive():
@@ -1343,6 +1364,7 @@ def cmd_doctor(args):
     print("----------------------------------------")
     _print_results(results)
     _print_unprotected()
+    _print_update_notice()
     print(f"Summary: {passed}/{total} checks passed.")
     print(f"Feedback or problems: {SUPPORT_EMAIL}")
     harness_failed = any(r.startswith("FAILED") for r in results.values())

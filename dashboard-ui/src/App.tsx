@@ -19,6 +19,7 @@ import { RemediationPanel } from "@/components/RemediationPanel"
 import { PillarPage } from "@/components/PillarPage"
 import { useDojo, type DojoProps } from "@/hooks/useDojo"
 import { DojoPanel } from "@/components/DojoPanel"
+import { UpdateBanner } from "@/components/UpdateBanner"
 import { IconTorii, IconShuriken, IconKatana, IconFan, IconArmor, IconYinYang } from "@/components/SamuraiIcons"
 import { LandingPage } from "@/components/LandingPage"
 import { ReportsLog } from "@/components/ReportsLog"
@@ -767,6 +768,7 @@ export default function App() {
             </span>
           </div>
         )}
+        <UpdateBanner version={payload.version} isDemo={isDemo} />
         <header style={{ display: "flex", alignItems: "baseline", gap: 20, marginBottom: 14, flexWrap: "wrap",
           borderBottom: "1px solid rgba(255,255,255,0.055)", paddingBottom: 12 }}>
           <h1 style={{ fontSize: "1rem", letterSpacing: 1, margin: 0, whiteSpace: "nowrap",

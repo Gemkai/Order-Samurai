@@ -831,9 +831,6 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                   <CheckCircle2 size={16} className="text-[#ef4444]" /> Maker-Checker Patch Staging for Human Approval
                 </li>
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-[#ef4444]" /> Touch ID Biometric Operator Authentication
-                </li>
-                <li className="flex items-center gap-2">
                   <CheckCircle2 size={16} className="text-[#ef4444]" /> Multi-Model Sensei Rival Auditing
                 </li>
                 <li className="flex items-center gap-2">

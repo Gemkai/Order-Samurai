@@ -90,6 +90,14 @@ def _emit_mechanism_runs() -> None:
             pass
 
 
+def _version_fields() -> dict:
+    """Installed vs published version for the dashboard's update banner (Free and Pro).
+    The check is cached for a day and silent offline (agentica_core.update_check)."""
+    sys.path.insert(0, str(_GOV))
+    from agentica_core import update_check
+    return update_check.status(update_check.installed_version(_GOV))
+
+
 def main() -> int:
     snapshot = "--snapshot" in sys.argv
     sys.path.insert(0, str(_GOV))
@@ -231,6 +239,11 @@ def main() -> int:
         _eureka_analyze(log_path=_ORDER_SAMURAI_ROOT / "state" / "exec_log.jsonl")
     except Exception as _eureka_err:
         print(f"WARN: reflex_eureka failed: {_eureka_err}", file=sys.stderr)
+
+    try:
+        payload["version"] = _version_fields()
+    except Exception as _ver_err:
+        print(f"WARN: update check failed: {type(_ver_err).__name__}", file=sys.stderr)
 
     src = write_payload(payload)
     _PUBLIC.parent.mkdir(parents=True, exist_ok=True)

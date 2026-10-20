@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-20
+
+### Added
+
+- `samurai audit`: a full audit from a web install (doctor, agent spend scan and weekly telemetry reports), written as `audit__<UTC>.md` plus `index.json` to the install's `dashboard-ui/public/reports` (override with `SAMURAI_REPORTS_DIR`). Exit codes: 0 clean, 1 findings, 2 cannot write. After doctor passes, `install.sh` asks `Run a full audit now? Results appear in the Reports tab. [Y/n]`. It reads only `/dev/tty`, so `curl | bash` still works, and skips the question under `SAMURAI_NO_PROMPT=1` or with no terminal. Audit findings never fail the install. (#86)
+- The Reports tab reads your real reports from `reports/index.json`, newest first. Free shows the newest report and locks older ones; Pro shows all. A locked report is never fetched. With no reports the tab says so and names `samurai audit`. `?demo` keeps the hosted samples. (#86)
+- Update-available notice, the same on Free and Pro. `samurai doctor` (and so the installer's closing summary) prints one line when a newer release is published, with the update command `curl -fsSL https://www.ordersamurai.ai/install.sh | bash`. The dashboard shows a banner with a button that copies that command. The check fetches the public `dist/build-record.json` at most once a day, caches it in `~/.samurai/update_check.json`, times out after 3 seconds and is silent when offline; it never changes doctor's result. Opt out with `SAMURAI_NO_UPDATE_CHECK=1`. Rerunning the installer keeps `~/.samurai/license.json`, `~/.samurai/settings.json` and your `meditation.env` / `dojo.env` (now covered by a test). (#85)
+
+### Fixed
+
+- `bin/first_blood.py` no longer fails with `ModuleNotFoundError` from a web install. Weekly reports are written inside the install, where the Reports tab serves them, instead of outside it. Report dependencies run under `~/.samurai/venv` when the installer created one. (#86)
+- The v2.2.1 zip shipped vendor sample reports and an old-format `index.json` that every buyer would have seen as their own history. They are removed, and the installer deletes them on upgrade. (#86)
+
+### Changed
+
+- `docs/ONBOARDING.md` now says correctly that the curl installer registers hooks and runs doctor, and documents the audit prompt and the Reports tab. (#86)
+- Removed the "Touch ID hardware authorization" claim from the README and the dashboard's landing page. Order Samurai has no Touch ID or LocalAuthentication code.
+
 ## [2.2.1] - 2026-10-14
 
 ### Security
