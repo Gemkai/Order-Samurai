@@ -10,6 +10,7 @@ import { DojoStateManager, PILLAR_SLUGS, ORDER_SAMURAI_ROOT, GOVERNANCE_ROOT, WI
 import { AutoRemediationEngine } from './dojo.js'
 import { ReflexEngine, REFLEX_MAX_TURNS, checkWarnOnly, type ReflexEntry } from './reflex-engine.js'
 import { resolvePythonBin } from './python-bin.js'
+import { createVersionHandler } from './version.js'
 import type { PillarSlug, RoninStatus, ServerMsg, ClientMsg, DojoState, VerdictRecord } from './types.js'
 
 const PORT = 3001
@@ -352,6 +353,9 @@ reflexEngine.on('auto_reflex_skipped', (data: { reflex_id: string; reason: strin
   broadcast({ type: 'auto_reflex_skipped', ...data }))
 
 // ── REST API ──────────────────────────────────────────────────────────────────
+// Intentionally public: this read-only route reveals only version strings.
+app.get('/api/version', createVersionHandler(ORDER_SAMURAI_ROOT))
+
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
