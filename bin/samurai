@@ -412,7 +412,7 @@ def _print_unprotected():
     found = detect_unprotected_agents()
     if found:
         print(f"⚠️  Also found, not protected by Order Samurai: {', '.join(found)}. "
-              "It protects Claude Code, Codex, Cursor and Gemini CLI only.")
+              "Security hooks are not supported for these agents.")
 
 
 def _parse_harnesses(raw, source):
@@ -611,6 +611,34 @@ def _load_manifest(paths):
 
 def _save_manifest(paths, manifest):
     _update_json_file(_manifest_path(paths), lambda _old: copy.deepcopy(manifest))
+
+
+def installed_or_detected_harnesses():
+    """Use completed install records first; detection is the read-only fallback."""
+    try:
+        recorded = _load_manifest(get_paths())["harnesses"]
+    except (ValueError, UnsafeFile, OSError):
+        recorded = {}
+    installed = [h for h in HARNESSES if isinstance(recorded.get(h), dict)
+                 and recorded[h].get("state") == "installed"]
+    if installed:
+        return installed
+    detected = detect_harnesses()
+    return [h for h in HARNESSES if detected[h]["present"]]
+
+
+def cmd_restart_hint(args):
+    harnesses = installed_or_detected_harnesses()
+    if not harnesses:
+        print("Restart your coding agent (Claude Code, Codex, Cursor or Gemini CLI) "
+              "so it loads the security hooks.")
+    for harness in harnesses:
+        if harness == "codex":
+            print("Restart Codex, then run /hooks in Codex and approve the Order Samurai hooks "
+                  "(Codex asks once before it runs new hooks).")
+        else:
+            print(f"Restart {HARNESS_LABELS[harness]} so it loads the security hooks.")
+    return 0
 
 
 def _hook_events(hooks):
@@ -815,7 +843,8 @@ def _targets_script(entry, script_names):
 
 def _print_results(results):
     for harness in HARNESSES:
-        print(f"{HARNESS_LABELS[harness]}: {results[harness]}")
+        if results[harness] != "skipped (not detected)":
+            print(f"{HARNESS_LABELS[harness]}: {results[harness]}")
 
 
 
@@ -963,6 +992,8 @@ def cmd_install(args):
         print(f"\n   Skipped. Activate later with: {_self_cmd()} activate")
     except (Exception, SystemExit) as e:  # activation must never fail the install
         print(f"   Pro activation skipped ({type(e).__name__}). Activate later with: {_self_cmd()} activate")
+    if targets and not failed:
+        cmd_restart_hint(args)
     return 1 if failed or not targets else 0
 
 
@@ -1378,19 +1409,22 @@ def cmd_audit(args):
     Exit 0 clean, 1 findings (a failed health check), 2 the report could not be written."""
     paths = get_paths()
     full_audit = _core_module("full_audit")
-    logs_dir = Path.home() / ".claude" / "projects"
+    logs_dir = Path(args.logs_dir).expanduser() if args.logs_dir else Path.home() / ".claude" / "projects"
+    codex_dir = Path(args.codex_dir).expanduser() if args.codex_dir else codex_home() / "sessions"
     print(f"⚔️  Order Samurai full audit v{SAMURAI_VERSION}")
     print("   Running health checks, scanning agent session logs, building reports...")
     try:
         result = full_audit.run_audit(paths["root"], paths["reports"], logs_dir, SAMURAI_VERSION,
-                                      paths["home"])
+                                      paths["home"], codex_dir=codex_dir)
     except OSError as e:
         print(f"❌ Could not write the audit report to {paths['reports']}: {e}", file=sys.stderr)
         return 2
     doctor, spend = result["doctor"], result["spend"]
     print(f"   Health checks: {doctor['passed']}/{doctor['total']} passed")
     if spend is not None:
-        print(f"   Sessions scanned: {spend['sessions_scanned']}")
+        counts = ", ".join(f"{HARNESS_LABELS[h]} {stats['sessions_scanned']}"
+                           for h, stats in spend.get("harnesses", {}).items())
+        print(f"   Sessions scanned: {spend['sessions_scanned']}" + (f" ({counts})" if counts else ""))
     print(f"✅ Report written: {result['path']}")
     dashboard = paths["root"] / "dashboard-ui"
     print("   Results appear in the dashboard's Reports tab. To open it:")
@@ -1630,7 +1664,10 @@ def main():
 
     # doctor
     subparsers.add_parser("doctor", help="Run diagnostic health checks")
-    subparsers.add_parser("audit", help="Run a full audit; results appear in the dashboard's Reports tab")
+    audit_parser = subparsers.add_parser("audit", help="Run a full audit; results appear in the dashboard's Reports tab")
+    audit_parser.add_argument("--logs-dir", help="Override the transcript root for the claude harness")
+    audit_parser.add_argument("--codex-dir", help="Override the Codex sessions root (default: $CODEX_HOME/sessions)")
+    subparsers.add_parser("restart-hint", help="Print restart steps for the installed coding agents")
 
     # uninstall
     un_parser = subparsers.add_parser("uninstall", help="Uninstall Order Samurai hooks and restore settings")
@@ -1656,6 +1693,8 @@ def main():
         sys.exit(cmd_install(args))
     elif args.command == "audit":
         sys.exit(cmd_audit(args))
+    elif args.command == "restart-hint":
+        sys.exit(cmd_restart_hint(args))
     elif args.command == "uninstall":
         sys.exit(cmd_uninstall(args))
     elif args.command == "activate":

@@ -1,26 +1,21 @@
 #!/usr/bin/env python3
-"""One-command "first blood" report: point Order Samurai at your existing Claude Code
-session logs and get a real cost report in minutes — no daemon, no account, no config.
+"""Read local coding-agent session logs and report measured usage.
 
-Value Equation fix (validation-idea-filter.md Step 4): time-to-first-result was Order
-Samurai's weakest lever ("value shows after telemetry accumulates"). This reads directly
-from ~/.claude/projects/*/*.jsonl — the session transcripts Claude Code already writes —
-so the first report is available immediately, before any daemon or scout ever runs.
-
-Reuses the SAME canonical record shape (agentica_core.emit.build_record) and the SAME
-cost/density reducers (agentica_core.aggregate) the live dashboard grades Brush with —
-one cost calculation, not two (CLAUDE.md Principle #7: DRY at the knowledge level).
-Read-only: this script never writes to your real telemetry store.
+Dollar estimates are available only for the claude harness. Codex logs record
+cumulative token counts, not prices. This scan is read-only and needs no daemon.
 
 Usage:
-    python3 bin/first_blood.py                    # scan ~/.claude/projects
-    python3 bin/first_blood.py --logs-dir DIR      # scan a different transcript root
+    python3 bin/first_blood.py                    # scan local session roots
+    python3 bin/first_blood.py --logs-dir DIR      # override claude transcript root
+    python3 bin/first_blood.py --codex-dir DIR     # override Codex sessions root
     python3 bin/first_blood.py --json              # machine-readable report
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
+import runpy
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,7 +37,10 @@ from agentica_core.aggregate import (  # noqa: E402  — SAME reducers the live 
     r_total_cost,
 )
 
-_DEFAULT_LOGS_DIR = Path.home() / ".claude" / "projects"
+# Load the bundled CLI as a library to share detection, labels and manifest handling.
+# Its main guard prevents commands from running during import.
+_HARNESS = runpy.run_path(str(_THIS.with_name("samurai")))
+HARNESS_LABELS = _HARNESS["HARNESS_LABELS"]
 
 # Model-family keyword -> (tier label, estimated USD per-million-token pricing). One
 # shared table for both tier classification and pricing (CLAUDE.md Principle #7: DRY
@@ -77,16 +75,24 @@ def _tier_for(model: str) -> str:
     return "unknown"
 
 
-def _price_for(model: str) -> tuple[float, float, float]:
+def _price_for(model: str) -> tuple[float, float, float] | None:
     m = (model or "").lower()
+    # Preserve legacy unknown Claude transcript pricing, but never assign it to
+    # an explicitly different provider/model family. Codex never calls this path.
+    if re.match(r"^(?:openai/|google/|gpt-|codex(?:-|$)|o\d(?:-|$)|chatgpt-|gemini|gemma|llama|"
+                r"meta-llama/|mistral|mixtral|qwen|deepseek|grok|x-ai/|command-r)", m):
+        return None
     for key, (_tier, price) in _MODEL_FAMILIES.items():
         if key in m:
             return price
     return _DEFAULT_PRICE
 
 
-def estimate_cost(model: str, tokens_in: int, tokens_out: int, cache_read: int) -> float:
-    p_in, p_out, p_cache = _price_for(model)
+def estimate_cost(model: str, tokens_in: int, tokens_out: int, cache_read: int) -> float | None:
+    prices = _price_for(model)
+    if prices is None:
+        return None
+    p_in, p_out, p_cache = prices
     return round(
         tokens_in / 1_000_000 * p_in
         + tokens_out / 1_000_000 * p_out
@@ -117,7 +123,7 @@ def parse_transcript(path: Path) -> dict | None:
     tokens_in = tokens_out = cache_read = 0
     model = ""
     last_ts: str | None = None
-    turns = 0
+    turns = tool_calls = 0
     with path.open("r", encoding="utf-8", errors="ignore") as fh:
         for line in fh:
             line = line.strip()
@@ -127,10 +133,14 @@ def parse_transcript(path: Path) -> dict | None:
                 rec = json.loads(line)
             except ValueError:
                 continue
-            if rec.get("type") != "assistant":
+            if not isinstance(rec, dict) or rec.get("type") != "assistant":
                 continue
             turns += 1
             msg = rec.get("message") or {}
+            content = msg.get("content") or []
+            if isinstance(content, list):
+                tool_calls += sum(isinstance(item, dict) and item.get("type") == "tool_use"
+                                  for item in content)
             usage = msg.get("usage") or {}
             # cache_creation_input_tokens (prompt-cache writes) is deliberately excluded here,
             # matching the SessionEnd emitter (scripts/agentica_emit.py) this tool mirrors --
@@ -146,7 +156,7 @@ def parse_transcript(path: Path) -> dict | None:
         return None
     cost = estimate_cost(model, tokens_in, tokens_out, cache_read)
     project = _project_from_dir(path.parent.name)
-    return build_record(
+    record = build_record(
         "claude",
         task_name="session",
         timestamp=last_ts or datetime.now(timezone.utc).isoformat(),
@@ -157,8 +167,11 @@ def parse_transcript(path: Path) -> dict | None:
         tokens_prompt=tokens_in,
         tokens_completion=tokens_out,
         cache_read_tokens=cache_read or None,
-        total_cost=cost,
+        total_cost=cost or 0.0,
+        tool_calls=tool_calls,
     )
+    record["total_cost"] = cost
+    return record
 
 
 def scan_logs(logs_dir: Path) -> list[dict]:
@@ -177,77 +190,164 @@ def scan_logs(logs_dir: Path) -> list[dict]:
     return records
 
 
-def build_report(records: list[dict]) -> dict:
-    """Pure — the same reducers the live dashboard grades Brush with (no second cost
-    formula). Empty input is an honest zero-session report, not a crash or a fake number."""
-    spikes = [
-        {
-            "session_id": r.get("session_id"),
-            "project": r.get("project"),
-            "estimated_cost": r.get("total_cost"),
-        }
-        for r in records
-        if (r.get("total_cost") or 0) >= _SPIKE_THRESHOLD_USD
-    ]
+def parse_codex_transcript(path: Path) -> dict | None:
+    """Read the last cumulative usage snapshot; absent usage stays unknown."""
+    session_id, project, model = path.stem, "unknown", None
+    usage = None
+    tool_calls = 0
+    seen = False
+    with path.open(encoding="utf-8", errors="replace") as stream:
+        for line in stream:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(event, dict) or not isinstance(event.get("payload"), dict):
+                continue
+            payload = event["payload"]
+            kind = event.get("type")
+            if not isinstance(kind, str):
+                continue
+            if kind == "session_meta":
+                seen = True
+                for key in ("session_id", "id"):
+                    candidate = payload.get(key)
+                    if isinstance(candidate, str) and candidate:
+                        session_id = candidate
+                        break
+            elif kind == "turn_context":
+                seen = True
+                model = payload.get("model") or model
+            elif kind == "response_item" and payload.get("type") in ("function_call", "custom_tool_call"):
+                seen = True
+                tool_calls += 1
+            elif kind == "event_msg" and payload.get("type") == "token_count":
+                seen = True
+                info = payload.get("info")
+                totals = info.get("total_token_usage") if isinstance(info, dict) else None
+                if isinstance(totals, dict):
+                    values = [totals.get(key) for key in
+                              ("input_tokens", "cached_input_tokens", "output_tokens")]
+                    if all(type(value) is int and value >= 0 for value in values):
+                        usage = values
+            if kind in {"session_meta", "turn_context"} and isinstance(payload.get("cwd"), str):
+                project = Path(payload["cwd"]).name or "unknown"
+    if not seen:
+        return None
     return {
-        "sessions_scanned": len(records),
-        "total_cost": r_total_cost(records),
-        "token_spend": r_token_spend(records),
-        "cost_per_task": r_cost_per_task(records),
-        "token_execution_density": r_token_density(records),
-        "spend_spikes": spikes,
-        "spend_spike_threshold_usd": _SPIKE_THRESHOLD_USD,
+        "platform": "codex", "session_id": session_id, "project": project,
+        "model": model, "tool_calls": tool_calls, "total_cost": None,
+        "tokens_prompt": usage[0] if usage is not None else None,
+        "cache_read_tokens": usage[1] if usage is not None else None,
+        "tokens_completion": usage[2] if usage is not None else None,
+    }
+
+
+def scan_codex_logs(logs_dir: Path) -> list[dict]:
+    records = []
+    for path in sorted(logs_dir.glob("**/rollout-*.jsonl")):
+        try:
+            record = parse_codex_transcript(path)
+        except OSError:
+            continue
+        if record is not None:
+            records.append(record)
+    return records
+
+
+def build_report(records: list[dict], harnesses: list[str] | None = None) -> dict:
+    """Keep dollar reducers and spikes confined to the existing Claude records."""
+    claude = [r for r in records if r.get("platform", "claude") == "claude"]
+    present = set(harnesses or ()) | {r.get("platform", "claude") for r in records}
+    summaries = {}
+    for harness in HARNESS_LABELS:
+        if harness not in present:
+            continue
+        rows = [r for r in records if r.get("platform", "claude") == harness]
+        recorded = [r for r in rows if r.get("tokens_prompt") is not None]
+        summaries[harness] = {
+            "label": HARNESS_LABELS[harness],
+            "sessions_scanned": len(rows),
+            "tool_calls": sum(r.get("tool_calls", 0) for r in rows),
+            "tokens_recorded_sessions": len(recorded),
+            "tokens_input": sum(r.get("tokens_prompt") or 0 for r in recorded) if recorded else None,
+            "tokens_cached": sum(r.get("cache_read_tokens") or 0 for r in recorded) if recorded else None,
+            "tokens_output": sum(r.get("tokens_completion") or 0 for r in recorded) if recorded else None,
+            "total_cost": r_total_cost(rows) if harness == "claude" else None,
+        }
+    spikes = [
+        {"session_id": r.get("session_id"), "project": r.get("project"),
+         "estimated_cost": r.get("total_cost")}
+        for r in claude if (r.get("total_cost") or 0) >= _SPIKE_THRESHOLD_USD
+    ]
+    # Calculate each harness separately: session IDs from different agents can collide.
+    token_totals = [r_token_spend([r for r in records if r.get("platform", "claude") == h])
+                    for h in summaries]
+    return {
+        "sessions_scanned": len(records), "harnesses": summaries,
+        "total_cost": r_total_cost(claude),
+        "token_spend": sum(v for v in token_totals if v is not None) if any(v is not None for v in token_totals) else None,
+        "cost_per_task": r_cost_per_task(claude),
+        "token_execution_density": r_token_density(claude),
+        "spend_spikes": spikes, "spend_spike_threshold_usd": _SPIKE_THRESHOLD_USD,
         "kill_chain_findings": "SIMULATED — not wired in the first-blood cutline (wargames/03 Move 1 counter)",
-        "note": "total_cost is ESTIMATED from public per-token list pricing, not your actual invoice.",
+        "note": "Claude Code total_cost is ESTIMATED from public per-token list pricing, not your actual invoice."
+                if claude else "Dollar cost is unavailable; session logs record usage, not prices.",
     }
 
 
 def render_report(report: dict) -> str:
-    def _line(label: str, key: str, prefix: str = "") -> str:
-        val = report[key]
-        return f"  {label:<26}{prefix}{val}" if val is not None else f"  {label:<26}SIMULATED (no data found)"
-
-    lines = [
-        "Order Samurai -- first blood report",
-        f"  sessions scanned:         {report['sessions_scanned']}",
-        _line("total cost (est.):", "total_cost", "$"),
-        _line("cost per task (est.):", "cost_per_task", "$"),
-        _line("token spend:", "token_spend"),
-        _line("token execution density:", "token_execution_density"),
-        f"  kill-chain findings:      {report['kill_chain_findings']}",
-    ]
-    if report["spend_spikes"]:
-        lines.append(f"  spend spikes (>= ${report['spend_spike_threshold_usd']}):")
-        for s in report["spend_spikes"]:
-            sid = (s["session_id"] or "")[:8]
-            lines.append(f"    - {s['project']} / {sid}: ${s['estimated_cost']}")
-    else:
-        lines.append(f"  spend spikes (>= ${report['spend_spike_threshold_usd']}): none")
+    lines = ["Order Samurai -- first blood report",
+             f"  sessions scanned:         {report['sessions_scanned']} (MEASURED)",
+             # Before the spike list: the website installer stops printing at the first spike.
+             f"  kill-chain findings:      {report['kill_chain_findings']}"]
+    for harness, stats in report.get("harnesses", {}).items():
+        lines += [f"  {stats['label']} (MEASURED):",
+                  f"    sessions scanned: {stats['sessions_scanned']}",
+                  f"    tool calls: {stats['tool_calls']}"]
+        for name in ("input", "cached", "output"):
+            value = stats[f"tokens_{name}"]
+            lines.append(f"    tokens {name}: {value if value is not None else 'unavailable (not recorded)'}")
+        lines.append(f"    token usage recorded in {stats['tokens_recorded_sessions']} of {stats['sessions_scanned']} sessions")
+        if harness == "codex":
+            lines.append("    Estimated cost: unavailable for Codex (logs record tokens, not prices)")
+    if report["total_cost"] is not None:
+        lines.append(f"  total cost (est.):        ${report['total_cost']}")
+        cost_per_task = report["cost_per_task"]
+        if cost_per_task is not None:
+            lines.append(f"  cost per task (est.):     ${cost_per_task}")
+        if report["spend_spikes"]:
+            lines.append(f"  spend spikes (>= ${report['spend_spike_threshold_usd']}):")
+            for spike in report["spend_spikes"]:
+                sid = (spike["session_id"] or "")[:8]
+                lines.append(f"    - {spike['project']} / {sid}: ${spike['estimated_cost']}")
+        else:
+            lines.append(f"  spend spikes (>= ${report['spend_spike_threshold_usd']}): none")
     lines.append(f"  note: {report['note']}")
     return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
-    argv = argv if argv is not None else sys.argv[1:]
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--logs-dir", default=str(_DEFAULT_LOGS_DIR), help="Root containing */*.jsonl transcripts")
+    ap.add_argument("--logs-dir", default=str(Path.home() / ".claude" / "projects"),
+                    help="Root containing */*.jsonl transcripts for the claude harness")
+    ap.add_argument("--codex-dir", default=str(_HARNESS["codex_home"]() / "sessions"),
+                    help="Codex sessions root (default: $CODEX_HOME/sessions)")
     ap.add_argument("--json", action="store_true", help="Emit the machine-readable report instead of text")
     args = ap.parse_args(argv)
-
-    logs_dir = Path(args.logs_dir).expanduser()
-    records = scan_logs(logs_dir)
-    report = build_report(records)
-
+    records = scan_logs(Path(args.logs_dir).expanduser()) + scan_codex_logs(Path(args.codex_dir).expanduser())
+    harnesses = _HARNESS["installed_or_detected_harnesses"]()
+    report = build_report(records, harnesses)
+    labels = [HARNESS_LABELS[h] for h in report["harnesses"]] or ["coding-agent"]
+    report["no_logs_message"] = (" ".join(f"No {label} session logs found." for label in labels)
+                                 + " Run a session first, then scan again; use --logs-dir or --codex-dir "
+                                 "to choose a transcript folder.")
     if args.json:
         print(json.dumps(report, indent=2))
-        return 0
-
-    if not records:
-        print(f"Order Samurai -- no Claude Code session logs found under {logs_dir}")
-        print("Run a Claude Code session first, or point --logs-dir at a transcript folder.")
-        return 0
-
-    print(render_report(report))
+    elif not records:
+        print("Order Samurai -- " + report["no_logs_message"])
+    else:
+        print(render_report(report))
     return 0
 
 

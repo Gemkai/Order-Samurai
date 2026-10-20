@@ -2,7 +2,7 @@
 
 Reuses what already exists instead of a second implementation of any check:
   * `samurai doctor` -- hook registration, packaged-hook execution, posture, paths
-  * bin/first_blood.py -- estimated agent spend from Claude Code session logs
+  * bin/first_blood.py -- measured session usage and available cost estimates
   * weekly_report.generate -- per-week telemetry reports, when telemetry exists
 
 Writes audit__<UTC stamp>.md into the reports directory and rebuilds its index.json,
@@ -73,14 +73,19 @@ def _core_env(root: Path, **extra: str) -> dict:
     return {**os.environ, "PYTHONPATH": f"{root}{os.pathsep}{path}" if path else str(root), **extra}
 
 
-def run_first_blood(root: Path, logs_dir: Path, python: str) -> tuple[dict | None, str]:
+def run_first_blood(root: Path, logs_dir: Path, python: str, codex_dir: Path | None = None) -> tuple[dict | None, str]:
     """(report, error): the report, or None and why the scan could not run."""
-    code, out, err = _run([python, str(root / "bin" / "first_blood.py"), "--json",
-                           "--logs-dir", str(logs_dir)], FIRST_BLOOD_TIMEOUT_S, env=_core_env(root))
+    argv = [python, str(root / "bin" / "first_blood.py"), "--json", "--logs-dir", str(logs_dir)]
+    if codex_dir is not None:
+        argv += ["--codex-dir", str(codex_dir)]
+    code, out, err = _run(argv, FIRST_BLOOD_TIMEOUT_S, env=_core_env(root))
     if code != 0:
         return None, err or f"exit {code}"
     try:
-        return json.loads(out), ""
+        report = json.loads(out)
+        if not isinstance(report, dict) or not isinstance(report.get("sessions_scanned"), int):
+            return None, "unreadable output"
+        return report, ""
     except ValueError:
         return None, "unreadable output"
 
@@ -131,14 +136,15 @@ def render(now: datetime, version: str, doctor: dict, spend: dict | None, logs_d
             lines += [f"Install the report dependencies with `bash {_cell(root)}/bin/install.sh`, "
                       "then run `samurai audit` again.", ""]
     elif not spend["sessions_scanned"]:
-        lines += [f"No Claude Code session logs found under `{_cell(logs_dir)}`. Run a Claude Code "
-                  "session, then `samurai audit` again.", ""]
+        lines += [_cell(spend.get("no_logs_message", "No coding-agent session logs found. Run a session, then scan again.")), ""]
     else:
+        token_spend = spend.get("token_spend")
+        token_text = "unavailable (not recorded)" if token_spend is None else f"{token_spend:,}"
         lines += [f"Sessions scanned: **{spend['sessions_scanned']}**", "",
                   "| Metric | Value |", "| --- | --- |",
                   f"| Total cost (estimated) | {_money(spend.get('total_cost'))} |",
                   f"| Cost per session (estimated) | {_money(spend.get('cost_per_task'))} |",
-                  f"| Token spend | {spend.get('token_spend') or 0:,} |",
+                  f"| Token spend | {token_text} |",
                   f"| Token execution density | {spend.get('token_execution_density') or '—'} |", ""]
         spikes = spend.get("spend_spikes") or []
         threshold = spend.get("spend_spike_threshold_usd")
@@ -148,9 +154,22 @@ def render(now: datetime, version: str, doctor: dict, spend: dict | None, logs_d
             lines += [f"| {_cell(s.get('project'))} | {_cell((s.get('session_id') or '')[:8])} | "
                       f"{_money(s.get('estimated_cost'))} |" for s in spikes]
             lines.append("")
-        else:
-            lines += [f"No session reached the ${threshold:g} spend-spike threshold.", ""]
+        elif spend.get("total_cost") is not None:
+            lines += [f"No priced session reached the ${threshold:g} spend-spike threshold.", ""]
         lines += [f"_{_cell(spend.get('note', ''))}_", ""]
+
+    if spend is not None:
+        for harness, stats in spend.get("harnesses", {}).items():
+            lines += [f"### {_cell(stats['label'])}", "", "Usage: **MEASURED** from local session logs.", "",
+                      "| Metric | Value |", "| --- | --- |",
+                      f"| Sessions scanned | {stats['sessions_scanned']} |",
+                      f"| Tool calls | {stats['tool_calls']} |"]
+            for name in ("input", "cached", "output"):
+                value = stats[f"tokens_{name}"]
+                lines.append(f"| Tokens {name} | {value if value is not None else 'unavailable (not recorded)'} |")
+            lines += ["", f"Token usage recorded in {stats['tokens_recorded_sessions']} of {stats['sessions_scanned']} sessions.", ""]
+            if harness == "codex":
+                lines += ["Estimated cost: unavailable for Codex (logs record tokens, not prices).", ""]
 
     lines += ["## Weekly telemetry", ""]
     if weekly is None:
@@ -163,13 +182,13 @@ def render(now: datetime, version: str, doctor: dict, spend: dict | None, logs_d
 
 
 def run_audit(root: Path, directory: Path, logs_dir: Path, version: str,
-              samurai_home: Path, now: datetime | None = None) -> dict:
+              samurai_home: Path, now: datetime | None = None, codex_dir: Path | None = None) -> dict:
     """Run every part, write the report and index. Raises OSError if it cannot write."""
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     doctor = run_doctor(root)
     python = report_python(samurai_home)
-    spend, spend_error = run_first_blood(root, logs_dir, python)
+    spend, spend_error = run_first_blood(root, logs_dir, python, codex_dir)
     weekly = run_weekly(root, directory, python)
     # Stamped after the weekly rewrite, so the new audit sorts first in the index.
     now = now or datetime.now(timezone.utc)
