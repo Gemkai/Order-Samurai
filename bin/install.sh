@@ -28,6 +28,14 @@ if [ "$PY_OK" != "1" ]; then
   exit 1
 fi
 
+# The archive ships a demo payload. In an installed copy, move it out of the live path
+# before anything can fail, so the dashboard never presents sample metrics as the
+# buyer's data; the refresh below writes the real one. Developer checkouts (a .git dir,
+# or a .git file in a linked worktree) keep the tracked demo payload.
+if [ ! -e "$HERE/.git" ] && [ -f "$HERE/dashboard-ui/public/wid_payload.json" ]; then
+  mv -f "$HERE/dashboard-ui/public/wid_payload.json" "$HERE/dashboard-ui/public/wid_payload.demo.json"
+fi
+
 # Where the dependencies go. An interpreter that is already a virtualenv (e.g.
 # PYTHON=.venv/bin/python) installs into itself. One that is "externally managed"
 # (PEP 668: Homebrew, Debian/Ubuntu) refuses pip installs, --user included, so it gets
@@ -82,6 +90,25 @@ ensure_dependency() {
 ensure_dependency jsonschema 'jsonschema>=4.0'
 ensure_dependency requests 'requests>=2.31'
 ensure_dependency pip_audit 'pip-audit>=2.7'
+
+# Installed copies only: developer checkouts (a .git dir, or a .git file in a linked
+# worktree) keep the tracked demo payload.
+if [ ! -e "$HERE/.git" ]; then
+  # Python supplies the timeout on macOS too, where `timeout` is not installed.
+  # Keep refresh output out of the first-report log extraction.
+  if ! "$PY" - "$HERE" >/dev/null 2>&1 <<'PY'
+import subprocess
+import sys
+
+subprocess.run(
+    [sys.executable, "refresh_dashboard.py"],
+    cwd=sys.argv[1], check=True, timeout=120,
+)
+PY
+  then
+    echo "install.sh: dashboard refresh failed or timed out; continuing to first report."
+  fi
+fi
 
 echo "install.sh: scanning coding-agent session logs..."
 PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}" \
