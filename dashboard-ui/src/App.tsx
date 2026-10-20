@@ -22,7 +22,7 @@ import { DojoPanel } from "@/components/DojoPanel"
 import { IconTorii, IconShuriken, IconKatana, IconFan, IconArmor, IconYinYang } from "@/components/SamuraiIcons"
 import { LandingPage } from "@/components/LandingPage"
 import { ReportsLog } from "@/components/ReportsLog"
-import { loadReportHtml, loadReportIndex, type ReportEntry } from "@/lib/reports"
+import { isReportLocked, loadReportHtml, loadReportIndex, type ReportEntry } from "@/lib/reports"
 
 type GlyphKey = "overview" | "bow" | "sword" | "brush" | "arts" | "reports"
 function NavIcon({ k, size, color }: { k: GlyphKey; size: number; color?: string }) {
@@ -126,7 +126,8 @@ function LiveReports({ isPro }: { isPro: boolean }) {
 
   useEffect(() => { loadReportIndex().then(setEntries) }, [])
 
-  const file = entries?.[activeIdx]?.file
+  // A locked (Free, older) report is never fetched.
+  const file = isReportLocked(activeIdx, isPro) ? undefined : entries?.[activeIdx]?.file
   useEffect(() => {
     if (!file) return
     let live = true

@@ -197,3 +197,25 @@ def test_redirected_stdout_skips_the_question(tmp_path, script_name):
     assert code == 0, out + log.read_text()
     assert PROMPT not in out
     assert _calls(tmp_path) == ["install", "doctor"]
+
+
+LEGACY = ["2026-W28__antigravity.md", "2026-W28__claude.md", "2026-W28__codex.md",
+          "2026-W29__claude.md", "2026-W29__codex.md", "current-state.md"]
+
+
+@pytest.mark.parametrize("script_name", SCRIPTS)
+def test_upgrade_removes_the_sample_reports_v2_2_1_shipped(tmp_path, script_name):
+    """v2.2.1's zip put the vendor's July reports in public/reports; unzip -o keeps them,
+    and they would show as the buyer's own history. The buyer's audits stay."""
+    reports = tmp_path / "home" / ".samurai" / "core" / "dashboard-ui" / "public" / "reports"
+    reports.mkdir(parents=True)
+    for name in LEGACY:
+        (reports / name).write_text("vendor sample", encoding="utf-8")
+    (reports / "index.json").write_text('[{"file": "2026-W29__claude.md", "week": "2026-W29"}]', encoding="utf-8")
+    (reports / "audit__20261019T120000Z.md").write_text("# Full Audit", encoding="utf-8")
+    dist = _published_zip(tmp_path)
+    r = subprocess.run(["/bin/bash"], input=(ROOT / script_name).read_text(encoding="utf-8"),
+                       env=_env(tmp_path, OS_CORE_BASE_URL=f"file://{dist}"), capture_output=True,
+                       text=True, timeout=60, start_new_session=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert sorted(p.name for p in reports.iterdir()) == ["audit__20261019T120000Z.md"]

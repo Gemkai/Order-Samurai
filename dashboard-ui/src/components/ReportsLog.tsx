@@ -4,6 +4,9 @@ const ACCENT: Record<string, string> = { audit: "var(--sword)", claude: "var(--b
 const accentOf = (r: ReportEntry) => ACCENT[r.kind === "audit" ? "audit" : r.platform ?? ""] ?? "var(--arts)"
 const dateOf = (r: ReportEntry) => r.kind === "weekly" && r.week ? r.week : r.generated.slice(0, 10)
 
+// A locked report's content never reaches the page; this stands in under the blur.
+const LOCKED_PLACEHOLDER = "<h1>Past report</h1><p>" + "Report history is part of Order Samurai Pro. ".repeat(6) + "</p>"
+
 export interface ReportsLogProps {
   entries: ReportEntry[]
   activeIdx: number
@@ -56,7 +59,7 @@ export function ReportsLog({ entries, activeIdx, html, isPro, onSelect }: Report
           borderRadius: 18, padding: "24px 30px",
           borderLeft: `3px solid ${accentOf(current)}`,
           ...(locked ? { filter: "blur(6px)", opacity: 0.4, pointerEvents: "none", userSelect: "none" } : {}),
-        }} dangerouslySetInnerHTML={{ __html: html }} />
+        }} dangerouslySetInnerHTML={{ __html: locked ? LOCKED_PLACEHOLDER : html }} />
 
         {locked && (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", paddingTop: 96, gap: 10, background: "rgba(5,5,5,0.55)", backdropFilter: "blur(4px)" }}>

@@ -24,6 +24,11 @@ describe("loadReportIndex", () => {
     expect(await loadReportIndex(respond({ not: "a list" }))).toEqual([])
   })
 
+  it("drops rows in the pre-audit index format (v2.2.1 shipped one)", async () => {
+    const legacy = [{ file: "2026-W29__claude.md", week: "2026-W29", platform: "claude", records: 465 }, audit]
+    expect(await loadReportIndex(respond(legacy))).toEqual([audit])
+  })
+
   it("drops entries whose file is not a plain .md name", async () => {
     const bad = [{ ...audit, file: "../../secrets.md" }, { ...audit, file: "x.html" }, weekly]
     expect(await loadReportIndex(respond(bad))).toEqual([weekly])
@@ -74,10 +79,11 @@ describe("ReportsLog", () => {
     expect(html).not.toContain("· PRO")
   })
 
-  it("blurs an older report behind the Pro lock on Free", () => {
-    const html = render({ activeIdx: 1 })
+  it("blurs an older report behind the Pro lock on Free, without its content", () => {
+    const html = render({ activeIdx: 1, html: "<p>SECRET-HISTORY</p>" })
     expect(html).toContain("blur(6px)")
     expect(html).toContain("PAST REPORTS · PRO")
+    expect(html).not.toContain("SECRET-HISTORY")
   })
 
   it("does not lock older reports on Pro", () => {

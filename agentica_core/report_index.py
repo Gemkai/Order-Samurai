@@ -37,7 +37,8 @@ def rebuild_index(directory: Path) -> list[dict]:
                       "week": m.group(1), "platform": m.group(2),
                       "records": int(rec.group(1)) if rec else 0,
                       "generated": mtime.strftime("%Y-%m-%dT%H:%M:%SZ")})
-    # Same-second weekly backfills fall back to week order.
-    index.sort(key=lambda x: (x["generated"], x.get("week", ""), x.get("platform", "")), reverse=True)
+    # Same second: an audit (written after the weekly rewrite it ran) first, then week order.
+    index.sort(key=lambda x: (x["generated"], x["kind"] == "audit", x.get("week", ""), x.get("platform", "")),
+               reverse=True)
     (Path(directory) / "index.json").write_text(json.dumps(index, indent=2), encoding="utf-8")
     return index

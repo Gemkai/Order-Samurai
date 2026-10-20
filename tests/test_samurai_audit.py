@@ -194,3 +194,16 @@ def test_missing_report_dependencies_name_the_fix(tmp_path):
                              spend_error="ModuleNotFoundError: No module named 'jsonschema'", root=ROOT)
     assert "No module named 'jsonschema'" in body
     assert f"bash {ROOT}/bin/install.sh" in body
+
+
+def test_a_fresh_audit_sorts_first_even_after_weekly_rewrites(tmp_path):
+    """weekly_report rewrites every weekly .md during the audit; the audit written after
+    them must still be index[0], or Free users see their new audit blurred."""
+    sys.path.insert(0, str(ROOT))
+    from datetime import datetime, timezone
+    from agentica_core import report_index
+    now = datetime.now(timezone.utc)
+    (tmp_path / "2026-W42__claude.md").write_text("Records this week: **3**\n", encoding="utf-8")
+    (tmp_path / f"audit__{now:%Y%m%dT%H%M%SZ}.md").write_text("# Full Audit\n", encoding="utf-8")
+    index = report_index.rebuild_index(tmp_path)
+    assert index[0]["kind"] == "audit"

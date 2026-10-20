@@ -16,6 +16,12 @@ type Fetcher = (url: string, init?: RequestInit) => Promise<Pick<Response, "ok" 
 // A bare file name in the reports dir: no path separators, no traversal.
 const SAFE_FILE = /^[A-Za-z0-9][A-Za-z0-9_.-]*\.md$/
 const isSafe = (file: unknown): file is string => typeof file === "string" && SAFE_FILE.test(file) && !file.includes("..")
+// v2.2.1 shipped an index without kind/title/generated; those rows are not this machine's.
+const isEntry = (e: unknown): e is ReportEntry => {
+  const r = e as ReportEntry
+  return !!r && typeof r === "object" && isSafe(r.file) && (r.kind === "audit" || r.kind === "weekly")
+    && typeof r.title === "string" && typeof r.generated === "string"
+}
 
 /** The report list, newest first. Empty (never an error) when no report exists yet. */
 export async function loadReportIndex(fetcher: Fetcher = fetch): Promise<ReportEntry[]> {
@@ -24,7 +30,7 @@ export async function loadReportIndex(fetcher: Fetcher = fetch): Promise<ReportE
     if (!res.ok) return []
     const data: unknown = await res.json()
     if (!Array.isArray(data)) return []
-    return data.filter((e): e is ReportEntry => !!e && typeof e === "object" && isSafe((e as ReportEntry).file))
+    return data.filter(isEntry)
   } catch {
     return []
   }

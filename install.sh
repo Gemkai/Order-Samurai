@@ -101,6 +101,16 @@ else
   mkdir -p "${TARGET_DIR}"
   echo "  [📦] Extracting to ${TARGET_DIR}..."
   unzip -q -o "${TMP_DIR}/order-samurai-core.zip" -d "${TARGET_DIR}"
+  # v2.2.1 shipped sample reports in public/reports; unzip -o keeps them, and the Reports
+  # tab would show them as this machine's history. Reports written here stay.
+  REPORTS_DIR="${TARGET_DIR}/dashboard-ui/public/reports"
+  for legacy in 2026-W28__antigravity.md 2026-W28__claude.md 2026-W28__codex.md \
+                2026-W29__claude.md 2026-W29__codex.md current-state.md; do
+    rm -f "${REPORTS_DIR}/${legacy}"
+  done
+  if [ -f "${REPORTS_DIR}/index.json" ] && ! grep -q '"kind"' "${REPORTS_DIR}/index.json"; then
+    rm -f "${REPORTS_DIR}/index.json"
+  fi
 
   chmod +x "${TARGET_DIR}/bin/samurai"
   # </dev/null: under curl | bash stdin is this script; the key prompt reads /dev/tty.

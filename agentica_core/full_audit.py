@@ -165,13 +165,14 @@ def render(now: datetime, version: str, doctor: dict, spend: dict | None, logs_d
 def run_audit(root: Path, directory: Path, logs_dir: Path, version: str,
               samurai_home: Path, now: datetime | None = None) -> dict:
     """Run every part, write the report and index. Raises OSError if it cannot write."""
-    now = now or datetime.now(timezone.utc)
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     doctor = run_doctor(root)
     python = report_python(samurai_home)
     spend, spend_error = run_first_blood(root, logs_dir, python)
     weekly = run_weekly(root, directory, python)
+    # Stamped after the weekly rewrite, so the new audit sorts first in the index.
+    now = now or datetime.now(timezone.utc)
     path = directory / f"audit__{now:%Y%m%dT%H%M%SZ}.md"
     path.write_text(render(now, version, doctor, spend, logs_dir, weekly, spend_error, root),
                     encoding="utf-8")
