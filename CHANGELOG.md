@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.2] - 2026-10-20
+
+### Fixed
+
+- On a machine without Claude Code, the v2.4.1 install created `~/.claude`. The dashboard refresh that now runs during install wrote `~/.claude/data/auto_eureka_skills.md`, and `samurai install` then read that folder as a Claude Code install. A Codex-only buyer therefore got Claude Code hooks registered and was told to "Restart Claude Code". The refresh now writes that report only when `~/.claude` already exists.
+
 ## [2.4.1] - 2026-10-20
 
 ### Fixed

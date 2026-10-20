@@ -119,7 +119,9 @@ def test_fresh_install_generates_current_zero_record_payload_before_first_report
     assert payload["record_counts"]
     assert set(payload["record_counts"].values()) == {0}
     report = result.stdout[result.stdout.index("Order Samurai -- ") :]
-    assert report.startswith("Order Samurai -- No Claude Code session logs found.")
+    # No harness is installed here, so the message names both scanned harnesses. (Before
+    # v2.4.2 the refresh created ~/.claude, which made this machine look like Claude Code.)
+    assert report.startswith("Order Samurai -- No Claude Code or Codex session logs found")
     assert "--logs-dir or --codex-dir" in report
     assert result.stdout.count("Order Samurai -- ") == 1
 
