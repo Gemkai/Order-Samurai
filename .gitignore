@@ -33,6 +33,8 @@ test_env/
 
 # ── Generated dashboard artifacts (recomputed by refresh_dashboard.py) ──
 dashboard-ui/dist/
+# This machine's reports (samurai audit, weekly_report.py); never shipped in the zip.
+dashboard-ui/public/reports/
 **/publicwid_payload.json
 wid_payload*.json
 # ...but never the SOURCE schema contract (the pattern above is for GENERATED payloads;
