@@ -39,9 +39,15 @@ One-command install (macOS / Linux):
 curl -fsSL https://raw.githubusercontent.com/Gemkai/order-samurai/main/install.sh | bash
 ```
 
-The website installer downloads and verifies the archive; it does not install runtime
-dependencies or register hooks. Extract the ZIP into a permanent path without spaces,
-then follow the setup below. Alternatively, clone the public source:
+The installer downloads the archive, verifies its SHA-256, extracts it to
+`~/.samurai/core`, registers the security hooks (`samurai install`) and runs
+`samurai doctor`. When doctor passes in a terminal, it asks
+`Run a full audit now? Results appear in the Reports tab. [Y/n]`; the audit report then
+appears in the dashboard's Reports tab (see step 3). Without a terminal, or with
+`SAMURAI_NO_PROMPT=1`, it skips the question; run `samurai audit` any time. This
+installer does not install the optional report dependencies (the www.ordersamurai.ai
+installer does); `bash ~/.samurai/core/bin/install.sh` adds them. Alternatively, clone
+the public source:
 
 ```bash
 git clone https://github.com/Gemkai/order-samurai.git
@@ -206,7 +212,9 @@ npm run dev
 ```
 
 Open `http://localhost:5173` for live four-pillar metrics, radar charts, and active
-reflexes. Every metric is labelled **MEASURED** or **SIMULATED** so you always know what is
+reflexes. The **Reports** tab lists reports written by `samurai audit` (full audit:
+health checks, estimated agent spend, weekly telemetry) newest first; Free includes the
+newest report, Pro the full history. Every metric is labelled **MEASURED** or **SIMULATED** so you always know what is
 real telemetry versus a calibration placeholder.
 
 That's it — Free is protecting your agent sessions. Prompt-injection attempts are blocked
