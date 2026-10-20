@@ -114,8 +114,9 @@ def _lines(result):
     lines = {}
     for harness, label in LABELS.items():
         found = [line for line in result.stdout.splitlines() if line.startswith(label + ": ")]
-        assert len(found) == 1, f"Expected one {label} result line:\n{result.stdout}\n{result.stderr}"
-        lines[harness] = found[0]
+        assert len(found) <= 1, f"Expected at most one {label} result line:\n{result.stdout}\n{result.stderr}"
+        if found:
+            lines[harness] = found[0]
     return lines
 
 
@@ -181,19 +182,23 @@ def test_detect_harnesses_reads_only_allowed_locations(machine, monkeypatch, kin
 
 @pytest.mark.parametrize("kind,claude,codex,config_only", DETECTION_CASES)
 def test_install_auto_detects_harnesses(machine, kind, claude, codex, config_only):
-    """Cases 1, 12: Auto-install only detected harnesses and report both outcomes.
+    """Cases 1, 12: Auto-install detected harnesses and omit unrelated absent outcomes.
     Installing nothing is a failure: scripts and installers must not read it as success."""
     _prepare(machine, kind)
     result = _run(machine, "install")
     assert result.returncode == (0 if claude or codex else 1), result.stdout + result.stderr
     _assert_selected(machine, {h for h, present in (("claude", claude), ("codex", codex)) if present})
     lines = _lines(result)
-    assert ("installed" if claude else "skipped (not detected)") in lines["claude"]
+    if claude:
+        assert "installed" in lines["claude"]
+    else:
+        assert "claude" not in lines
     if config_only:
         assert "Codex config found but Codex not installed — skipped" in lines["codex"]
+    elif codex:
+        assert "installed — approve it in Codex's /hooks screen" in lines["codex"]
     else:
-        expected = "installed — approve it in Codex's /hooks screen" if codex else "skipped (not detected)"
-        assert expected in lines["codex"]
+        assert "codex" not in lines
 
 
 @pytest.mark.parametrize("value", ["absolute", "relative", "empty", "unset"])
@@ -265,6 +270,7 @@ def test_comma_list_trims_whitespace_and_ignores_duplicates(machine, source):
     result = _run(machine, "install", *args, selection=selection if source == "env" else None)
     assert result.returncode == 0, result.stdout + result.stderr
     _assert_selected(machine, {"claude", "codex"})
+    assert set(_lines(result)) == set(LABELS)
     assert all("installed" in line for line in _lines(result).values())
     manifest = json.loads(machine.manifest.read_text())
     assert sorted(manifest["selected"]) == ["claude", "codex"]
@@ -343,6 +349,7 @@ def test_success_prints_one_line_per_harness(machine, command):
     result = _run(machine, command)
     assert result.returncode == 0, result.stdout + result.stderr
     lines = _lines(result)
+    assert set(lines) == set(LABELS)
     assert all("FAILED" not in line for line in lines.values())
     if command == "install":
         assert all("installed" in line for line in lines.values())

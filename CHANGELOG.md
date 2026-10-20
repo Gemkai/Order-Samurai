@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-20
+
+### Added
+
+- `samurai audit` and the installer's first report read Codex session logs (`$CODEX_HOME/sessions`, default `~/.codex/sessions`). Per harness they report sessions scanned, tool calls and token totals (input, cached, output) as recorded in the logs. Codex logs record tokens but not prices, so Codex cost is shown as unavailable. No estimate is made, and Codex sessions never appear in the dollar totals or the spend-spike list. `samurai audit` and `bin/first_blood.py` accept `--logs-dir` (Claude Code transcripts) and `--codex-dir`.
+- `samurai restart-hint` prints the restart step for each installed harness. For Codex it says to restart Codex and approve the Order Samurai hooks in `/hooks`. `samurai install` prints it at the end.
+- `samurai version [--json]`. With `--json` it prints the installed and latest versions (the same daily-cached, offline-silent check as doctor's notice).
+- The dashboard gets its own version status from `GET /api/version`. The Vite dev and preview servers answer it even when the API is not running, and so does the API server. The update banner therefore appears without a manual `npm run sync`. Behaviour is the same for Free and Pro.
+
+### Fixed
+
+- Install, doctor, audit and first-report messages name the harnesses that are actually detected or installed (Claude Code, Codex, Cursor, Gemini CLI, or any mix). A Codex-only machine is no longer told to "Run a Claude Code session first", and harnesses that are not present are no longer listed as skipped.
+- The Claude Code price table is no longer applied to models from other providers.
+
+### Changed
+
+- Removed the remaining Touch ID claims from `docs/MARKETING_STRATEGY.md`, `docs/MONETIZATION_STRATEGY.md` and `docs/SEO_CONTENT_STRATEGY.md`. Order Samurai has no Touch ID code.
+
 ## [2.3.0] - 2026-10-20
 
 ### Added

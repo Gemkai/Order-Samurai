@@ -14,7 +14,7 @@ Order Samurai employs a clean, transparent **2-Tier Model (Free Core vs. Pro Lif
 │                      │                               │ interceptor, manual .patch staging│
 ├──────────────────────┼───────────────────────────────┼─────────────────────────────────┤
 │ 2. Pro Lifetime      │ $199 (One-Time / Perpetual)   │ Staged repair review,           │
-│                      │                               │ Touch ID biometric mutation auth│
+│                      │                               │ Full audit + Reports history    │
 │                      │                               │ 9-point knowledge telemetry     │
 └──────────────────────┴───────────────────────────────┴─────────────────────────────────┘
 ```
@@ -40,7 +40,6 @@ Order Samurai employs a clean, transparent **2-Tier Model (Free Core vs. Pro Lif
 * **Core Principle**: Monetize diagnostic depth and review support, not basic safety or unattended repairs.
 * **Included**:
   * **Maker-Checker Patch Staging**: Presents proposed patches and validation evidence for explicit human review and approval. Broad autonomous LLM repair and auto-apply are no longer Pro features.
-  * **Hardware Biometric Protection (Touch ID)**: Critical operator mutations and policy adjustments require Darwin LocalAuthentication Touch ID biometric attestation (falling back to device owner PIN/password on supported environments).
   * **Multi-Model Rival Auditing (Sensei Engine)**: Multi-model consensus where autonomous scout findings (Bow, Sword, Brush, Arts) are audited by an independent rival LLM (`CONFIRMED`, `REFUTED`, `SUSPECT`) before code is touched.
   * **9-Point Deep Knowledge Telemetry**: Real-time observability under **Brush → Knowledge Retrieval**:
     * Embedding cache hit, miss, and error rates.

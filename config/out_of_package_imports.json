@@ -1395,6 +1395,16 @@
       "scope": "public-only"
     },
     {
+      "file": "tests/test_harness_aware_reports.py",
+      "symbol": "_run",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "subprocess.run"
+      ],
+      "scope": "public-only"
+    },
+    {
       "file": "tests/test_harness_detection.py",
       "symbol": "_load",
       "class": "test-harness-unresolved",

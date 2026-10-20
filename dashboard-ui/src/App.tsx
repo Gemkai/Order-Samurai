@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import { X, Terminal, Info, Zap } from "lucide-react"
-import { PILLARS, type PillarKey, type WIDPayload, type Reflex } from "@/types"
+import { PILLARS, type PillarKey, type WIDPayload, type Reflex, type VersionStatus } from "@/types"
 import logoImg from "@/assets/logo.png"
 import {
   loadPayload, liveSimCounts, METRIC_DOCS, metricLabel, type FlatMetric,
@@ -20,6 +20,7 @@ import { PillarPage } from "@/components/PillarPage"
 import { useDojo, type DojoProps } from "@/hooks/useDojo"
 import { DojoPanel } from "@/components/DojoPanel"
 import { UpdateBanner } from "@/components/UpdateBanner"
+import { fetchVersionStatus, resolveVersionStatus } from "@/lib/version"
 import { IconTorii, IconShuriken, IconKatana, IconFan, IconArmor, IconYinYang } from "@/components/SamuraiIcons"
 import { LandingPage } from "@/components/LandingPage"
 import { ReportsLog } from "@/components/ReportsLog"
@@ -549,6 +550,8 @@ function MetricModal({ metric, color, contributions, scopeLabel, onClose, dojoPr
 }
 
 // ── App root ─────────────────────────────────────────────────────────────────
+let versionRequest: Promise<VersionStatus | undefined> | undefined
+
 export default function App() {
   const [mode, setMode] = useState<"landing" | "dashboard">(() => {
     if (typeof window !== "undefined") {
@@ -562,6 +565,7 @@ export default function App() {
     return "dashboard"
   })
   const [payload, setPayload] = useState<WIDPayload | null>(null)
+  const [liveVersion, setLiveVersion] = useState<VersionStatus>()
   const [loadedAt, setLoadedAt] = useState<number | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [view, setView] = useState<View>("overview")
@@ -573,6 +577,14 @@ export default function App() {
     window.location.hash.toLowerCase().includes("demo") ||
     window.location.pathname.toLowerCase().includes("demo")
   )
+
+  useEffect(() => {
+    if (isDemo) return
+    let active = true
+    versionRequest ??= fetchVersionStatus()
+    void versionRequest.then((version) => { if (active) setLiveVersion(version) })
+    return () => { active = false }
+  }, [isDemo])
 
   useEffect(() => {
     const load = () => loadPayload().then((p) => { setPayload(p); setLoadedAt(Date.now()) }).catch((e) => setErr(String(e)))
@@ -768,7 +780,7 @@ export default function App() {
             </span>
           </div>
         )}
-        <UpdateBanner version={payload.version} isDemo={isDemo} />
+        <UpdateBanner version={resolveVersionStatus(liveVersion, payload.version)} isDemo={isDemo} />
         <header style={{ display: "flex", alignItems: "baseline", gap: 20, marginBottom: 14, flexWrap: "wrap",
           borderBottom: "1px solid rgba(255,255,255,0.055)", paddingBottom: 12 }}>
           <h1 style={{ fontSize: "1rem", letterSpacing: 1, margin: 0, whiteSpace: "nowrap",

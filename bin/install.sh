@@ -3,11 +3,12 @@
 #
 # Checks the Python version, installs the runtime dependencies (into a private
 # ~/.samurai/venv when the Python is PEP 668 externally managed), then runs
-# first_blood.py against your existing Claude Code session logs so the first cost report
+# first_blood.py against your existing coding-agent session logs so the first cost report
 # appears in this same command -- no daemon, no account, no separate onboarding step.
 #
-#   ./bin/install.sh                  # scan ~/.claude/projects
-#   ./bin/install.sh --logs-dir DIR   # scan a different transcript root
+#   ./bin/install.sh                  # scan local session roots
+#   ./bin/install.sh --logs-dir DIR   # override the claude transcript root
+#   ./bin/install.sh --codex-dir DIR  # override the Codex sessions root
 #
 # wargames/03-order-samurai-commercialization.md Move 1 (R6): this is the timed
 # clean-machine path -- `time ./bin/install.sh` measures the PRD G1 gate (<=10 min).
@@ -33,7 +34,7 @@ fi
 # a private venv under ~/.samurai. Any other Python keeps the --user install that the
 # dashboard API and Dojo rely on when they run plain python3. The hooks never need
 # these packages: they are stdlib-only and run on python3, so a venv broken by a
-# Python upgrade cannot make Claude Code block tool calls.
+# Python upgrade cannot make a coding agent block tool calls.
 PIP_INSTALL_ARGS=(--quiet)
 if ! "$PY" -c 'import sys; raise SystemExit(0 if sys.prefix != sys.base_prefix else 1)' \
     >/dev/null 2>&1; then
@@ -82,6 +83,6 @@ ensure_dependency jsonschema 'jsonschema>=4.0'
 ensure_dependency requests 'requests>=2.31'
 ensure_dependency pip_audit 'pip-audit>=2.7'
 
-echo "install.sh: scanning Claude Code session logs..."
+echo "install.sh: scanning coding-agent session logs..."
 PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}" \
   exec "$PY" "$HERE/bin/first_blood.py" "$@"

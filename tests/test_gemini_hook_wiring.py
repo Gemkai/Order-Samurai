@@ -276,13 +276,16 @@ def test_flag_gemini_fails_when_not_detected(tmp_path):
 # --- detection ----------------------------------------------------------------------
 
 @pytest.mark.parametrize("evidence,expect", [
-    ("path", "installed"), (None, "skipped (not detected)")])
+    ("path", "installed"), (None, None)])
 def test_auto_detection_uses_runtime_evidence(tmp_path, evidence, expect):
     machine = Machine(tmp_path, gemini_evidence=evidence)
     machine.env["SAMURAI_HARNESS"] = ""
     result = machine.run("install")
     assert result.returncode == 0, result.stdout + result.stderr
-    assert expect in line(result)
+    if evidence is None:
+        assert "Gemini CLI:" not in result.stdout
+    else:
+        assert expect in line(result)
     assert machine.settings.exists() == (evidence is not None)
 
 
@@ -433,7 +436,7 @@ def test_gemini_is_no_longer_named_as_unprotected(machine):
         result = machine.run(command)
         note = next((row for row in result.stdout.splitlines() if "not protected by Order Samurai" in row), "")
         assert "Goose" in note and "Gemini" not in note.split(". It protects")[0], result.stdout
-        assert "Claude Code, Codex, Cursor and Gemini CLI" in note
+        assert 'Codex' not in note and 'Cursor' not in note, result.stdout
 
 
 def test_no_unprotected_note_names_gemini_even_with_only_its_folder(tmp_path):
