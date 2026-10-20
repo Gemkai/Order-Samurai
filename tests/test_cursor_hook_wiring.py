@@ -228,13 +228,16 @@ def test_flag_cursor_fails_when_not_detected(tmp_path):
 # --- detection ----------------------------------------------------------------
 
 @pytest.mark.parametrize("evidence,expect", [
-    ("path", "installed"), ("app", "installed"), (None, "skipped (not detected)")])
+    ("path", "installed"), ("app", "installed"), (None, None)])
 def test_auto_detection_uses_runtime_evidence(tmp_path, evidence, expect):
     machine = Machine(tmp_path, cursor_evidence=evidence)
     machine.env["SAMURAI_HARNESS"] = ""
     result = machine.run("install")
     assert result.returncode == 0, result.stdout + result.stderr
-    assert expect in line(result)
+    if evidence is None:
+        assert "Cursor:" not in result.stdout
+    else:
+        assert expect in line(result)
     assert machine.hooks.exists() == (evidence is not None)
 
 
@@ -351,4 +354,4 @@ def test_cursor_is_no_longer_named_as_unprotected(machine):
         result = machine.run(command)
         note = next((row for row in result.stdout.splitlines() if "not protected by Order Samurai" in row), "")
         assert "Goose" in note and "Cursor" not in note.split(". It protects")[0], result.stdout
-        assert "Claude Code, Codex, Cursor and Gemini CLI" in note
+        assert 'Codex' not in note and 'Gemini CLI' not in note, result.stdout
