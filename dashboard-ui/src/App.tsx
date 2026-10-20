@@ -22,6 +22,8 @@ import { DojoPanel } from "@/components/DojoPanel"
 import { UpdateBanner } from "@/components/UpdateBanner"
 import { IconTorii, IconShuriken, IconKatana, IconFan, IconArmor, IconYinYang } from "@/components/SamuraiIcons"
 import { LandingPage } from "@/components/LandingPage"
+import { ReportsLog } from "@/components/ReportsLog"
+import { isReportLocked, loadReportHtml, loadReportIndex, type ReportEntry } from "@/lib/reports"
 
 type GlyphKey = "overview" | "bow" | "sword" | "brush" | "arts" | "reports"
 function NavIcon({ k, size, color }: { k: GlyphKey; size: number; color?: string }) {
@@ -67,6 +69,7 @@ function rubricFromPayload(pillars: WIDPayload["pillars"]): Record<PillarKey, Ru
   return out
 }
 
+/** Hosted-demo only (?demo): sample reports for the marketing site. Installs read real ones. */
 const DEMO_REPORTS = [
   {
     file: "w29.md",
@@ -116,9 +119,33 @@ const DEMO_REPORTS = [
   }
 ]
 
+/** Real reports: public/reports/index.json, written by `samurai audit` and weekly_report.py. */
+function LiveReports({ isPro }: { isPro: boolean }) {
+  const [entries, setEntries] = useState<ReportEntry[] | null>(null)
+  const [activeIdx, setActiveIdx] = useState(0)
+  const [html, setHtml] = useState("")
+
+  useEffect(() => { loadReportIndex().then(setEntries) }, [])
+
+  // A locked (Free, older) report is never fetched.
+  const file = isReportLocked(activeIdx, isPro) ? undefined : entries?.[activeIdx]?.file
+  useEffect(() => {
+    if (!file) return
+    let live = true
+    loadReportHtml(file)
+      .then((h) => { if (live) setHtml(h) })
+      .catch(() => { if (live) setHtml("<p>This report could not be loaded.</p>") })
+    return () => { live = false }
+  }, [file])
+
+  if (entries === null) return <div className="mono" style={{ fontSize: "0.75rem", color: "var(--muted-foreground)" }}>Loading reports…</div>
+  return <ReportsLog entries={entries} activeIdx={activeIdx} html={file ? html : ""} isPro={isPro} onSelect={setActiveIdx} />
+}
+
 function Reports({ payload }: { payload: WIDPayload }) {
   const [subTab, setSubTab] = useState<"logs" | "rubric">("logs")
   const [activeIdx, setActiveIdx] = useState(0)
+  const isPro = isProEntitled(payload)
 
   const ACCENT: Record<string, string> = { "claude-code": "var(--brush)", antigravity: "var(--bow)", "codex-cli": "var(--arts)" }
   const rubricData = rubricFromPayload(payload.pillars)
@@ -163,16 +190,7 @@ function Reports({ payload }: { payload: WIDPayload }) {
       {subTab === "logs" ? (
         (() => {
           const isDemo = typeof window !== "undefined" && (window.location.search.includes("demo") || window.location.hash.includes("demo") || window.location.pathname.includes("demo"))
-          if (!isDemo && payload?.window?.records === 0) {
-            return (
-              <div className="glass" style={{ borderRadius: 18, padding: 36, textAlign: "center", border: "1px dashed rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.01)" }}>
-                <h3 className="mono" style={{ margin: "0 0 10px", fontSize: "0.95rem", color: "var(--foreground)", letterSpacing: 1 }}>No Weekly Reports Generated Yet</h3>
-                <p className="mono" style={{ margin: "0 auto", fontSize: "0.75rem", color: "var(--muted-foreground)", lineHeight: 1.6, maxWidth: 520 }}>
-                  Weekly dispatches are generated automatically as agent sessions complete and local telemetry is aggregated.
-                </p>
-              </div>
-            )
-          }
+          if (!isDemo) return <LiveReports isPro={isPro} />
           return (
             <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 220 }}>

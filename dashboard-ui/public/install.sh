@@ -22,12 +22,33 @@ if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
 fi
 SAMURAI_BIN="${SCRIPT_DIR}/bin/samurai"
 
+# After doctor passes: offer the full audit. The question goes to /dev/tty and nothing
+# reads stdin -- under `curl | bash` stdin is this script. Asked only when a person is
+# watching: stdout is a terminal and /dev/tty opens (the license-key prompt's rule), so
+# CI, `>log` and SAMURAI_NO_PROMPT=1 skip silently. A CLI older than this installer (no
+# `audit` subcommand) is not offered one.
+offer_audit() {
+  local samurai="$1" answer=""
+  [ "${SAMURAI_NO_PROMPT:-}" != "1" ] && [ -t 1 ] || return 0
+  { : </dev/tty; } 2>/dev/null || return 0
+  python3 "${samurai}" audit --help </dev/null >/dev/null 2>&1 || return 0
+  printf '%s' "Run a full audit now? Results appear in the Reports tab. [Y/n] " >/dev/tty
+  read -r answer </dev/tty || answer="n"
+  case "${answer}" in
+    ""|[Yy]|[Yy][Ee][Ss])
+      # Findings (exit 1) are the audit's result, not an install failure.
+      python3 "${samurai}" audit </dev/null || true ;;
+    *) echo "   Skipped. Run it any time: python3 \"${samurai}\" audit" ;;
+  esac
+}
+
 if [ -n "${SCRIPT_DIR}" ] && [ -f "${SAMURAI_BIN}" ]; then
   echo "⚔️  Order Samurai Local Installer"
   echo "--------------------------------------------------------"
   chmod +x "${SAMURAI_BIN}"
   python3 "${SAMURAI_BIN}" install </dev/null
   python3 "${SAMURAI_BIN}" doctor </dev/null
+  offer_audit "${SAMURAI_BIN}"
   echo "--------------------------------------------------------"
   echo "✅ Order Samurai installed and verified successfully!"
   echo "   Feedback or problems: support@agentica-llc.biz"
@@ -80,11 +101,22 @@ else
   mkdir -p "${TARGET_DIR}"
   echo "  [📦] Extracting to ${TARGET_DIR}..."
   unzip -q -o "${TMP_DIR}/order-samurai-core.zip" -d "${TARGET_DIR}"
+  # v2.2.1 shipped sample reports in public/reports; unzip -o keeps them, and the Reports
+  # tab would show them as this machine's history. Reports written here stay.
+  REPORTS_DIR="${TARGET_DIR}/dashboard-ui/public/reports"
+  for legacy in 2026-W28__antigravity.md 2026-W28__claude.md 2026-W28__codex.md \
+                2026-W29__claude.md 2026-W29__codex.md current-state.md; do
+    rm -f "${REPORTS_DIR}/${legacy}"
+  done
+  if [ -f "${REPORTS_DIR}/index.json" ] && ! grep -q '"kind"' "${REPORTS_DIR}/index.json"; then
+    rm -f "${REPORTS_DIR}/index.json"
+  fi
 
   chmod +x "${TARGET_DIR}/bin/samurai"
   # </dev/null: under curl | bash stdin is this script; the key prompt reads /dev/tty.
   python3 "${TARGET_DIR}/bin/samurai" install </dev/null
   python3 "${TARGET_DIR}/bin/samurai" doctor </dev/null
+  offer_audit "${TARGET_DIR}/bin/samurai"
   echo "--------------------------------------------------------"
   echo "✅ Order Samurai installed and verified successfully!"
   echo "   Feedback or problems: support@agentica-llc.biz"

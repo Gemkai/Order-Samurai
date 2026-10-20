@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Order Samurai CLI & Installer Tool
-Provides samurai install, samurai doctor, and samurai uninstall capabilities.
+Provides samurai install, doctor, audit, and uninstall capabilities.
 """
 
 import os
@@ -36,7 +36,11 @@ GUARD_TIMEOUT_S = 10
 SCRUBBER_TIMEOUT_S = 10
 
 def _licensing_module():
-    """Import agentica_core.licensing, resolving its child-vs-sibling location the
+    return _core_module("licensing")
+
+
+def _core_module(name):
+    """Import agentica_core.<name>, resolving its child-vs-sibling location the
     same way cmd_doctor's Path Authority check does: a flattened export has it as a
     direct CHILD of the repo root (checked first, so an agentica_core/ planted in a
     shared parent directory such as /tmp can never shadow the bundled copy); the live
@@ -50,9 +54,8 @@ def _licensing_module():
             with contextlib.suppress(ValueError):
                 sys.path.remove(str(governance_dir))
             sys.path.insert(0, str(governance_dir))
-            import agentica_core.licensing as licensing  # noqa: PLC0415
-            return licensing
-    print("  [!] Could not locate agentica_core/licensing.py — is the checkout complete?", file=sys.stderr)
+            return importlib.import_module(f"agentica_core.{name}")
+    print(f"  [!] Could not locate agentica_core/{name}.py — is the checkout complete?", file=sys.stderr)
     sys.exit(1)
 
 
@@ -223,6 +226,8 @@ def get_paths():
     # the guard never fires. See tests/test_hook_wiring.py.
     claude_settings = home / ".claude" / "settings.json"
     backups_dir = samurai_home / "backups"
+    # Inside the install, in the dir the dashboard's dev server serves (public/).
+    reports = Path(os.environ.get("SAMURAI_REPORTS_DIR") or samurai_root / "dashboard-ui" / "public" / "reports")
 
     return {
         "root": samurai_root,
@@ -231,6 +236,7 @@ def get_paths():
         "claude_hooks": claude_hooks,
         "claude_settings": claude_settings,
         "backups": backups_dir,
+        "reports": reports,
         "state": samurai_root / "state",
         "taxonomy": samurai_root / "state" / "kill_chain_taxonomy.json"
     }
@@ -1365,6 +1371,35 @@ def cmd_doctor(args):
     return 0 if passed == total and not harness_failed else 1
 
 
+# --- Audit ------------------------------------------------------------------------
+
+def cmd_audit(args):
+    """Full audit: doctor + agent spend + weekly telemetry, written for the Reports tab.
+    Exit 0 clean, 1 findings (a failed health check), 2 the report could not be written."""
+    paths = get_paths()
+    full_audit = _core_module("full_audit")
+    logs_dir = Path.home() / ".claude" / "projects"
+    print(f"⚔️  Order Samurai full audit v{SAMURAI_VERSION}")
+    print("   Running health checks, scanning agent session logs, building reports...")
+    try:
+        result = full_audit.run_audit(paths["root"], paths["reports"], logs_dir, SAMURAI_VERSION,
+                                      paths["home"])
+    except OSError as e:
+        print(f"❌ Could not write the audit report to {paths['reports']}: {e}", file=sys.stderr)
+        return 2
+    doctor, spend = result["doctor"], result["spend"]
+    print(f"   Health checks: {doctor['passed']}/{doctor['total']} passed")
+    if spend is not None:
+        print(f"   Sessions scanned: {spend['sessions_scanned']}")
+    print(f"✅ Report written: {result['path']}")
+    dashboard = paths["root"] / "dashboard-ui"
+    print("   Results appear in the dashboard's Reports tab. To open it:")
+    print(f"     cd {shlex.quote(str(dashboard))} && npm install && npm run dev")
+    print("     then visit http://localhost:5173 and choose Reports.")
+    print(f"Feedback or problems: {SUPPORT_EMAIL}")
+    return 0 if doctor["ok"] else 1
+
+
 # --- Uninstall --------------------------------------------------------------------
 
 def _script_paths(definitions):
@@ -1595,6 +1630,7 @@ def main():
 
     # doctor
     subparsers.add_parser("doctor", help="Run diagnostic health checks")
+    subparsers.add_parser("audit", help="Run a full audit; results appear in the dashboard's Reports tab")
 
     # uninstall
     un_parser = subparsers.add_parser("uninstall", help="Uninstall Order Samurai hooks and restore settings")
@@ -1618,6 +1654,8 @@ def main():
         sys.exit(cmd_doctor(args))
     elif args.command == "install":
         sys.exit(cmd_install(args))
+    elif args.command == "audit":
+        sys.exit(cmd_audit(args))
     elif args.command == "uninstall":
         sys.exit(cmd_uninstall(args))
     elif args.command == "activate":
