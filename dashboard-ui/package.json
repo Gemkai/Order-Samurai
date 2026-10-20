@@ -1,7 +1,7 @@
 {
   "name": "dashboard-ui",
   "private": true,
-  "version": "2.4.0",
+  "version": "2.4.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "sync": "node sync.mjs"
+    "sync": "node sync.mjs",
+    "test:sync": "node --experimental-test-module-mocks --test sync.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-10-20
+
+### Fixed
+
+- A fresh install no longer shows the bundled demo metrics (for example "Claude Code 144 sessions" and a "STALE DATA" banner) as if they were the buyer's own. `bin/install.sh` moves the demo payload aside in an installed copy (to `dashboard-ui/public/wid_payload.demo.json`) before anything can fail. It then runs `refresh_dashboard.py` with the same Python (2-minute limit, non-fatal), so the dashboard opens on this machine's real, initially empty, data. A developer checkout (a `.git` directory or file) keeps the tracked demo payload. Reports history is kept.
+- `npm run sync` ran `python`, which stock macOS does not have. It now uses `~/.samurai/venv/bin/python` when that venv works, otherwise `python3` (`python` on Windows), called with an argument list.
+
 ## [2.4.0] - 2026-10-20
 
 ### Added
