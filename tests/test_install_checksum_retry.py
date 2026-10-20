@@ -61,7 +61,7 @@ def _run_web_installer(tmp_path: Path, base_url: str) -> subprocess.CompletedPro
     script = tmp_path / "install.sh"
     shutil.copy2(ROOT / "install.sh", script)
     home = tmp_path / "home"
-    (home / ".claude").mkdir(parents=True)
+    (home / ".claude").mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, HOME=str(home), OS_CORE_BASE_URL=base_url, OS_SHA_RETRY_DELAY="0",
                SAMURAI_NO_PROMPT="1")
     for key in ("SAMURAI_HOME", "SAMURAI_ROOT", "ORDER_SAMURAI_ROOT", "SAMURAI_LICENSE_KEY", "PYTHONPATH"):

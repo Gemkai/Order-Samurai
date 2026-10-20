@@ -37,7 +37,7 @@ Because all data remains on your local filesystem, you have total control over y
 
 ## 4. Updates & Security Policy
 
-Order Samurai may periodically check GitHub Releases via standard `git` or CLI package managers for available software updates. No user identifying information is attached to public release checks.
+`samurai doctor` and the dashboard refresh check for a newer release at most once a day, on Free and Pro alike. The check is a plain HTTPS GET of the public `dist/build-record.json` file from the same GitHub address the installer downloads from (`raw.githubusercontent.com`). It sends no license key, email, telemetry or other data about you or your machine; like any web request, GitHub sees your IP address. The result is cached in `~/.samurai/update_check.json`. If you are offline the check is skipped silently. Set `SAMURAI_NO_UPDATE_CHECK=1` to turn it off.
 
 ---
 

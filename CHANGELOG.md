@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Update-available notice, the same on Free and Pro. `samurai doctor` (and so the installer's closing summary) prints one line when a newer release is published, with the update command `curl -fsSL https://www.ordersamurai.ai/install.sh | bash`. The dashboard shows a banner with a button that copies that command. The check fetches the public `dist/build-record.json` at most once a day, caches it in `~/.samurai/update_check.json`, times out after 3 seconds and is silent when offline; it never changes doctor's result. Opt out with `SAMURAI_NO_UPDATE_CHECK=1`. Rerunning the installer keeps `~/.samurai/license.json`, `~/.samurai/settings.json` and your `meditation.env` / `dojo.env` (now covered by a test).
+
 ## [2.2.1] - 2026-10-14
 
 ### Security

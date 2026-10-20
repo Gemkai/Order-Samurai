@@ -31,6 +31,16 @@
       "properties": { "tier": { "enum": ["free", "pro"] } },
       "required": ["tier"],
       "additionalProperties": false
+    },
+    "version": {
+      "description": "Installed vs published version for the dashboard's update banner, the same for Free and Pro. latest_version is null when the daily check has never succeeded (offline). Optional: a payload written before this key existed is still valid (and shows no banner).",
+      "type": "object",
+      "properties": {
+        "current_version": { "type": ["string", "null"] },
+        "latest_version": { "type": ["string", "null"] },
+        "update_available": { "type": "boolean" }
+      },
+      "required": ["current_version", "latest_version", "update_available"]
     }
   },
   "additionalProperties": true,

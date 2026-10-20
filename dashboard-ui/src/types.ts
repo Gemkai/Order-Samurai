@@ -78,9 +78,18 @@ export interface ArchitectureBreakdown {
   generated_at: string | null
 }
 
+/** Installed vs published version (refresh_dashboard.py); the same for Free and Pro. */
+export interface VersionStatus {
+  current_version: string | null
+  latest_version: string | null
+  update_available: boolean
+}
+
 export interface WIDPayload {
   schema_version: string
   timestamp: string
+  /** Absent on payloads written before the update check existed. */
+  version?: VersionStatus
   platforms: string[]
   record_counts: Record<string, number>
   window: { days: number; records: number }

@@ -197,6 +197,11 @@ enforcement not verified by doctor": it checks the entry, that `hooksConfig` in 
 guard answers Gemini-shaped payloads with valid JSON, but it cannot prove Gemini CLI runs the
 hook. Its line also carries the folder-trust note described above.
 
+When a newer release is published, doctor (and the dashboard) also shows an
+"Update available" line with the update command: rerun the installer. Updating keeps
+`~/.samurai/license.json` and your settings. The check runs at most once a day, is silent
+offline and never changes doctor's result; `SAMURAI_NO_UPDATE_CHECK=1` turns it off.
+
 ### 3. Launch the dashboard (optional)
 
 ```bash
