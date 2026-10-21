@@ -443,7 +443,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* SWORD (MEASURED) */}
+            {/* SWORD (sample) */}
             <div className="bg-[#0f172a]/60 border border-[#ef4444]/40 rounded-2xl p-6 transition-all backdrop-blur-sm shadow-xl relative">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
@@ -451,10 +451,10 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                   <span className="text-xs font-mono font-bold text-white uppercase">SWORD</span>
                 </div>
 
-                {/* Rec 5 — MEASURED Solid Badge */}
+                {/* Figures on this page are illustrative samples, never measurements */}
                 <span className="px-2.5 py-1 text-[10px] font-bold bg-[#ef4444]/20 text-[#ef4444] border border-[#ef4444]/40 rounded-full flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" />
-                  MEASURED
+                  SAMPLE
                 </span>
               </div>
 
@@ -529,7 +529,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               )}
             </div>
 
-            {/* BRUSH (MEASURED) */}
+            {/* BRUSH (sample) */}
             <div className="bg-[#0f172a]/60 border border-[#ef4444]/40 rounded-2xl p-6 transition-all backdrop-blur-sm shadow-xl relative">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
@@ -539,7 +539,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
 
                 <span className="px-2.5 py-1 text-[10px] font-bold bg-[#ef4444]/20 text-[#ef4444] border border-[#ef4444]/40 rounded-full flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" />
-                  MEASURED
+                  SAMPLE
                 </span>
               </div>
 
@@ -550,7 +550,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
 
               <h3 className="text-sm font-bold text-white">Actual Cost Savings</h3>
               <p className="mt-1.5 text-xs text-slate-400 leading-relaxed">
-                Ledger spend tracking & spend-capping delta vs list pricing.
+                Ledger spend compared with list pricing.
               </p>
 
               <div className="mt-4 pt-3 border-t border-white/10 text-[10px] font-mono text-slate-500 flex items-center justify-between">
@@ -565,7 +565,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
 
               {activePillarTooltip === "brush" && (
                 <div className="mt-2 p-2 bg-slate-950 rounded text-[10px] font-mono text-slate-300 border border-white/10">
-                  Direct ledger delta from spend capping & optimized execution.
+                  Ledger spend compared with list pricing.
                 </div>
               )}
             </div>
@@ -892,7 +892,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
 
               <div className="space-y-4 text-sm text-slate-300">
                 <p>
-                  Order Samurai Compliance includes multi-project fleet telemetry, NIST AI RMF and EU AI Act evidence packs, and custom agent runtime hooks.
+                  Questions about deploying Order Samurai across several machines or teams? Email us. Compliance evidence packs and multi-project fleet telemetry are not part of the product today.
                 </p>
                 <div className="p-4 bg-slate-950 rounded-xl border border-white/5 space-y-2 text-xs font-mono">
                   <div className="text-slate-400">Direct Support &amp; Sales Channel:</div>
