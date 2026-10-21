@@ -70,12 +70,10 @@ function rubricFromPayload(pillars: WIDPayload["pillars"]): Record<PillarKey, Ru
   return out
 }
 
-/** Header strip: one entry per telemetry platform in agentica_core/platforms.json (record_counts keys). */
+/** Header strip: harnesses `samurai audit` reads session logs for (agentica_core/full_audit.py: Claude Code and Codex). Keys are agentica_core/platforms.json record_counts keys. */
 export const HARNESS_CONFIG: { key: string; label: string; unit: string; color: string }[] = [
   { key: "claude", label: "Claude Code", unit: "sessions", color: "var(--brush)" },
   { key: "codex", label: "Codex CLI", unit: "tasks", color: "var(--arts)" },
-  { key: "gemini", label: "Gemini CLI", unit: "sessions", color: "#38bdf8" },
-  { key: "antigravity", label: "Antigravity", unit: "runs", color: "var(--bow)" },
 ]
 
 /** Hosted-demo only (?demo): sample reports for the marketing site. Installs read real ones. */
@@ -856,33 +854,6 @@ export default function App() {
   )
 }
 
-function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
-  // Only Pro views that ship are teased here. Compliance evidence packs and a cross-harness
-  // fleet view are not built, so they are not shown. Repair review is
-  // maker-checker patch staging (docs/MONETIZATION_STRATEGY.md); the rows are a labelled sample.
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, marginTop: 40 }}>
-      <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", border: "1px solid rgba(250,204,21,0.25)" }}>
-        <div style={{ filter: "blur(6px)", opacity: 0.5, pointerEvents: "none", userSelect: "none", background: "rgba(255,255,255,0.02)", padding: 24 }}>
-          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "rgba(255,255,255,0.55)", marginBottom: 14 }}>REPAIR REVIEW · SAMPLE</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
-            <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(250,204,21,0.05)" }}>staged patch for Doc_Parity_Issues · validation evidence attached · awaiting your approval</div>
-            <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(250,204,21,0.05)" }}>staged patch for Hardcoded_Path_Incidents · awaiting your approval</div>
-            <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(74,222,128,0.05)" }}>earlier patch · approved by you and applied</div>
-          </div>
-        </div>
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
-          <div style={{ fontSize: 22 }}>🔒</div>
-          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>REPAIR REVIEW · PRO</div>
-          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
-            UNLOCK PRO LIFETIME — $199
-          </a>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Top usage panel (skills / connections / agents) ───────────────────────────
 function TopUsagePanel({ usage, isDemo = false }: { usage: WIDPayload["top_usage"]; isDemo?: boolean }) {
   if (!usage) return null
@@ -1097,8 +1068,6 @@ function Overview({ payload, onSelect, reflexProps, dojoProps, onUnlock, isDemo 
         </div>
       )}
 
-      {/* Mock teasers for unbuilt Pro views: shown only as an upgrade prompt, never "unlocked". */}
-      {!isPro && <ProLockedPanels onUnlock={onUnlock} />}
     </section>
   )
 }
