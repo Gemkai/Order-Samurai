@@ -70,52 +70,64 @@ function rubricFromPayload(pillars: WIDPayload["pillars"]): Record<PillarKey, Ru
   return out
 }
 
+/** Header strip: harnesses `samurai audit` reads session logs for (agentica_core/full_audit.py: Claude Code and Codex). Keys are agentica_core/platforms.json record_counts keys. */
+export const HARNESS_CONFIG: { key: string; label: string; unit: string; color: string }[] = [
+  { key: "claude", label: "Claude Code", unit: "sessions", color: "var(--brush)" },
+  { key: "codex", label: "Codex CLI", unit: "tasks", color: "var(--arts)" },
+]
+
 /** Hosted-demo only (?demo): sample reports for the marketing site. Installs read real ones. */
 const DEMO_REPORTS = [
   {
-    file: "w29.md",
-    week: "2026-W29 (Current Week)",
+    file: "w43.md",
+    week: "2026-W43 (Current Week)",
     isCurrent: true,
     platform: "claude-code",
-    title: "Weekly Governance Dispatch — 2026-W29",
-    html: `
-      <div style="font-family:var(--font-mono);font-size:12px;color:rgba(255,255,255,0.6);">WEEKLY GOVERNANCE DISPATCH · 2026-W29</div>
-      <h2 style="margin:8px 0 16px;font-size:1.4rem;color:#4ade80;">STATUS: PASS · 100% Security Boundary Compliance</h2>
-
-      <h3 style="font-size:1rem;color:var(--foreground);margin-top:20px;">Pillar Performance Summary</h3>
-      <ul style="line-height:1.8;font-size:0.88rem;color:rgba(255,255,255,0.85);padding-left:20px;">
-        <li><strong style="color:var(--sword);">Sword (Security):</strong> 14 ATT&CK kill chains intercepted & disrupted. 0 credential leaks.</li>
-        <li><strong style="color:var(--bow);">Bow (Operations):</strong> 42.5 agent hours returned via unattended task completion (88.2% pass rate).</li>
-        <li><strong style="color:var(--brush);">Brush (Architecture):</strong> $3,940 in spend savings achieved via local model routing & token optimization.</li>
-        <li><strong style="color:var(--arts);">Arts (Craft):</strong> 18.5 human review hours saved through automated verifiers & doc parity checks.</li>
-      </ul>
-
-      <h3 style="font-size:1rem;color:var(--foreground);margin-top:20px;">Multi-Agent Telemetry</h3>
-      <p style="font-size:0.85rem;color:rgba(255,255,255,0.7);line-height:1.6;">Active agent sessions monitored: 14 Claude Code, 6 Codex CLI, 23 Antigravity, 11 Cursor, 8 Local Ollama.</p>
+    title: "Samurai Audit — 2026-W43 (sample)",
+    html: `<div style="font-family:var(--font-mono);font-size:12px;color:rgba(255,255,255,0.6);">SAMURAI AUDIT · 2026-W43 · WEEK OF OCT 19 · <span style="color:#facc15;">SAMPLE DATA, SYNTHETIC VALUES</span></div>
+      <h2 style="margin:8px 0 16px;font-size:1.4rem;color:#4ade80;">Order Samurai -- first blood report</h2>
+      <pre style="font-family:var(--font-mono);font-size:12px;line-height:1.7;color:rgba(255,255,255,0.85);white-space:pre-wrap;">  sessions scanned:         41 (sample)
+  kill-chain findings:      SIMULATED — not wired in the first-blood cutline
+  Claude Code (sample):
+    sessions scanned: 29
+    tool calls: 1312
+    tokens input: 2104331
+    tokens cached: 18840290
+    tokens output: 396118
+    token usage recorded in 29 of 29 sessions
+  Codex (sample):
+    sessions scanned: 12
+    tool calls: 487
+    tokens input: 903442
+    tokens cached: 5120077
+    tokens output: 141260
+    token usage recorded in 12 of 12 sessions
+    Estimated cost: unavailable for Codex (logs record tokens, not prices)
+  total cost (est.):        $41.30  (Claude Code sessions only)
+  spend spikes (>= $5.0):
+    - sample-project / 3f9a21c0: $6.84
+  note: Claude Code total_cost is ESTIMATED from public per-token list pricing, not your actual invoice.</pre>
+      <p style="font-size:0.8rem;color:rgba(255,255,255,0.55);line-height:1.6;">Illustrative format only: every figure above is a synthetic sample, none was measured. Your own report is written by <code>samurai audit</code> and depends on your setup and logs. Codex sessions show token totals but never a dollar figure, and are excluded from the totals above.</p>
     `
   },
   {
-    file: "w28.md",
-    week: "2026-W28 (Past Week)",
+    file: "w42.md",
+    week: "2026-W42 (Past Week)",
     isCurrent: false,
     platform: "claude-code",
-    title: "Weekly Audit — 2026-W28",
-    html: `
-      <div style="font-family:var(--font-mono);font-size:12px;color:rgba(255,255,255,0.6);">WEEKLY GOVERNANCE DISPATCH · 2026-W28</div>
-      <h2 style="margin:8px 0 16px;font-size:1.4rem;color:#facc15;">STATUS: HIGH · 2 Anomaly Warnings Resolved</h2>
-      <p style="font-size:0.85rem;color:rgba(255,255,255,0.7);">Detailed historical telemetry logs and automated dojo trace for 2026-W28.</p>
+    title: "Samurai Audit — 2026-W42 (sample)",
+    html: `<div style="font-family:var(--font-mono);font-size:12px;color:rgba(255,255,255,0.6);">SAMURAI AUDIT · 2026-W42 · WEEK OF OCT 12 · <span style="color:#facc15;">SAMPLE DATA, SYNTHETIC VALUES</span></div>
+      <p style="font-size:0.85rem;color:rgba(255,255,255,0.7);">Earlier sample report in the same format. Past weeks ship with Pro.</p>
     `
   },
   {
-    file: "w27.md",
-    week: "2026-W27 (Past Week)",
+    file: "w41.md",
+    week: "2026-W41 (Past Week)",
     isCurrent: false,
     platform: "codex-cli",
-    title: "Weekly Audit — 2026-W27",
-    html: `
-      <div style="font-family:var(--font-mono);font-size:12px;color:rgba(255,255,255,0.6);">WEEKLY GOVERNANCE DISPATCH · 2026-W27</div>
-      <h2 style="margin:8px 0 16px;font-size:1.4rem;color:#4ade80;">STATUS: PASS · 98.4% Pass Rate</h2>
-      <p style="font-size:0.85rem;color:rgba(255,255,255,0.7);">Detailed historical telemetry logs and automated dojo trace for 2026-W27.</p>
+    title: "Samurai Audit — 2026-W41 (sample)",
+    html: `<div style="font-family:var(--font-mono);font-size:12px;color:rgba(255,255,255,0.6);">SAMURAI AUDIT · 2026-W41 · WEEK OF OCT 5 · <span style="color:#facc15;">SAMPLE DATA, SYNTHETIC VALUES</span></div>
+      <p style="font-size:0.85rem;color:rgba(255,255,255,0.7);">Earlier sample report in the same format. Past weeks ship with Pro.</p>
     `
   }
 ]
@@ -669,14 +681,6 @@ export default function App() {
     { key: "reports", label: "Reports", glyph: "📜", accent: "var(--arts)" },
   ]
 
-  const HARNESS_CONFIG: { key: string; label: string; unit: string; color: string }[] = [
-    { key: "claude", label: "Claude Code", unit: "sessions", color: "var(--brush)" },
-    { key: "codex", label: "Codex CLI", unit: "tasks", color: "var(--arts)" },
-    { key: "cursor", label: "Cursor", unit: "sessions", color: "#38bdf8" },
-    { key: "antigravity", label: "Antigravity", unit: "runs", color: "var(--bow)" },
-    { key: "local", label: "Local Ollama", unit: "sessions", color: "#4ade80" },
-  ]
-
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "var(--background)", color: "var(--foreground)" }}>
       {/* FREE DEMO Banner — only rendered in hosted demo mode */}
@@ -830,7 +834,7 @@ export default function App() {
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
           >
-            {view === "overview" && <Overview payload={payload} onSelect={setView} reflexProps={reflexProps} dojoProps={dojoProps} onUnlock={() => setMode("landing")} isDemo={isDemo} />}
+            {view === "overview" && <Overview payload={payload} onSelect={setView} reflexProps={reflexProps} dojoProps={dojoProps} onUnlock={() => { if (!isDemo) setMode("landing") }} isDemo={isDemo} />}
             {view === "reports" && <Reports payload={payload} />}
             {view !== "overview" && view !== "reports" && (
               <PillarPage payload={payload} pk={view} reflexProps={reflexProps} onSelectMetric={setSelected} dojoProps={dojoProps} />
@@ -850,71 +854,8 @@ export default function App() {
   )
 }
 
-function ProLockedPanels({ onUnlock }: { onUnlock?: () => void }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, marginTop: 40 }}>
-      {/* Repair Review Queue (Pro) */}
-      <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", border: "1px solid rgba(250,204,21,0.25)" }}>
-        <div style={{ filter: "blur(6px)", opacity: 0.5, pointerEvents: "none", userSelect: "none", background: "rgba(255,255,255,0.02)", padding: 24 }}>
-          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "rgba(255,255,255,0.55)", marginBottom: 14 }}>REPAIR REVIEW · SCHEDULED DOJO</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
-            <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(74,222,128,0.05)" }}>reflex loop_breaker → agent #7 chain severed · verified · $38.20 spent</div>
-            <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(74,222,128,0.05)" }}>reflex zombie_reaper → 4 orphaned processes reaped · verified</div>
-            <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(250,204,21,0.05)" }}>reflex threshold_recalibrate → awaiting maker-checker approval</div>
-          </div>
-        </div>
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
-          <div style={{ fontSize: 22 }}>🔒</div>
-          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>REPAIR REVIEW · PRO</div>
-          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
-            UNLOCK PRO LIFETIME — $199
-          </a>
-        </div>
-      </div>
-
-      {/* Cross-Harness Fleet View (Pro) */}
-      <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", border: "1px solid rgba(250,204,21,0.25)" }}>
-        <div style={{ filter: "blur(6px)", opacity: 0.5, pointerEvents: "none", userSelect: "none", background: "rgba(255,255,255,0.02)", padding: 24 }}>
-          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "rgba(255,255,255,0.55)", marginBottom: 14 }}>FLEET AGGREGATION · 3 HARNESSES</div>
-          <div className="mono" style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 12 }}>
-            <div style={{ display: "flex", gap: 12 }}><span style={{ color: "#f472b6" }}>claude-code</span><span style={{ color: "rgba(255,255,255,0.5)" }}>14 agents · drift 89 · $412/wk</span></div>
-            <div style={{ display: "flex", gap: 12 }}><span style={{ color: "#facc15" }}>codex</span><span style={{ color: "rgba(255,255,255,0.5)" }}>6 agents · drift 81 · $188/wk</span></div>
-            <div style={{ display: "flex", gap: 12 }}><span style={{ color: "#38bdf8" }}>gemini-cli</span><span style={{ color: "rgba(255,255,255,0.5)" }}>3 agents · drift 90 · $64/wk</span></div>
-          </div>
-        </div>
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
-          <div style={{ fontSize: 22 }}>🔒</div>
-          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>CROSS-HARNESS FLEET VIEW · PRO</div>
-          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
-            UNLOCK PRO LIFETIME — $199
-          </a>
-        </div>
-      </div>
-
-      {/* Compliance Packs (Pro) */}
-      <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", border: "1px solid rgba(250,204,21,0.25)" }}>
-        <div style={{ filter: "blur(6px)", opacity: 0.5, pointerEvents: "none", userSelect: "none", background: "rgba(255,255,255,0.02)", padding: 24 }}>
-          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "rgba(255,255,255,0.55)", marginBottom: 14 }}>COMPLIANCE PACKS</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13 }}>
-            <div>NIST AI RMF — 41/47 controls evidenced</div>
-            <div>OWASP Agentic Top 10 — 9/10 mapped</div>
-            <div>EU AI Act Art. 15 — runtime evidence bundle</div>
-          </div>
-        </div>
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, background: "rgba(5,5,5,0.45)", backdropFilter: "blur(4px)" }}>
-          <div style={{ fontSize: 22 }}>🔒</div>
-          <div className="mono" style={{ fontSize: 11, letterSpacing: 2, color: "#facc15" }}>COMPLIANCE PACKS · PRO</div>
-          <a href="https://jemakaib1.gumroad.com/l/sqwomh" target="_blank" rel="noopener noreferrer" onClick={onUnlock} style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "#050505", background: "#facc15", padding: "7px 16px", borderRadius: 6, fontWeight: 700, textDecoration: "none", cursor: "pointer" }}>
-            UNLOCK PRO LIFETIME — $199
-          </a>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Top usage panel (skills / connections / agents) ───────────────────────────
-function TopUsagePanel({ usage }: { usage: WIDPayload["top_usage"] }) {
+function TopUsagePanel({ usage, isDemo = false }: { usage: WIDPayload["top_usage"]; isDemo?: boolean }) {
   if (!usage) return null
   type Item = { name: string; count: number }
   const sections: { title: string; emoji: string; items: Item[] }[] = [
@@ -928,7 +869,7 @@ function TopUsagePanel({ usage }: { usage: WIDPayload["top_usage"] }) {
         paddingBottom: 12, borderBottom: "1px solid rgba(255,255,255,0.055)" }}>
         <span style={{ fontSize: "1.3rem" }}>📊</span>
         <h2 style={{ fontSize: "1.1rem", margin: 0, letterSpacing: 2, textTransform: "uppercase" }}>Usage Leaderboard</h2>
-        <span className="mono" style={{ fontSize: "var(--text-caption)", color: "var(--muted-foreground)" }}>top 5 · all-time telemetry</span>
+        <span className="mono" style={{ fontSize: "var(--text-caption)", color: "var(--muted-foreground)" }}>{isDemo ? "sample data · synthetic names and counts" : "top 5 · all-time telemetry"}</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
         {sections.map(({ title, emoji, items }) => (
@@ -1106,7 +1047,7 @@ function Overview({ payload, onSelect, reflexProps, dojoProps, onUnlock, isDemo 
         <ReflexPanel reflexes={payload.reflexes} na={payload.needs_attention} {...reflexProps} />
       </div>
 
-      <TopUsagePanel usage={payload.top_usage} />
+      <TopUsagePanel usage={payload.top_usage} isDemo={isDemo} />
 
       {isPro ? (
         <div style={{ marginTop: 40 }}>
@@ -1127,8 +1068,6 @@ function Overview({ payload, onSelect, reflexProps, dojoProps, onUnlock, isDemo 
         </div>
       )}
 
-      {/* Mock teasers for unbuilt Pro views: shown only as an upgrade prompt, never "unlocked". */}
-      {!isPro && <ProLockedPanels onUnlock={onUnlock} />}
     </section>
   )
 }
