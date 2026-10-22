@@ -1696,6 +1696,16 @@
       "scope": "public-only"
     },
     {
+      "file": "tests/test_license_gumroad_http_e2e.py",
+      "symbol": "test_free_tier_gate_and_cli_help",
+      "class": "test-harness-unresolved",
+      "imports": [],
+      "path_calls": [
+        "runpy.run_path"
+      ],
+      "scope": "public-only"
+    },
+    {
       "file": "tests/test_remeasure_gate.py",
       "symbol": "<module>",
       "imports": [],
