@@ -28,6 +28,15 @@ SEAT_LIMIT_MESSAGE = (
 )
 
 
+def seats_used(val: dict) -> int:
+    """Gumroad's `uses` as an int. Absent or malformed counts as 0 (fail open): a change in
+    Gumroad's response format must not lock out paying customers."""
+    try:
+        return max(int(val.get("uses") or 0), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 # The seller disabled this key in Gumroad (Sales -> sale -> License key -> Disable).
 # Gumroad answers HTTP 404 {"success": false, "message": "This license key has been
 # disabled."}. That is an explicit revocation, distinct from an unknown key (not_found).
@@ -108,7 +117,7 @@ def activate_license_key(license_key: str, instance_name: str) -> dict:
     if not val.get("valid"):
         return {"activated": False, "error": val.get("error", "invalid key")}
     # Gumroad has already counted this attempt; over the cap means too many machines.
-    if val.get("uses", 1) > MAX_ACTIVATIONS:
+    if seats_used(val) > MAX_ACTIVATIONS:
         return {"activated": False, "seat_limit": True, "error": SEAT_LIMIT_MESSAGE}
 
     instance_hash = hashlib.sha256(f"{license_key}:{instance_name}".encode("utf-8")).hexdigest()[:16]

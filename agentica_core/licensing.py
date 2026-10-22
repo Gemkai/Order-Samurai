@@ -349,10 +349,15 @@ def activate(license_key: str, instance_name: str | None = None) -> dict[str, An
         return {"ok": False, "message": "license key invalid: "
                 + val.get("error", "not recognized by payment provider")}
 
-    # Reached only after gumroad_mcp imported and validated the key above.
-    from execution.gumroad_mcp import MAX_ACTIVATIONS, SEAT_LIMIT_MESSAGE  # noqa: PLC0415
+    try:
+        from execution.gumroad_mcp import (  # noqa: PLC0415
+            MAX_ACTIVATIONS, SEAT_LIMIT_MESSAGE, seats_used)
+    except ImportError:
+        # A mismatched install (licensing newer than gumroad_mcp) must not skip the cap.
+        return {"ok": False, "message": "activation failed: Order Samurai install is "
+                "incomplete; reinstall and try again"}
     # Refuse before activating so a key already at the cap does not consume another seat.
-    if val.get("uses", 0) >= MAX_ACTIVATIONS:
+    if seats_used(val) >= MAX_ACTIVATIONS:
         return {"ok": False, "message": SEAT_LIMIT_MESSAGE}
 
     try:

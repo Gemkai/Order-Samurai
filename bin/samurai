@@ -204,6 +204,8 @@ def _offer_pro_activation(args):
         if not retryable:
             if msg.startswith("network error"):
                 print(f"   Couldn't reach Gumroad. Activate later with: {_self_cmd()} activate")
+            elif msg.startswith("activation limit"):
+                print("   Staying on Free on this machine.")
             else:
                 print(f"   Activate later with: {_self_cmd()} activate")
             return

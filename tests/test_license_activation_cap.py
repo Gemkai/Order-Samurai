@@ -1,7 +1,7 @@
 """Per-key activation cap: one Gumroad key cannot unlock Pro on unlimited machines.
 
-Canned urllib responses only (same fake as test_license_gumroad_http_e2e.py); never
-uses the network."""
+Canned urllib responses only (the _HTTP fake pattern from the Gumroad HTTP E2E tests);
+never uses the network."""
 from __future__ import annotations
 
 import io
@@ -143,3 +143,28 @@ def test_deactivate_is_local_and_says_the_seat_is_not_released(http, home):
     assert result["ok"] is True
     assert not (home / "license.json").exists()
     assert "support@" in result["message"]
+
+
+@pytest.mark.parametrize("uses", [None, "garbage", -4])
+def test_missing_or_malformed_count_fails_open(http, home, uses):
+    # A Gumroad response-format change must not crash activation or lock out a buyer.
+    body = _sale(1)
+    body["uses"] = uses
+    http.queue("false", dict(body))
+    http.queue("true", dict(body))
+    assert licensing.activate(FAKE_KEY, instance_name="odd-count")["ok"] is True
+
+
+def test_absent_count_fails_open(http, home):
+    body = _sale(1)
+    del body["uses"]
+    http.queue("false", dict(body))
+    http.queue("true", dict(body))
+    assert licensing.activate(FAKE_KEY, instance_name="no-count")["ok"] is True
+
+
+def test_mcp_json_rpc_reports_the_seat_limit(http):
+    http.queue("true", _sale(CAP + 1))
+    reply = gumroad_mcp.activate_license_key(FAKE_KEY, "mcp-host")
+    assert reply["error"] == gumroad_mcp.SEAT_LIMIT_MESSAGE
+    assert FAKE_KEY not in json.dumps(reply)
