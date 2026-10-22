@@ -350,11 +350,24 @@ def activate(license_key: str, instance_name: str | None = None) -> dict[str, An
                 + val.get("error", "not recognized by payment provider")}
 
     try:
+        from execution.gumroad_mcp import (  # noqa: PLC0415
+            MAX_ACTIVATIONS, SEAT_LIMIT_MESSAGE, seats_used)
+    except ImportError:
+        # A mismatched install (licensing newer than gumroad_mcp) must not skip the cap.
+        return {"ok": False, "message": "activation failed: Order Samurai install is "
+                "incomplete; reinstall and try again"}
+    # Refuse before activating so a key already at the cap does not consume another seat.
+    if seats_used(val) >= MAX_ACTIVATIONS:
+        return {"ok": False, "message": SEAT_LIMIT_MESSAGE}
+
+    try:
         from execution.gumroad_mcp import activate_license_key as act_fn  # noqa: PLC0415
         act = act_fn(key, instance)
     except Exception as e:
         act = {"error": str(e)}
 
+    if act.get("seat_limit"):
+        return {"ok": False, "message": act["error"]}
     if not act.get("activated"):
         return {"ok": False,
                 "message": f"activation failed: {act.get('error', 'unknown activation error')}"}
@@ -389,7 +402,9 @@ def deactivate() -> dict[str, Any]:
             p.unlink()
         except OSError as e:
             return {"ok": False, "message": f"could not remove license: {e}"}
-        return {"ok": True, "message": "Pro deactivated on this machine — reverted to Free"}
+        return {"ok": True, "message": "Pro deactivated on this machine — reverted to Free. "
+                "This does not free an activation seat; to reuse it on another machine, "
+                "email support@agentica-llc.biz with your Gumroad receipt."}
     return {"ok": True, "message": "no active license — already on Free"}
 
 
