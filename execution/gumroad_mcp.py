@@ -16,6 +16,17 @@ GUMROAD_API_URL = "https://api.gumroad.com/v2/licenses/verify"
 GUMROAD_PRODUCT_ID = os.environ.get("GUMROAD_PRODUCT_ID", "AePROIWPGu9a6k-dm9W4ww==")
 GUMROAD_PERMALINK = os.environ.get("GUMROAD_PRODUCT_PERMALINK", "sqwomh")
 
+# Machines one license key may activate Pro on, counted by Gumroad's `uses`. Gumroad
+# only lowers that count through PUT /v2/licenses/decrement_uses_count, which needs the
+# seller's access token, so `samurai deactivate` cannot free a seat: support resets it.
+MAX_ACTIVATIONS = 3
+SEAT_LIMIT_MESSAGE = (
+    f"activation limit reached: this license key is already active on {MAX_ACTIVATIONS} "
+    "machines. `samurai deactivate` turns Pro off on a machine but does not free its seat. "
+    "To move Pro to this machine, email support@agentica-llc.biz with your Gumroad "
+    "receipt and the seat count will be reset."
+)
+
 
 # The seller disabled this key in Gumroad (Sales -> sale -> License key -> Disable).
 # Gumroad answers HTTP 404 {"success": false, "message": "This license key has been
@@ -96,6 +107,9 @@ def activate_license_key(license_key: str, instance_name: str) -> dict:
     val = validate_license_key(license_key, increment_uses_count=True)
     if not val.get("valid"):
         return {"activated": False, "error": val.get("error", "invalid key")}
+    # Gumroad has already counted this attempt; over the cap means too many machines.
+    if val.get("uses", 1) > MAX_ACTIVATIONS:
+        return {"activated": False, "seat_limit": True, "error": SEAT_LIMIT_MESSAGE}
 
     instance_hash = hashlib.sha256(f"{license_key}:{instance_name}".encode("utf-8")).hexdigest()[:16]
     return {

@@ -294,8 +294,14 @@ You should see `Order Samurai — PRO tier` with your machine name and activatio
 
 ### Moving to a new machine / refunds
 
+- **Activation limit**: one license key activates Pro on up to 3 machines. Each
+  `samurai activate` that succeeds uses a seat, including re-activating the same machine
+  after a reinstall. A key that has used all 3 seats is refused before it can use another.
 - **New machine**: run `samurai deactivate` on the old machine, then `samurai activate` on
-  the new one.
+  the new one. `samurai deactivate` turns Pro off locally but does not free the seat
+  (Gumroad counts activations, and only the seller can lower that count). If you have
+  used all 3 seats, email `support@agentica-llc.biz` with your Gumroad receipt and the
+  count will be reset.
 - **Refund** (within 14 days): contact the seller through your Gumroad receipt or
   email `support@agentica-llc.biz`. Deactivate the local entitlement after a refund.
   Activation rejects a refunded key. An activated machine then re-checks the key at
