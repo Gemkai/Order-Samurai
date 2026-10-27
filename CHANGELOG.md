@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.3] - 2026-10-27
+
 ### Changed
 
+- `TERMS.md` section 3.1 now states the 3-device activation limit (Order-Samurai#98); the website pricing, comparison table and terms say the same.
 - One Pro license key now activates on at most 3 machines (`MAX_ACTIVATIONS` in `execution/gumroad_mcp.py`, counted by Gumroad's `uses`). `samurai activate` refuses a key already at the limit before it uses another seat, and refuses when Gumroad's post-activation count exceeds the limit (two machines activating at once). The refusal says how to get the count reset. The daily re-check never revokes because of the count. `samurai deactivate` still only removes the local entitlement and now says it does not free a seat: Gumroad's decrement endpoint needs the seller's access token, so support resets counts.
 
 ## [2.4.2] - 2026-10-20
