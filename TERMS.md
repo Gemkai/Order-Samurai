@@ -30,6 +30,8 @@ We want you to be completely satisfied with Order Samurai Pro.
 ### 3.1 Pro Perpetual License
 Subject to payment of the applicable $199 fee, We grant you a perpetual, non-exclusive, non-transferable, worldwide license to install and run Order Samurai Pro on your developer devices.
 
+Each Pro license key can be activated on up to three (3) of your developer devices. Every successful activation uses one seat, including re-activating the same device after a reinstall; deactivating a device does not free its seat. To reset the count after replacing a device, email `support@agentica-llc.biz` with your purchase receipt.
+
 ### 3.2 Restrictions
 Except as expressly permitted by applicable law, you shall not:
 - Reverse-engineer, decompile, or attempt to crack the offline license key verification mechanisms of Order Samurai Pro.
