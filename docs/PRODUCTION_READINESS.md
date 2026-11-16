@@ -9,8 +9,8 @@ not a claim that current source has reached every customer-facing channel.
 | Surface | Status | Remaining gate |
 |---|---|---|
 | Free Core | Controlled release | Publish and verify the corrected customer artifact and demo |
-| Pro | Early access | Same release gates; real purchase/delivery/activation evidence outstanding |
-| Broad paid GA | Not verified | Real paid lifecycle, reachable support, independent clean-machine install |
+| Pro | Early access | Same release gates; real purchase/refund cycle owner-validated (2026-11-09) |
+| Broad paid GA | Not verified | Reachable support, independent clean-machine install |
 
 ## Evidence and limits
 
@@ -34,6 +34,10 @@ not a claim that current source has reached every customer-facing channel.
   except the daily refund re-check, which runs until the first successful check after
   the 21-day window. A refund the provider reports by then revokes Pro; a machine that
   never reaches the provider keeps Pro (a network failure never revokes).
+- Real lifecycle (2026-11-09): the owner reports validating a real Gumroad purchase →
+  key delivery → activation → refund cycle. This is an owner attestation. The evidence
+  is held privately and not committed, because it contains customer and license data.
+  It does not cover support/security mailbox receipt or a non-maintainer machine.
 - Canonical contact addresses are under `ordersamurai.ai`; consistent spelling is
   not proof a mailbox accepts mail. Verify a sent message was received. Paid
   customers have seller contact through their receipt; security reports can use
@@ -56,7 +60,8 @@ Cloud review requires explicit opt-in and redaction.
 - [ ] Complete CI matrix passes at the final release revision
 - [ ] Support/security messages sent and receipt confirmed
 - [ ] Existing external security report/Issue #2 disposition checked and recorded
-- [ ] Real customer key delivered and activated; refund behavior observed and documented
+- [x] Real customer key delivered and activated; refund behavior observed and documented
+      (owner-attested 2026-11-09; see Evidence and limits)
 - [ ] Install verified on a machine other than the maintainer's
 
 Do not mark these complete from source inspection or mocked tests. Publication,
