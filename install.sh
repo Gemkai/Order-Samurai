@@ -97,10 +97,54 @@ else
   fi
   echo "  [✓] Checksum verified"
 
+# In-place upgrades must not mistake a retained old CLI for a complete download.
+# Reject an absent/empty entrypoint before changing the active install or its backup.
+python3 - "${TMP_DIR}/order-samurai-core.zip" <<'PYCHECK'
+import sys
+import zipfile
+
+try:
+    with zipfile.ZipFile(sys.argv[1]) as archive:
+        entry = archive.getinfo("bin/samurai")
+        if entry.is_dir() or entry.file_size == 0:
+            raise ValueError("empty entrypoint")
+except (OSError, ValueError, KeyError, zipfile.BadZipFile):
+    sys.exit("Invalid core archive: missing or empty bin/samurai; nothing extracted or executed.")
+PYCHECK
+
   TARGET_DIR="${HOME}/.samurai/core"
   mkdir -p "${TARGET_DIR}"
   echo "  [📦] Extracting to ${TARGET_DIR}..."
-  unzip -q -o "${TMP_DIR}/order-samurai-core.zip" -d "${TARGET_DIR}"
+  # Runtime seeds never participate in the overwriting extraction. Publish a missing
+  # seed atomically without replacing a file (or symlink) created by a running writer.
+  # Policy data, such as kill_chain_taxonomy.json, still updates with the code.
+  RUNTIME_STATE=(state/budget_ledger.json state/vibe_alignment.json state/calibration_coefficients.json)
+  unzip -q -o "${TMP_DIR}/order-samurai-core.zip" -d "${TARGET_DIR}" -x "${RUNTIME_STATE[@]}"
+  python3 - "${TMP_DIR}/order-samurai-core.zip" "${TARGET_DIR}" "${RUNTIME_STATE[@]}" <<'PYSEED'
+import os
+from pathlib import Path
+import sys
+import tempfile
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    for name in sys.argv[3:]:
+        target = Path(sys.argv[2]) / name
+        if os.path.lexists(target) or name not in archive.namelist():
+            continue
+        seed = archive.read(name)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(prefix=".samurai-seed-", dir=target.parent)
+        try:
+            with os.fdopen(fd, "wb") as output:
+                output.write(seed)
+            try:
+                os.link(temporary, target)
+            except FileExistsError:
+                pass  # A runtime writer initialized it first; that value wins.
+        finally:
+            os.unlink(temporary)
+PYSEED
   # v2.2.1 shipped sample reports in public/reports; unzip -o keeps them, and the Reports
   # tab would show them as this machine's history. Reports written here stay.
   REPORTS_DIR="${TARGET_DIR}/dashboard-ui/public/reports"
