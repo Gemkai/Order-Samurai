@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Reinstalling preserves this machine's daily budget ledger, vibe measurements and calibration instead of replacing them with shipped defaults. Missing state initializes without overwriting a concurrent writer. The web installer also rejects archives without a usable CLI entrypoint before changing the install.
+
 ## [2.4.3] - 2026-10-27
 
 ### Changed
