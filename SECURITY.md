@@ -21,6 +21,6 @@ If you discover a potential security flaw, prompt-injection bypass, secret scrub
 ## Security Guarantees & Architecture
 
 - **Data Boundary**: Local by default, with zero product telemetry collected by Order Samurai. All metric aggregation, secret scrubbing, and kill-chain analysis happen on your local filesystem (`~/.samurai/`).
-- **Fail-Closed Gate Enforcement**: Security gates block on failure (`BUSHIDO_FAIL_OPEN=false`).
+- **Gate failure behaviour**: The reflex repair gate blocks on failure (`BUSHIDO_FAIL_OPEN=false`). The prompt-injection guard is a separate hook and differs by harness: if the guard itself errors or receives a malformed payload, the call goes through on Claude Code and Codex (fails open) and is blocked on Cursor and Gemini CLI (fails closed).
 - **Secret Scrubbing**: Real-time PostToolUse and PreToolUse hooks inspect stdout, file edits, and agent outputs to prevent credential/IP leakages (ATT&CK Chain 14).
 - **Prompt Injection Defense**: Dual-layer pattern matching + local model scoring intercepts indirect prompt injections (ATT&CK Chain 13).
