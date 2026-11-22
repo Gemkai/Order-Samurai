@@ -82,10 +82,10 @@ One address for support, bug reports and feedback: **support@agentica-llc.biz**.
 ## Recent Major Advancements
 
 - **Repair scope (September 23, 2026)**: Broad autonomous LLM repair and auto-apply are retired. Order Samurai supports diagnosis, staged patches for explicit human review and approval, and existing bounded deterministic maintenance. A passing check alone does not authorize applying a repair.
-- **Fail-Closed Bushido Security**: `BUSHIDO_FAIL_OPEN=false`, `REFLEX_REQUIRE_GRANT=true` enforced deterministically.
+- **Fail-closed reflex gate**: `BUSHIDO_FAIL_OPEN=false`, `REFLEX_REQUIRE_GRANT=true` enforced deterministically. These settings govern the reflex repair gate. The prompt-injection guard is a separate hook and differs by harness: if the guard itself errors or receives a malformed payload, the call goes through on Claude Code and Codex (fails open) and is blocked on Cursor and Gemini CLI (fails closed).
 - **9 Live Knowledge Retrieval Measurements**: Real-time tracking of embedding cache hit rates, p50/p95 latency, collection search failures, and prompt cache reuse across Claude and Codex.
 
 ## Commercial Tiering (Strictly 2 Tiers — Zero Subscriptions)
 
-1. **Free Core ($0 Forever)**: Fail-closed checks in supported hooks, secret scrubbing, four-pillar diagnostics, 7-day log history, and **manual staged `.patch` generation**. No tool guarantees interception of every attack or protection outside registered hooks.
+1. **Free Core ($0 Forever)**: Prompt-injection guard in supported hooks (fails open on Claude Code and Codex if the guard itself errors; fails closed on Cursor and Gemini CLI), secret scrubbing, four-pillar diagnostics, 7-day log history, and **manual staged `.patch` generation**. No tool guarantees interception of every attack or protection outside registered hooks.
 2. **Pro Lifetime ($199 One-Time / Perpetual)**: **Maker-checker patch staging** for human review, Sensei multi-model rival verification, 9-point deep knowledge telemetry & prompt-cache tracking, 90-day archive, and cryptographic SHA-256 hash-chain ledger.

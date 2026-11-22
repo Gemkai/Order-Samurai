@@ -25,7 +25,7 @@ Order Samurai's core value proposition is **provenance-transparent governance**.
 ### Claude Code (Primary v1 Runtime)
 - **Hooks Active**: `PreToolUse` (prompt injection defense), `PostToolUse` (secret scrubber & credential exfiltration defense).
 - **Telemetry Captured**: Tool invocation types, parameters, execution status, redacted secret counts, and budget ledger records.
-- **Fail-Closed Gate Guarantee**: Security hooks execute synchronously (`async: false`). Failures block execution when `BUSHIDO_FAIL_OPEN=false`.
+- **Gate failure behaviour**: Security hooks execute synchronously (`async: false`). `BUSHIDO_FAIL_OPEN=false` makes the reflex repair gate block on failure; it does not govern the prompt-injection guard. The prompt-injection guard is a separate hook and differs by harness: if the guard itself errors or receives a malformed payload, the call goes through on Claude Code and Codex (fails open) and is blocked on Cursor and Gemini CLI (fails closed).
 
 ### Other Agent Runtimes (Codex / Custom Agents)
 - **Status in v1**: Adapter interface supported via `runtime_paths.py` & standard JSONL schema. Metrics render `SIMULATED` until native adapter hooks are initialized.
